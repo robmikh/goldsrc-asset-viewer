@@ -1,0 +1,20 @@
+[package]
+name = "goldsrc-asset-viewer"
+version = "0.1.0"
+authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
+edition = "2018"
+
+[dependencies]
+wad3parser = { git = "https://github.com/robmikh/wad3parser.git" }
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs.git" }
+nalgebra = "0.18"
+imgui = "0.0.23"
+imgui-winit-support = "0.0.23"
+imgui-wgpu = { git = "https://github.com/DefecateRainbows/imgui-wgpu-rs.git" }
+
+[features]
+default = []
+metal = ["imgui-wgpu/metal"]
+dx11 = ["imgui-wgpu/dx11"]
+dx12 = ["imgui-wgpu/dx12"]
+vulkan = ["imgui-wgpu/vulkan"]
