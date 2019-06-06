@@ -5,12 +5,14 @@ authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
 edition = "2018"
 
 [dependencies]
-wad3parser = { git = "https://github.com/robmikh/wad3parser.git" }
+wad3parser = { git = "https://github.com/robmikh/wad3parser.git", branch = "fonts" }
 wgpu = { git = "https://github.com/gfx-rs/wgpu-rs.git" }
 nalgebra = "0.18"
-imgui = "0.0.23"
-imgui-winit-support = "0.0.23"
-imgui-wgpu = { git = "https://github.com/DefecateRainbows/imgui-wgpu-rs.git" }
+image = "0.21.1"
+env_logger = "0.5"
+imgui = { git = "https://github.com/Gekkio/imgui-rs.git" }
+imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git" }
+imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "dev" }
 
 [features]
 default = []
