@@ -11,6 +11,12 @@ use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo, TextureType, };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
+struct Texture {
+    pub texture_id: ImTexture,
+    pub width: u32,
+    pub height: u32,
+}
+
 fn main() {
     env_logger::init();
 
@@ -86,11 +92,25 @@ fn main() {
     let mut new_selection = false;
 
     let info = files.get(file_names[selected_file_index as usize]).unwrap();
-    let mut texture_type = info.texture_type;
-    let mut decoded_image = get_texture(&archive, &info);
-    let (mut texture_width, mut texture_height) = decoded_image.dimensions();
-    let mut texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
-    let mut texture_id = renderer.textures().insert(texture);
+    let mut texture_type = info.texture_type;  
+    let mut textures = {
+        let decoded_images = get_textures(&archive, &info);
+        let mut textures = Vec::with_capacity(decoded_images.len());
+
+        for decoded_image in decoded_images {
+            let (texture_width, texture_height) = decoded_image.dimensions();
+            let texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
+            let texture_id = renderer.textures().insert(texture);
+
+            textures.push(Texture {
+                texture_id: texture_id,
+                width: texture_width,
+                height: texture_height,
+            });
+        }
+
+        textures
+    };
     let mut scale: f32 = 1.0;
 
     let mut running = true;
@@ -155,15 +175,26 @@ fn main() {
                 });
 
             if new_selection {
-                renderer.textures().remove(texture_id); // get rid of the old one
+                // unbind our previous textures
+                for texture_entry in textures.drain(..) {
+                    renderer.textures().remove(texture_entry.texture_id);
+                }
+
                 let info = files.get(file_names[selected_file_index as usize]).unwrap();
-                decoded_image = get_texture(&archive, &info);
                 texture_type = info.texture_type;
-                let (width, height) = decoded_image.dimensions();
-                texture_width = width;
-                texture_height = height;
-                texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
-                texture_id = renderer.textures().insert(texture);
+
+                let decoded_images = get_textures(&archive, &info);
+                for decoded_image in decoded_images {
+                    let (texture_width, texture_height) = decoded_image.dimensions();
+                    let texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
+                    let texture_id = renderer.textures().insert(texture);
+
+                    textures.push(Texture {
+                        texture_id: texture_id,
+                        width: texture_width,
+                        height: texture_height,
+                    });
+                }
             }
 
             ui.window(im_str!["File preview"])
@@ -172,11 +203,19 @@ fn main() {
                 .build(|| {
                     ui.text(file_names[selected_file_index as usize]);
                     ui.text(im_str!["Type: {:?}", texture_type]);
-                    ui.text(im_str!["Size: {} x {}", texture_width, texture_height]);
+                    ui.text(im_str!["Size: {} x {}", textures[0].width, textures[0].height]);
+                    match texture_type {
+                        TextureType::Font => {
+                            ui.text(im_str!["Row Count: {}", "idk"]);
+                        },
+                        _ => (),
+                    }
                     ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
                         .build();
-                    ui.image(texture_id, (texture_width as f32 * scale, texture_height as f32 * scale))
+                    for texture in &textures {
+                        ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
                         .build();
+                    }
                 });
             
             //ui.show_demo_window(&mut demo_open);
@@ -192,26 +231,21 @@ fn main() {
     }    
 }
 
-fn get_texture(
+fn get_textures(
     archive: &WadArchive, 
     info: &WadFileInfo,
-) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+) -> Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>> {
     if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
-        let image_data = match info.texture_type {
-            TextureType::Decal => archive.decode_decal(&info),
-            TextureType::MipmappedImage => archive.decode_mipmaped_image(&info),
-            _ => panic!("New texture type! {:?}", info.texture_type),
-        };
-
-        image_data.image
+        let image_data = archive.decode_mipmaped_image(&info);
+        vec![image_data.image, image_data.mipmap1, image_data.mipmap2, image_data.mipmap3]
+    } else if info.texture_type == TextureType::Image {
+        let image_data = archive.decode_image(&info);
+        vec![image_data.image]
+    } else if info.texture_type == TextureType::Font {
+        let image_data = archive.decode_font(&info);
+        vec![image_data.image]
     } else {
-        let image_data = match info.texture_type {
-            TextureType::Image => archive.decode_image(&info),
-            TextureType::Font => archive.decode_font(&info),
-            _ => panic!("New texture type! {:?}", info.texture_type),
-        };
-
-        image_data.image
+        panic!("New texture type! {:?}", info.texture_type);
     }
 }
 

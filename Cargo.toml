@@ -5,7 +5,7 @@ authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
 edition = "2018"
 
 [dependencies]
-wad3parser = { git = "https://github.com/robmikh/wad3parser.git", branch = "fonts" }
+wad3parser = { git = "https://github.com/robmikh/wad3parser.git" }
 wgpu = { git = "https://github.com/gfx-rs/wgpu-rs.git" }
 nalgebra = "0.18"
 image = "0.21.1"
