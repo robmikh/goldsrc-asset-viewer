@@ -8,13 +8,51 @@ use imgui_winit_support;
 use std::collections::HashMap;
 use std::env;
 use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType, };
+use wad3parser::{ WadArchive, WadFileInfo, TextureType };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
-struct Texture {
+#[derive(Clone)]
+struct TextureBundle {
+    pub mip_textures: Vec<MipTexture>,
+    pub extra_data: ExtraTextureData,
+}
+
+#[derive(Clone)]
+struct MipTexture {
     pub texture_id: ImTexture,
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(Clone)]
+struct FontMetadata {
+    pub row_count: u32,
+    pub row_height: u32,
+}
+
+#[derive(Clone)]
+struct ExtraTextureData {
+    pub texture_type: TextureType,
+    pub font: Option<FontMetadata>,
+}
+
+impl TextureBundle {
+    fn clear(&mut self, renderer: &mut Renderer) {
+        // unbind our previous textures
+        for texture in self.mip_textures.drain(..) {
+            renderer.textures().remove(texture.texture_id);
+        }
+        self.extra_data.font = None;
+    }
+}
+
+impl ExtraTextureData {
+    fn new(texture_type: TextureType) -> ExtraTextureData {
+        ExtraTextureData {
+            texture_type: texture_type,
+            font: None,
+        }
+    }
 }
 
 fn main() {
@@ -92,25 +130,7 @@ fn main() {
     let mut new_selection = false;
 
     let info = files.get(file_names[selected_file_index as usize]).unwrap();
-    let mut texture_type = info.texture_type;  
-    let mut textures = {
-        let decoded_images = get_textures(&archive, &info);
-        let mut textures = Vec::with_capacity(decoded_images.len());
-
-        for decoded_image in decoded_images {
-            let (texture_width, texture_height) = decoded_image.dimensions();
-            let texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
-            let texture_id = renderer.textures().insert(texture);
-
-            textures.push(Texture {
-                texture_id: texture_id,
-                width: texture_width,
-                height: texture_height,
-            });
-        }
-
-        textures
-    };
+    let mut texture_bundle = get_texture_bundle(&archive, &info, &mut device, &mut renderer);
     let mut scale: f32 = 1.0;
 
     let mut running = true;
@@ -176,43 +196,31 @@ fn main() {
 
             if new_selection {
                 // unbind our previous textures
-                for texture_entry in textures.drain(..) {
-                    renderer.textures().remove(texture_entry.texture_id);
-                }
+                texture_bundle.clear(&mut renderer);
 
                 let info = files.get(file_names[selected_file_index as usize]).unwrap();
-                texture_type = info.texture_type;
-
-                let decoded_images = get_textures(&archive, &info);
-                for decoded_image in decoded_images {
-                    let (texture_width, texture_height) = decoded_image.dimensions();
-                    let texture = create_imgui_texture(&mut device, renderer.texture_layout(), decoded_image);
-                    let texture_id = renderer.textures().insert(texture);
-
-                    textures.push(Texture {
-                        texture_id: texture_id,
-                        width: texture_width,
-                        height: texture_height,
-                    });
-                }
+                texture_bundle = get_texture_bundle(&archive, &info, &mut device, &mut renderer);
             }
 
+            let texture_bundle = texture_bundle.clone();
             ui.window(im_str!["File preview"])
                 .position((500.0, 150.0), ImGuiCond::FirstUseEver)
                 .size((300.0, 300.0), ImGuiCond::FirstUseEver)
                 .build(|| {
                     ui.text(file_names[selected_file_index as usize]);
-                    ui.text(im_str!["Type: {:?}", texture_type]);
-                    ui.text(im_str!["Size: {} x {}", textures[0].width, textures[0].height]);
-                    match texture_type {
+                    ui.text(im_str!["Type: {:?}", texture_bundle.extra_data.texture_type]);
+                    ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
+                    match texture_bundle.extra_data.texture_type {
                         TextureType::Font => {
-                            ui.text(im_str!["Row Count: {}", "idk"]);
+                            let font_data = texture_bundle.extra_data.font.unwrap();
+                            ui.text(im_str!["Row Count: {}", font_data.row_count]);
+                            ui.text(im_str!["Row Height: {}", font_data.row_height]);
                         },
                         _ => (),
                     }
                     ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
                         .build();
-                    for texture in &textures {
+                    for texture in texture_bundle.mip_textures {
                         ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
                         .build();
                     }
@@ -231,22 +239,30 @@ fn main() {
     }    
 }
 
-fn get_textures(
+fn get_decoded_data(
     archive: &WadArchive, 
     info: &WadFileInfo,
-) -> Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>> {
-    if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
-        let image_data = archive.decode_mipmaped_image(&info);
-        vec![image_data.image, image_data.mipmap1, image_data.mipmap2, image_data.mipmap3]
-    } else if info.texture_type == TextureType::Image {
-        let image_data = archive.decode_image(&info);
-        vec![image_data.image]
-    } else if info.texture_type == TextureType::Font {
-        let image_data = archive.decode_font(&info);
-        vec![image_data.image]
-    } else {
-        panic!("New texture type! {:?}", info.texture_type);
-    }
+) -> (Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>>, ExtraTextureData) {
+    let mut extra_data = ExtraTextureData::new(info.texture_type);
+    let datas = {
+        if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
+            let image_data = archive.decode_mipmaped_image(&info);
+            vec![image_data.image, image_data.mipmap1, image_data.mipmap2, image_data.mipmap3]
+        } else if info.texture_type == TextureType::Image {
+            let image_data = archive.decode_image(&info);
+            vec![image_data.image]
+        } else if info.texture_type == TextureType::Font {
+            let image_data = archive.decode_font(&info);
+            extra_data.font = Some(FontMetadata {
+                row_count: image_data.row_count,
+                row_height: image_data.row_height,
+            });
+            vec![image_data.image]
+        } else {
+            panic!("New texture type! {:?}", info.texture_type);
+        }
+    };
+    (datas, extra_data)
 }
 
 fn create_imgui_texture(
@@ -309,4 +325,32 @@ fn create_imgui_texture(
     device.get_queue().submit(&[encoder.finish()]);
 
     imgui_wgpu::Texture::new(texture, sampler, bind_group_layout, device)
+}
+
+
+fn get_texture_bundle(
+    archive: &WadArchive, 
+    info: &WadFileInfo,
+    device: &mut wgpu::Device,
+    renderer: &mut Renderer,
+) -> TextureBundle {
+    let (decoded_images, texture_data) = get_decoded_data(&archive, &info);
+    let mut textures = Vec::with_capacity(decoded_images.len());
+
+    for decoded_image in decoded_images {
+        let (texture_width, texture_height) = decoded_image.dimensions();
+        let texture = create_imgui_texture(device, renderer.texture_layout(), decoded_image);
+        let texture_id = renderer.textures().insert(texture);
+
+        textures.push(MipTexture {
+            texture_id: texture_id,
+            width: texture_width,
+            height: texture_height,
+        });
+    }
+
+    TextureBundle {
+        mip_textures: textures, 
+        extra_data: texture_data,
+    }
 }
