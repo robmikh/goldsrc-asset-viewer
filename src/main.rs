@@ -8,11 +8,8 @@ use imgui_winit_support;
 use std::collections::HashMap;
 use std::env;
 use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType };
-use wgpu::winit::{
-    dpi::LogicalSize, ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode,
-    WindowBuilder, WindowEvent,
-};
+use wad3parser::{ WadArchive, WadFileInfo, TextureType, };
+use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
 fn main() {
     env_logger::init();
