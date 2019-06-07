@@ -17,6 +17,5 @@ imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "d
 [features]
 default = []
 metal = ["imgui-wgpu/metal"]
-dx11 = ["imgui-wgpu/dx11"]
 dx12 = ["imgui-wgpu/dx12"]
 vulkan = ["imgui-wgpu/vulkan"]
