@@ -79,14 +79,10 @@ fn main() {
         .version(crate_version!())
         .author("Robert Mikhayelyan <rob.mikh@outlook.com>")
         .about("A tool to view assets from GoldSource games.")
-        .arg(Arg::with_name("open")
-            .help("Open the specified file.")
-            .short("o")
-            .long("open")
-            .takes_value(true))
+        .args_from_usage("[file_path] 'Open the specified file.'")
         .get_matches();
 
-    if let Some(path) = arg_matches.value_of("open") {
+    if let Some(path) = arg_matches.value_of("file_path") {
         file_info = FileInfo::WadFile(load_archive(path));
     }
 
