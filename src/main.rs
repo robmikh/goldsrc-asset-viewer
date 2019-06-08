@@ -57,6 +57,7 @@ impl ExtraTextureData {
 }
 
 struct FileInfo {
+    pub path: String,
     pub archive: WadArchive,
     pub files: HashMap<ImString, WadFileInfo>,
     pub file_names: Vec<ImString>,
@@ -65,10 +66,12 @@ struct FileInfo {
 fn main() {
     env_logger::init();
 
-    let args = env::args().collect::<Vec<_>>();
-    let path = &args[1];
+    let mut file_info: Option<FileInfo> = None;
 
-    let mut file_info = load_archive(&path);
+    let args = env::args().collect::<Vec<_>>();
+    if args.len() >= 2 {
+        file_info = Some(load_archive(&args[1]));
+    }
 
     let instance = wgpu::Instance::new();
     let adapter = instance.get_adapter(&wgpu::AdapterDescriptor{
@@ -124,12 +127,15 @@ fn main() {
     let mut last_frame = Instant::now();
     //let mut demo_open = true;
     let mut selected_file_index: i32 = 0;
+    let mut scale: f32 = 1.0;
     let mut new_selection = false;
     let mut pending_path: Option<String> = None;
 
-    let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
-    let mut texture_bundle = get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer);
-    let mut scale: f32 = 1.0;
+    let mut texture_bundle: Option<TextureBundle> = None;
+    if let Some(file_info) = file_info.as_ref() {
+        let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
+        texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
+    } 
 
     let mut running = true;
     while running {
@@ -186,7 +192,7 @@ fn main() {
         let ui = imgui.frame(frame_size, delta_seconds);
         let force_new_selection = {
             if let Some(new_path) = pending_path {
-                file_info = load_archive(&new_path);
+                file_info = Some(load_archive(&new_path));
 
                 selected_file_index = 0;
                 pending_path = None;
@@ -197,8 +203,6 @@ fn main() {
         };
 
         {
-            let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
-
             ui.main_menu_bar(|| {
                 ui.menu(im_str!["File"]).build(|| {
                     if ui.menu_item(im_str!["Open"])
@@ -215,9 +219,13 @@ fn main() {
                 });
             });
 
-            ui.window(im_str!["{}", path])
+            if let Some(file_info) = file_info.as_ref() {
+                let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
+
+                ui.window(im_str!["File list"])
                 .size((300.0, 400.0), ImGuiCond::FirstUseEver)
                 .build(|| {
+                    ui.text(im_str!["Path: {}", &file_info.path]);
                     new_selection = ui.list_box(
                         im_str!["Files"], 
                         &mut selected_file_index,
@@ -225,37 +233,42 @@ fn main() {
                         file_names.len() as i32);
                 });
 
-            if new_selection || force_new_selection {
-                // unbind our previous textures
-                texture_bundle.clear(&mut renderer);
+                if new_selection || force_new_selection {
+                    // unbind our previous textures
+                    if let Some(texture_bundle) = texture_bundle.as_mut() {
+                        texture_bundle.clear(&mut renderer);
+                    }
 
-                let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
-                texture_bundle = get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer);
+                    let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
+                    texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
+                }
+
+                if let Some(texture_bundle) = texture_bundle.as_ref() {
+                    ui.window(im_str!["File preview"])
+                        .position((500.0, 150.0), ImGuiCond::FirstUseEver)
+                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+                        .build(|| {
+                            ui.text(&file_names[selected_file_index as usize]);
+                            ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
+                            ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
+                            match texture_bundle.extra_data.texture_type {
+                                TextureType::Font => {
+                                    if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
+                                        ui.text(im_str!["Row Count: {}", font_data.row_count]);
+                                        ui.text(im_str!["Row Height: {}", font_data.row_height]);
+                                    }
+                                },
+                                _ => (),
+                            }
+                            ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
+                                .build();
+                            for texture in &texture_bundle.mip_textures {
+                                ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
+                                .build();
+                            }
+                        });
+                }
             }
-
-            let texture_bundle = texture_bundle.clone();
-            ui.window(im_str!["File preview"])
-                .position((500.0, 150.0), ImGuiCond::FirstUseEver)
-                .size((300.0, 300.0), ImGuiCond::FirstUseEver)
-                .build(|| {
-                    ui.text(&file_names[selected_file_index as usize]);
-                    ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
-                    ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
-                    match texture_bundle.extra_data.texture_type {
-                        TextureType::Font => {
-                            let font_data = texture_bundle.extra_data.font.unwrap();
-                            ui.text(im_str!["Row Count: {}", font_data.row_count]);
-                            ui.text(im_str!["Row Height: {}", font_data.row_height]);
-                        },
-                        _ => (),
-                    }
-                    ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
-                        .build();
-                    for texture in texture_bundle.mip_textures {
-                        ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
-                        .build();
-                    }
-                });
             
             //ui.show_demo_window(&mut demo_open);
         }
@@ -390,6 +403,7 @@ fn load_archive(path: &str) -> FileInfo {
     let archive = WadArchive::open(path);
     let (files, file_names) = load_file(&archive);
     FileInfo {
+        path: path.to_string(),
         archive: archive,
         files: files,
         file_names: file_names,
