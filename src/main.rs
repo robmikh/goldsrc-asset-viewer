@@ -1,6 +1,7 @@
 extern crate imgui_wgpu;
 extern crate wad3parser;
 extern crate image;
+extern crate nfd;
 
 use imgui::*;
 use imgui_wgpu::Renderer;
@@ -55,23 +56,19 @@ impl ExtraTextureData {
     }
 }
 
+struct FileInfo {
+    pub archive: WadArchive,
+    pub files: HashMap<ImString, WadFileInfo>,
+    pub file_names: Vec<ImString>,
+}
+
 fn main() {
     env_logger::init();
 
     let args = env::args().collect::<Vec<_>>();
     let path = &args[1];
 
-    let archive = WadArchive::open(&path);
-    let file_infos = &archive.files;
-    let mut files = HashMap::new();
-    let mut file_names = Vec::new();
-    for info in file_infos {
-        let imgui_str = ImString::new(info.name.to_string());
-        file_names.push(imgui_str.clone());
-        files.insert(imgui_str, info);
-    }
-    // Because of course this can't be simple...
-    let file_names = &file_names.iter().collect::<Vec<_>>();
+    let mut file_info = load_archive(&path);
 
     let instance = wgpu::Instance::new();
     let adapter = instance.get_adapter(&wgpu::AdapterDescriptor{
@@ -128,9 +125,10 @@ fn main() {
     //let mut demo_open = true;
     let mut selected_file_index: i32 = 0;
     let mut new_selection = false;
+    let mut pending_path: Option<String> = None;
 
-    let info = files.get(file_names[selected_file_index as usize]).unwrap();
-    let mut texture_bundle = get_texture_bundle(&archive, &info, &mut device, &mut renderer);
+    let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
+    let mut texture_bundle = get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer);
     let mut scale: f32 = 1.0;
 
     let mut running = true;
@@ -186,20 +184,53 @@ fn main() {
         let frame = swap_chain.get_next_texture();
         let frame_size = imgui_winit_support::get_frame_size(&window, dpi_factor).unwrap();
         let ui = imgui.frame(frame_size, delta_seconds);
+        let force_new_selection = {
+            if let Some(new_path) = pending_path {
+                file_info = load_archive(&new_path);
+
+                selected_file_index = 0;
+                pending_path = None;
+                true
+            } else {
+                false
+            }
+        };
 
         {
+            let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
+
+            ui.main_menu_bar(|| {
+                ui.menu(im_str!["File"]).build(|| {
+                    if ui.menu_item(im_str!["Open"])
+                        .shortcut(im_str!["Ctrl+O"])
+                        .build() {
+                        let result = nfd::open_file_dialog(Some("wad"), None).unwrap();
+                        if let nfd::Response::Okay(new_path) = result {
+                            pending_path = Some(new_path.to_string());
+                        } 
+                    }
+                    if ui.menu_item(im_str!["Exit"]).build() {
+                        running = false;
+                    }
+                });
+            });
+
             ui.window(im_str!["{}", path])
                 .size((300.0, 400.0), ImGuiCond::FirstUseEver)
                 .build(|| {
-                    new_selection = ui.list_box(im_str!["Files"], &mut selected_file_index, file_names, files.len() as i32);
+                    new_selection = ui.list_box(
+                        im_str!["Files"], 
+                        &mut selected_file_index,
+                        &file_names,
+                        file_names.len() as i32);
                 });
 
-            if new_selection {
+            if new_selection || force_new_selection {
                 // unbind our previous textures
                 texture_bundle.clear(&mut renderer);
 
-                let info = files.get(file_names[selected_file_index as usize]).unwrap();
-                texture_bundle = get_texture_bundle(&archive, &info, &mut device, &mut renderer);
+                let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
+                texture_bundle = get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer);
             }
 
             let texture_bundle = texture_bundle.clone();
@@ -207,8 +238,8 @@ fn main() {
                 .position((500.0, 150.0), ImGuiCond::FirstUseEver)
                 .size((300.0, 300.0), ImGuiCond::FirstUseEver)
                 .build(|| {
-                    ui.text(file_names[selected_file_index as usize]);
-                    ui.text(im_str!["Type: {:?}", texture_bundle.extra_data.texture_type]);
+                    ui.text(&file_names[selected_file_index as usize]);
+                    ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
                     ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
                     match texture_bundle.extra_data.texture_type {
                         TextureType::Font => {
@@ -353,4 +384,27 @@ fn get_texture_bundle(
         mip_textures: textures, 
         extra_data: texture_data,
     }
+}
+
+fn load_archive(path: &str) -> FileInfo {
+    let archive = WadArchive::open(path);
+    let (files, file_names) = load_file(&archive);
+    FileInfo {
+        archive: archive,
+        files: files,
+        file_names: file_names,
+    }
+}
+
+fn load_file(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>, Vec<ImString>) {
+    let file_infos = &archive.files;
+    let mut files = HashMap::<ImString, WadFileInfo>::new();
+    let mut file_names = Vec::new();
+    for info in file_infos {
+        let imgui_str = ImString::new(info.name.to_string());
+        file_names.push(imgui_str.clone());
+        files.insert(imgui_str, info.clone());
+    }
+
+    (files, file_names)
 }
