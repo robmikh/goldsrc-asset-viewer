@@ -56,21 +56,26 @@ impl ExtraTextureData {
     }
 }
 
-struct FileInfo {
+struct WadFile {
     pub path: String,
     pub archive: WadArchive,
     pub files: HashMap<ImString, WadFileInfo>,
     pub file_names: Vec<ImString>,
 }
 
+enum FileInfo {
+    None,
+    WadFile(WadFile),
+}
+
 fn main() {
     env_logger::init();
 
-    let mut file_info: Option<FileInfo> = None;
+    let mut file_info = FileInfo::None;
 
     let args = env::args().collect::<Vec<_>>();
     if args.len() >= 2 {
-        file_info = Some(load_archive(&args[1]));
+        file_info = FileInfo::WadFile(load_archive(&args[1]));
     }
 
     let instance = wgpu::Instance::new();
@@ -132,7 +137,7 @@ fn main() {
     let mut pending_path: Option<String> = None;
 
     let mut texture_bundle: Option<TextureBundle> = None;
-    if let Some(file_info) = file_info.as_ref() {
+    if let FileInfo::WadFile(file_info) = &file_info {
         let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
         texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
     } 
@@ -192,7 +197,7 @@ fn main() {
         let ui = imgui.frame(frame_size, delta_seconds);
         let force_new_selection = {
             if let Some(new_path) = pending_path {
-                file_info = Some(load_archive(&new_path));
+                file_info = FileInfo::WadFile(load_archive(&new_path));
 
                 selected_file_index = 0;
                 pending_path = None;
@@ -219,7 +224,7 @@ fn main() {
                 });
             });
 
-            if let Some(file_info) = file_info.as_ref() {
+            if let FileInfo::WadFile(file_info) = &file_info {
                 let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
 
                 ui.window(im_str!["File list"])
@@ -399,10 +404,10 @@ fn get_texture_bundle(
     }
 }
 
-fn load_archive(path: &str) -> FileInfo {
+fn load_archive(path: &str) -> WadFile {
     let archive = WadArchive::open(path);
     let (files, file_names) = load_file(&archive);
-    FileInfo {
+    WadFile {
         path: path.to_string(),
         archive: archive,
         files: files,
