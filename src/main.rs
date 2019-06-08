@@ -2,7 +2,9 @@ extern crate imgui_wgpu;
 extern crate wad3parser;
 extern crate image;
 extern crate nfd;
+extern crate clap;
 
+use clap::*;
 use imgui::*;
 use imgui_wgpu::Renderer;
 use imgui_winit_support;
@@ -73,9 +75,19 @@ fn main() {
 
     let mut file_info = FileInfo::None;
 
-    let args = env::args().collect::<Vec<_>>();
-    if args.len() >= 2 {
-        file_info = FileInfo::WadFile(load_archive(&args[1]));
+    let arg_matches = App::new("goldsrc-asset-viewer")
+        .version(crate_version!())
+        .author("Robert Mikhayelyan <rob.mikh@outlook.com>")
+        .about("A tool to view assets from GoldSource games.")
+        .arg(Arg::with_name("open")
+            .help("Open the specified file.")
+            .short("o")
+            .long("open")
+            .takes_value(true))
+        .get_matches();
+
+    if let Some(path) = arg_matches.value_of("open") {
+        file_info = FileInfo::WadFile(load_archive(path));
     }
 
     let instance = wgpu::Instance::new();

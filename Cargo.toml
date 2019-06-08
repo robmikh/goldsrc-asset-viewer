@@ -8,6 +8,7 @@ edition = "2018"
 #wad3parser = { path = "../wad3parser" }
 wad3parser = { git = "https://github.com/robmikh/wad3parser.git" }
 wgpu = { git = "https://github.com/gfx-rs/wgpu-rs.git" }
+clap = "2.33.0"
 nalgebra = "0.18"
 nfd = "0.0.4"
 image = "0.21.1"
