@@ -11,7 +11,7 @@ use imgui_winit_support;
 use std::collections::HashMap;
 use std::env;
 use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType };
+use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
 #[derive(Clone)]
@@ -31,6 +31,7 @@ struct MipTexture {
 struct FontMetadata {
     pub row_count: u32,
     pub row_height: u32,
+    pub char_infos: [CharInfo; 256],
 }
 
 #[derive(Clone)]
@@ -142,6 +143,9 @@ fn main() {
     let mut selected_file_index: i32 = 0;
     let mut scale: f32 = 1.0;
     let mut new_selection = false;
+    let mut font_overlay = false;
+    let mut texture_outline = false;
+
     let mut pending_path: Option<String> = None;
 
     let mut texture_bundle: Option<TextureBundle> = None;
@@ -269,15 +273,48 @@ fn main() {
                                     if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
                                         ui.text(im_str!["Row Count: {}", font_data.row_count]);
                                         ui.text(im_str!["Row Height: {}", font_data.row_height]);
+                                        ui.checkbox(im_str!["Char Info"], &mut font_overlay);
                                     }
                                 },
                                 _ => (),
                             }
                             ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
                                 .build();
+                            ui.checkbox(im_str!["Texture outline"], &mut texture_outline);
+                            let (x, y) = ui.get_cursor_screen_pos();
                             for texture in &texture_bundle.mip_textures {
+                                let (x, y) = ui.get_cursor_screen_pos();
                                 ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
                                 .build();
+                                if texture_outline {
+                                    ui.get_window_draw_list()
+                                        .add_rect((x, y), (x + ((texture.width as f32) * scale), y + ((texture.height as f32) * scale)), [0.0, 1.0, 0.0, 1.0])
+                                        .thickness(2.0)
+                                        .build();
+                                }
+                            }
+                            if font_overlay {
+                                if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
+                                    let chars = font_data.char_infos.len();
+                                    for i in 0..chars {
+                                        let font_info = font_data.char_infos[i];
+                                        if font_info.width == 0 {
+                                            continue;
+                                        }
+                                        let local_x = font_info.x as f32 * scale;
+                                        let local_y = font_info.y as f32 * scale;
+                                        let width = font_info.width as f32 * scale;
+                                        let height = font_data.row_height as f32 * scale;
+
+                                        let x = x + local_x;
+                                        let y = y + local_y;
+
+                                        ui.get_window_draw_list()
+                                            .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
+                                            .thickness(2.0)
+                                            .build();
+                                    }
+                                }
                             }
                         });
                 }
@@ -309,12 +346,14 @@ fn get_decoded_data(
             let image_data = archive.decode_image(&info);
             vec![image_data.image]
         } else if info.texture_type == TextureType::Font {
-            let image_data = archive.decode_font(&info);
+            let font_data = archive.decode_font(&info);
+
             extra_data.font = Some(FontMetadata {
-                row_count: image_data.row_count,
-                row_height: image_data.row_height,
+                row_count: font_data.row_count,
+                row_height: font_data.row_height,
+                char_infos: font_data.font_info,
             });
-            vec![image_data.image]
+            vec![font_data.image]
         } else {
             panic!("New texture type! {:?}", info.texture_type);
         }
