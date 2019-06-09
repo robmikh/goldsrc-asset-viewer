@@ -27,19 +27,11 @@ struct MipTexture {
     pub height: u32,
 }
 
-#[derive(Copy, Clone)]
-struct CharMetadata {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
 #[derive(Clone)]
 struct FontMetadata {
     pub row_count: u32,
     pub row_height: u32,
-    pub char_infos: Vec<CharMetadata>,
+    pub char_infos: [CharInfo; 256],
 }
 
 #[derive(Clone)]
@@ -309,13 +301,13 @@ fn main() {
                                         if font_info.width == 0 {
                                             continue;
                                         }
-                                        let local_x = font_info.x as f32;
-                                        let local_y = font_info.y as f32;
-
-                                        let x = x + (local_x * scale);
-                                        let y = y + (local_y * scale);
+                                        let local_x = font_info.x as f32 * scale;
+                                        let local_y = font_info.y as f32 * scale;
                                         let width = font_info.width as f32 * scale;
                                         let height = font_data.row_height as f32 * scale;
+
+                                        let x = x + local_x;
+                                        let y = y + local_y;
 
                                         ui.get_window_draw_list()
                                             .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
@@ -356,32 +348,10 @@ fn get_decoded_data(
         } else if info.texture_type == TextureType::Font {
             let font_data = archive.decode_font(&info);
 
-            let chars = font_data.font_info.len();
-            let mut char_infos = vec![CharMetadata{ x: 0, y: 0, width: 0, height: 0 }; chars];
-            for i in 0..chars {
-                let char_info = font_data.font_info[i];
-                if char_info.width == 0 {
-                    continue;
-                }
-                let row_area = font_data.row_height * 256;
-                let row = char_info.offset / row_area;
-                let offset = char_info.offset - (row_area * row);
-
-                let x = offset;
-                let y = (font_data.row_height * row);
-                let width = char_info.width;
-                let height = font_data.row_height;
-
-                char_infos[i].x = x;
-                char_infos[i].y = y;
-                char_infos[i].width = width;
-                char_infos[i].height = height;
-            }
-
             extra_data.font = Some(FontMetadata {
                 row_count: font_data.row_count,
                 row_height: font_data.row_height,
-                char_infos: char_infos,
+                char_infos: font_data.font_info,
             });
             vec![font_data.image]
         } else {
