@@ -264,6 +264,7 @@ fn main() {
                     ui.window(im_str!["File preview"])
                         .position((500.0, 150.0), ImGuiCond::FirstUseEver)
                         .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+                        .horizontal_scrollbar(true)
                         .build(|| {
                             ui.text(&file_names[selected_file_index as usize]);
                             ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
