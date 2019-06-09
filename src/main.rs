@@ -295,20 +295,20 @@ fn main() {
                             }
                             if font_overlay {
                                 if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                    let mut current_width = 0;
-                                    let mut current_row = 0;
+                                    //let mut current_width = 0;
+                                    //let mut current_row = 0;
                                     let chars = font_data.char_infos.len();
                                     for i in 0..chars {
                                         let font_info = font_data.char_infos[i];
                                         if font_info.width == 0 {
                                             continue;
                                         }
-                                        if current_width + font_info.width >= 256 {
-                                            current_width = 0;
-                                            current_row = current_row + 1;
-                                        }
-                                        let local_x = current_width as f32;
-                                        let local_y = (font_data.row_height * current_row) as f32;
+                                        let row_area = font_data.row_height * 256;
+                                        let row = font_info.offset / row_area;
+                                        let offset = font_info.offset - (row_area * row);
+
+                                        let local_x = offset as f32;
+                                        let local_y = (font_data.row_height * row) as f32;
 
                                         let x = x + (local_x * scale);
                                         let y = y + (local_y * scale);
@@ -319,12 +319,6 @@ fn main() {
                                             .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
                                             .thickness(2.0)
                                             .build();
-
-                                        current_width = current_width + font_info.width;
-                                        if current_width / chars as u32 > 0 {
-                                            current_width = 0;
-                                            current_row = current_row + 1;
-                                        }
                                     }
                                 }
                             }
