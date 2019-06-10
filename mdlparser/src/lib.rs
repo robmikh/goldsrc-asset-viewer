@@ -14,6 +14,7 @@ use serde::Deserialize;
 #[derive(Clone)]
 pub struct MdlTexture {
     pub name: String,
+    pub image_data: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
 }
 
 #[derive(Clone)]
@@ -158,15 +159,60 @@ impl MdlFile {
 
 fn read_textures<T: Read + Seek>(mut reader: &mut T, header: &MdlHeader) -> Vec<MdlTexture> {
     let num_textures = header.texture_count as usize;
-    let mut textures = Vec::with_capacity(num_textures);
+    let mut texture_headers = Vec::with_capacity(num_textures);
     reader.seek(SeekFrom::Start(header.texture_offset as u64)).unwrap();
     for i in 0..num_textures {
         let texture_header: TextureHeader = bincode::deserialize_from(&mut reader).unwrap();
-
+        texture_headers.push(texture_header);
+    }
+    
+    let mut textures = Vec::with_capacity(num_textures);
+    for texture_header in &texture_headers {
         let name_string = texture_header.name_string();
+
+        let mut image_data = vec![0u8; (texture_header.width * texture_header.height) as usize];
+        reader.seek(SeekFrom::Start(texture_header.offset as u64)).unwrap();
+        reader.read_exact(image_data.as_mut_slice()).unwrap();
+
+        let mut palette_data = [0u8; 256 * 3];
+        reader.read_exact(&mut palette_data).unwrap();
+
+        let converted_image = create_image(&image_data, &palette_data, texture_header.width, texture_header.height);
+
         textures.push(MdlTexture {
             name: name_string.to_string(),
+            image_data: converted_image,
         });
     }
+
     textures
+}
+
+// TODO: Consolodate these image decoders into one crate
+fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, texture_height: u32) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+    let mut image_bgra_data = Vec::<u8>::new();
+    for palette_index in image_data {
+        let index = (*palette_index as usize) * 3;
+        let r_color = palette_data[index + 0];
+        let g_color = palette_data[index + 1];
+        let b_color = palette_data[index + 2];
+
+        if r_color == 0 &&
+            g_color == 0 &&
+            b_color == 255 {
+            image_bgra_data.push(0);
+            image_bgra_data.push(0);
+            image_bgra_data.push(0);
+            image_bgra_data.push(0);
+        } else {
+            // documentation says that this should be RGB data...
+            // but it looks to be bgr?
+            image_bgra_data.push(r_color); // should be b
+            image_bgra_data.push(g_color);
+            image_bgra_data.push(b_color); // should be r
+            image_bgra_data.push(255);
+        }
+    }
+
+    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(texture_width, texture_height, image_bgra_data).unwrap()
 }
