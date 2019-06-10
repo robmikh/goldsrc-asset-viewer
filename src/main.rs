@@ -94,13 +94,7 @@ fn main() {
         .get_matches();
 
     if let Some(path) = arg_matches.value_of("file_path") {
-        if let Some(extension) = get_extension_from_path(&path) {
-            match extension {
-                "wad" => file_info = FileInfo::WadFile(load_archive(path)),
-                "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
-                _ => (),
-            }
-        }
+        file_info = load_file(&path);
     }
 
     let instance = wgpu::Instance::new();
@@ -225,7 +219,7 @@ fn main() {
         let ui = imgui.frame(frame_size, delta_seconds);
         let force_new_selection = {
             if let Some(new_path) = pending_path {
-                file_info = FileInfo::WadFile(load_archive(&new_path));
+                file_info = load_file(&new_path);
 
                 selected_file_index = 0;
                 pending_path = None;
@@ -488,9 +482,9 @@ fn get_texture_bundle(
     }
 }
 
-fn load_archive(path: &str) -> WadFile {
+fn load_wad_file(path: &str) -> WadFile {
     let archive = WadArchive::open(path);
-    let (files, file_names) = load_file(&archive);
+    let (files, file_names) = load_wad_archive(&archive);
     WadFile {
         path: path.to_string(),
         archive: archive,
@@ -499,7 +493,7 @@ fn load_archive(path: &str) -> WadFile {
     }
 }
 
-fn load_file(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>, Vec<ImString>) {
+fn load_wad_archive(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>, Vec<ImString>) {
     let file_infos = &archive.files;
     let mut files = HashMap::<ImString, WadFileInfo>::new();
     let mut file_names = Vec::new();
@@ -532,4 +526,16 @@ fn load_mdl_file(path: &str) -> MdlFile {
         file: mdl_file,
         texture_names: texture_names,
     }
+}
+
+fn load_file(path: &str) -> FileInfo {
+    let mut file_info = FileInfo::None;
+    if let Some(extension) = get_extension_from_path(&path) {
+        match extension {
+            "wad" => file_info = FileInfo::WadFile(load_wad_file(path)),
+            "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
+            _ => (),
+        }
+    }
+    file_info
 }
