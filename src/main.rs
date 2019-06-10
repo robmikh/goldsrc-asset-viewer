@@ -346,6 +346,7 @@ fn main() {
                     .size((300.0, 400.0), ImGuiCond::FirstUseEver)
                     .build(|| {
                         ui.text(im_str!["Path: {}", &file_info.path]);
+                        ui.text(im_str!["Name: {}", &file_info.file.name]);
                         dummy2 = ui.list_box(
                             im_str!["Textures"], 
                             &mut dummy,
