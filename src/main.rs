@@ -3,6 +3,7 @@ extern crate wad3parser;
 extern crate image;
 extern crate nfd;
 extern crate clap;
+extern crate mdlparser;
 
 use clap::*;
 use imgui::*;
@@ -10,6 +11,8 @@ use imgui_wgpu::Renderer;
 use imgui_winit_support;
 use std::collections::HashMap;
 use std::env;
+use std::path::Path;
+use std::ffi::OsStr;
 use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
@@ -59,6 +62,12 @@ impl ExtraTextureData {
     }
 }
 
+struct MdlFile {
+    pub path: String,
+    pub file: mdlparser::MdlFile,
+    pub texture_names: Vec<ImString>,
+}
+
 struct WadFile {
     pub path: String,
     pub archive: WadArchive,
@@ -69,6 +78,7 @@ struct WadFile {
 enum FileInfo {
     None,
     WadFile(WadFile),
+    MdlFile(MdlFile),
 }
 
 fn main() {
@@ -84,7 +94,13 @@ fn main() {
         .get_matches();
 
     if let Some(path) = arg_matches.value_of("file_path") {
-        file_info = FileInfo::WadFile(load_archive(path));
+        if let Some(extension) = get_extension_from_path(&path) {
+            match extension {
+                "wad" => file_info = FileInfo::WadFile(load_archive(path)),
+                "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
+                _ => (),
+            }
+        }
     }
 
     let instance = wgpu::Instance::new();
@@ -225,7 +241,7 @@ fn main() {
                     if ui.menu_item(im_str!["Open"])
                         .shortcut(im_str!["Ctrl+O"])
                         .build() {
-                        let result = nfd::open_file_dialog(Some("wad"), None).unwrap();
+                        let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
                         if let nfd::Response::Okay(new_path) = result {
                             pending_path = Some(new_path.to_string());
                         } 
@@ -236,89 +252,108 @@ fn main() {
                 });
             });
 
-            if let FileInfo::WadFile(file_info) = &file_info {
-                let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
+            match &file_info {
+                FileInfo::WadFile(file_info) => {
+                    let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
 
-                ui.window(im_str!["File list"])
-                .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                .build(|| {
-                    ui.text(im_str!["Path: {}", &file_info.path]);
-                    new_selection = ui.list_box(
-                        im_str!["Files"], 
-                        &mut selected_file_index,
-                        &file_names,
-                        file_names.len() as i32);
-                });
+                    ui.window(im_str!["File list"])
+                    .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+                    .build(|| {
+                        ui.text(im_str!["Path: {}", &file_info.path]);
+                        new_selection = ui.list_box(
+                            im_str!["Files"], 
+                            &mut selected_file_index,
+                            &file_names,
+                            file_names.len() as i32);
+                    });
 
-                if new_selection || force_new_selection {
-                    // unbind our previous textures
-                    if let Some(texture_bundle) = texture_bundle.as_mut() {
-                        texture_bundle.clear(&mut renderer);
+                    if new_selection || force_new_selection {
+                        // unbind our previous textures
+                        if let Some(texture_bundle) = texture_bundle.as_mut() {
+                            texture_bundle.clear(&mut renderer);
+                        }
+
+                        let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
+                        texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
                     }
 
-                    let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
-                    texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
-                }
-
-                if let Some(texture_bundle) = texture_bundle.as_ref() {
-                    ui.window(im_str!["File preview"])
-                        .position((500.0, 150.0), ImGuiCond::FirstUseEver)
-                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
-                        .horizontal_scrollbar(true)
-                        .build(|| {
-                            ui.text(&file_names[selected_file_index as usize]);
-                            ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
-                            ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
-                            match texture_bundle.extra_data.texture_type {
-                                TextureType::Font => {
-                                    if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                        ui.text(im_str!["Row Count: {}", font_data.row_count]);
-                                        ui.text(im_str!["Row Height: {}", font_data.row_height]);
-                                        ui.checkbox(im_str!["Char Info"], &mut font_overlay);
-                                    }
-                                },
-                                _ => (),
-                            }
-                            ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
-                                .build();
-                            ui.checkbox(im_str!["Texture outline"], &mut texture_outline);
-                            let (x, y) = ui.get_cursor_screen_pos();
-                            for texture in &texture_bundle.mip_textures {
-                                let (x, y) = ui.get_cursor_screen_pos();
-                                ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
-                                .build();
-                                if texture_outline {
-                                    ui.get_window_draw_list()
-                                        .add_rect((x, y), (x + ((texture.width as f32) * scale), y + ((texture.height as f32) * scale)), [0.0, 1.0, 0.0, 1.0])
-                                        .thickness(2.0)
-                                        .build();
-                                }
-                            }
-                            if font_overlay {
-                                if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                    let chars = font_data.char_infos.len();
-                                    for i in 0..chars {
-                                        let font_info = font_data.char_infos[i];
-                                        if font_info.width == 0 {
-                                            continue;
+                    if let Some(texture_bundle) = texture_bundle.as_ref() {
+                        ui.window(im_str!["File preview"])
+                            .position((500.0, 150.0), ImGuiCond::FirstUseEver)
+                            .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+                            .horizontal_scrollbar(true)
+                            .build(|| {
+                                ui.text(&file_names[selected_file_index as usize]);
+                                ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
+                                ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
+                                match texture_bundle.extra_data.texture_type {
+                                    TextureType::Font => {
+                                        if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
+                                            ui.text(im_str!["Row Count: {}", font_data.row_count]);
+                                            ui.text(im_str!["Row Height: {}", font_data.row_height]);
+                                            ui.checkbox(im_str!["Char Info"], &mut font_overlay);
                                         }
-                                        let local_x = font_info.x as f32 * scale;
-                                        let local_y = font_info.y as f32 * scale;
-                                        let width = font_info.width as f32 * scale;
-                                        let height = font_data.row_height as f32 * scale;
-
-                                        let x = x + local_x;
-                                        let y = y + local_y;
-
+                                    },
+                                    _ => (),
+                                }
+                                ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
+                                    .build();
+                                ui.checkbox(im_str!["Texture outline"], &mut texture_outline);
+                                let (x, y) = ui.get_cursor_screen_pos();
+                                for texture in &texture_bundle.mip_textures {
+                                    let (x, y) = ui.get_cursor_screen_pos();
+                                    ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
+                                    .build();
+                                    if texture_outline {
                                         ui.get_window_draw_list()
-                                            .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
+                                            .add_rect((x, y), (x + ((texture.width as f32) * scale), y + ((texture.height as f32) * scale)), [0.0, 1.0, 0.0, 1.0])
                                             .thickness(2.0)
                                             .build();
                                     }
                                 }
-                            }
-                        });
-                }
+                                if font_overlay {
+                                    if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
+                                        let chars = font_data.char_infos.len();
+                                        for i in 0..chars {
+                                            let font_info = font_data.char_infos[i];
+                                            if font_info.width == 0 {
+                                                continue;
+                                            }
+                                            let local_x = font_info.x as f32 * scale;
+                                            let local_y = font_info.y as f32 * scale;
+                                            let width = font_info.width as f32 * scale;
+                                            let height = font_data.row_height as f32 * scale;
+
+                                            let x = x + local_x;
+                                            let y = y + local_y;
+
+                                            ui.get_window_draw_list()
+                                                .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
+                                                .thickness(2.0)
+                                                .build();
+                                        }
+                                    }
+                                }
+                            });
+                    }
+                },
+                FileInfo::MdlFile(file_info) => {
+                    let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
+
+                    let mut dummy = 0;
+                    let mut dummy2 = false;
+                    ui.window(im_str!["Texture list"])
+                    .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+                    .build(|| {
+                        ui.text(im_str!["Path: {}", &file_info.path]);
+                        dummy2 = ui.list_box(
+                            im_str!["Textures"], 
+                            &mut dummy,
+                            &texture_names,
+                            texture_names.len() as i32);
+                    });
+                },
+                _ => (),
             }
             
             //ui.show_demo_window(&mut demo_open);
@@ -474,4 +509,26 @@ fn load_file(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>, Vec<ImStr
     }
 
     (files, file_names)
+}
+
+fn get_extension_from_path(path: &str) -> Option<&str> {
+    Path::new(path)
+        .extension()
+        .and_then(OsStr::to_str)
+}
+
+fn load_mdl_file(path: &str) -> MdlFile {
+    let mdl_file = mdlparser::MdlFile::open(path);
+
+    let mut texture_names = Vec::new();
+    for texture in &mdl_file.textures {
+        let imgui_str = ImString::new(texture.name.clone());
+        texture_names.push(imgui_str);
+    }
+
+    MdlFile {
+        path: path.to_string(),
+        file: mdl_file,
+        texture_names: texture_names,
+    }
 }
