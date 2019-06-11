@@ -1,16 +1,8 @@
 use crate::graphics::*;
 use crate::MdlFile;
-use clap::*;
 use imgui::*;
 use imgui_wgpu::Renderer;
-use imgui_winit_support;
-use std::collections::HashMap;
-use std::env;
-use std::path::Path;
-use std::ffi::OsStr;
-use std::time::Instant;
 use mdlparser::{ MdlTexture };
-use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
 #[derive(Clone)]
 pub struct ExtraTextureData {
@@ -101,7 +93,6 @@ impl MdlViewer {
                     ui.slider_float(im_str!["Scale"], &mut temp_state.scale, 1.0, 10.0)
                         .build();
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
-                    let (x, y) = ui.get_cursor_screen_pos();
                     for texture in &texture_bundle.mip_textures {
                         let (x, y) = ui.get_cursor_screen_pos();
                         ui.image(texture.texture_id, (texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale))

@@ -1,14 +1,5 @@
-use clap::*;
 use imgui::*;
 use imgui_wgpu::Renderer;
-use imgui_winit_support;
-use std::collections::HashMap;
-use std::env;
-use std::path::Path;
-use std::ffi::OsStr;
-use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
-use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
 #[derive(Clone)]
 pub struct TextureBundle<T> {
