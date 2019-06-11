@@ -14,6 +14,15 @@ struct MdlViewerState {
     pub scale: f32,
     pub new_selection: bool,
     pub texture_outline: bool,
+
+    pub new_body_part_selection: bool,
+    pub selected_body_part_index: i32,
+
+    pub new_model_selection: bool,
+    pub selected_model_index: i32,
+
+    pub new_mesh_selection: bool,
+    pub selected_mesh_index: i32,
 }
 
 impl MdlViewerState {
@@ -23,6 +32,12 @@ impl MdlViewerState {
             scale: 1.0,
             new_selection: false,
             texture_outline: false,
+            new_body_part_selection: false,
+            selected_body_part_index: 0,
+            new_model_selection: false,
+            selected_model_index: 0,
+            new_mesh_selection: false,
+            selected_mesh_index: 0,
         }
     }
 
@@ -31,6 +46,12 @@ impl MdlViewerState {
         self.scale = other.scale;
         self.new_selection = other.new_selection;
         self.texture_outline = other.texture_outline;
+        self.new_body_part_selection = other.new_body_part_selection;
+        self.selected_body_part_index = other.selected_body_part_index;
+        self.new_model_selection = other.new_model_selection;
+        self.selected_model_index = other.selected_model_index;
+        self.new_mesh_selection = other.new_mesh_selection;
+        self.selected_mesh_index = other.selected_mesh_index;
     }
 }
 
@@ -72,19 +93,87 @@ impl MdlViewer {
                     texture_names.len() as i32);
             });
 
-        let mut dummy1 = 0;
-        let mut dummy2 = false;
         ui.window(im_str!["Body part list"])
             .size((300.0, 400.0), ImGuiCond::FirstUseEver)
             .position((100.0, 500.0), ImGuiCond::FirstUseEver)
             .build(|| {
                 ui.text(im_str!["Body parts: {}", &file_info.file.body_parts.len()]);
-                dummy2 = ui.list_box(
+                self.state.new_body_part_selection = ui.list_box(
                     im_str!["Body parts"], 
-                    &mut dummy1, 
+                    &mut self.state.selected_body_part_index, 
                     &body_part_names, 
                     body_part_names.len() as i32);
             });
+
+        if self.state.new_body_part_selection {
+            self.state.selected_model_index = 0;
+            self.state.selected_mesh_index = 0;
+        }
+
+        if file_info.file.body_parts.len() > 0 {
+            let body_part = &file_info.file.body_parts[self.state.selected_body_part_index as usize];
+            if body_part.models.len() > 0 {
+                let model_names = {
+                    let mut model_names = Vec::with_capacity(body_part.models.len());
+                    for model in &body_part.models {
+                        model_names.push(ImString::new(model.name.clone()));
+                    }
+                    model_names
+                };
+                let model_names = model_names.iter().collect::<Vec<_>>();
+                ui.window(im_str!["Model list"])
+                    .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+                    .position((500.0, 500.0), ImGuiCond::FirstUseEver)
+                    .build(|| {
+                        ui.text(im_str!["Models: {}", model_names.len()]);
+                        self.state.new_model_selection = ui.list_box(
+                            im_str!["Models"], 
+                            &mut self.state.selected_model_index, 
+                            &model_names, 
+                            model_names.len() as i32);
+                    });
+
+                if self.state.new_model_selection {
+                    self.state.selected_mesh_index = 0;
+                }
+
+                let model = &body_part.models[self.state.selected_model_index as usize];
+                if model.meshes.len() > 0 {
+                    let mesh_names = {
+                        let mut mesh_names = Vec::with_capacity(body_part.models.len());
+                        let mut count = 1;
+                        for mesh in &model.meshes {
+                            mesh_names.push(ImString::new(format!("Mesh {}", count)));
+                            count = count + 1;
+                        }
+                        mesh_names
+                    };
+                    let mesh_names = mesh_names.iter().collect::<Vec<_>>();
+                    ui.window(im_str!["Mesh list"])
+                        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+                        .position((800.0, 500.0), ImGuiCond::FirstUseEver)
+                        .build(|| {
+                            ui.text(im_str!["Meshes: {}", mesh_names.len()]);
+                            self.state.new_mesh_selection = ui.list_box(
+                                im_str!["Models"], 
+                                &mut self.state.selected_mesh_index, 
+                                &mesh_names, 
+                                mesh_names.len() as i32);
+                        });
+
+                    let mesh = &model.meshes[self.state.selected_mesh_index as usize];
+                    ui.window(im_str!["Mesh info"])
+                        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+                        .position((1300.0, 500.0), ImGuiCond::FirstUseEver)
+                        .build(|| {
+                            ui.text(im_str!["Triangles: {}", mesh.triangle_count]);
+                            ui.text(im_str!["Skin Reference: {}", mesh.skin_ref]);
+                            ui.text(im_str!["Normals: {}", mesh.normal_count]);
+                        });
+                }
+            }
+        }
+        
 
         if self.state.new_selection || force_new_selection {
             // unbind our previous textures

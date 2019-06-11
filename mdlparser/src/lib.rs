@@ -11,7 +11,7 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct MdlMesh {
     pub triangle_count: u32,
     pub skin_ref: u32,
