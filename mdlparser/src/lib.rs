@@ -14,6 +14,8 @@ use serde::Deserialize;
 #[derive(Clone)]
 pub struct MdlTexture {
     pub name: String,
+    pub width: u32,
+    pub height: u32,
     pub image_data: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
 }
 
@@ -181,6 +183,8 @@ fn read_textures<T: Read + Seek>(mut reader: &mut T, header: &MdlHeader) -> Vec<
 
         textures.push(MdlTexture {
             name: name_string.to_string(),
+            width: texture_header.width,
+            height: texture_header.height,
             image_data: converted_image,
         });
     }

@@ -1,4 +1,4 @@
-use crate::graphics::*;
+use crate::graphics::{create_imgui_texture, TextureBundle, MipTexture};
 use crate::WadFile;
 use clap::*;
 use imgui::*;
@@ -13,19 +13,6 @@ use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
 #[derive(Clone)]
-pub struct TextureBundle {
-    pub mip_textures: Vec<MipTexture>,
-    pub extra_data: ExtraTextureData,
-}
-
-#[derive(Clone)]
-pub struct MipTexture {
-    pub texture_id: ImTexture,
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Clone)]
 pub struct FontMetadata {
     pub row_count: u32,
     pub row_height: u32,
@@ -36,16 +23,6 @@ pub struct FontMetadata {
 pub struct ExtraTextureData {
     pub texture_type: TextureType,
     pub font: Option<FontMetadata>,
-}
-
-impl TextureBundle {
-    pub fn clear(&mut self, renderer: &mut Renderer) {
-        // unbind our previous textures
-        for texture in self.mip_textures.drain(..) {
-            renderer.textures().remove(texture.texture_id);
-        }
-        self.extra_data.font = None;
-    }
 }
 
 impl ExtraTextureData {
@@ -88,7 +65,7 @@ impl WadViewerState {
 
 pub struct WadViewer {
     state: WadViewerState,
-    texture_bundle: Option<TextureBundle>,
+    texture_bundle: Option<TextureBundle<ExtraTextureData>>,
 }
 
 impl WadViewer {
@@ -229,7 +206,7 @@ pub fn get_texture_bundle(
     info: &WadFileInfo,
     device: &mut wgpu::Device,
     renderer: &mut Renderer,
-) -> TextureBundle {
+) -> TextureBundle<ExtraTextureData> {
     let (decoded_images, texture_data) = get_decoded_data(&archive, &info);
     let mut textures = Vec::with_capacity(decoded_images.len());
 

@@ -10,6 +10,28 @@ use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 
+#[derive(Clone)]
+pub struct TextureBundle<T> {
+    pub mip_textures: Vec<MipTexture>,
+    pub extra_data: T,
+}
+
+#[derive(Clone)]
+pub struct MipTexture {
+    pub texture_id: ImTexture,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl <T> TextureBundle<T> {
+    pub fn clear(&mut self, renderer: &mut Renderer) {
+        // unbind our previous textures
+        for texture in self.mip_textures.drain(..) {
+            renderer.textures().remove(texture.texture_id);
+        }
+    }
+}
+
 pub fn create_imgui_texture(
     device: &mut wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,

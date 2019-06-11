@@ -7,6 +7,7 @@ extern crate mdlparser;
 
 mod graphics;
 mod wad_viewer;
+mod mdl_viewer;
 
 use clap::*;
 use imgui::*;
@@ -20,6 +21,7 @@ use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 use crate::wad_viewer::{WadViewer, load_wad_archive};
+use crate::mdl_viewer::{MdlViewer};
 
 pub struct MdlFile {
     pub path: String,
@@ -110,12 +112,15 @@ fn main() {
     let mut last_frame = Instant::now();
     //let mut demo_open = true;
     let mut wad_viewer = WadViewer::new();
+    let mut mdl_viewer = MdlViewer::new();
 
     let mut pending_path: Option<String> = None;
 
-    if let FileInfo::WadFile(file_info) = &file_info {
-        wad_viewer.pre_warm(&file_info, &mut device, &mut renderer);
-    } 
+    match &file_info {
+        FileInfo::WadFile(file_info) => wad_viewer.pre_warm(&file_info, &mut device, &mut renderer),
+        FileInfo::MdlFile(file_info) => mdl_viewer.pre_warm(&file_info, &mut device, &mut renderer),
+        _ => (),
+    }
 
     let mut running = true;
     while running {
@@ -175,6 +180,7 @@ fn main() {
                 file_info = load_file(&new_path);
 
                 wad_viewer.reset_listbox_index();
+                mdl_viewer.reset_listbox_index();
                 pending_path = None;
                 true
             } else {
@@ -200,26 +206,8 @@ fn main() {
             });
 
             match &file_info {
-                FileInfo::WadFile(file_info) => {
-                    wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection);    
-                },
-                FileInfo::MdlFile(file_info) => {
-                    let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
-
-                    let mut dummy = 0;
-                    let mut dummy2 = false;
-                    ui.window(im_str!["Texture list"])
-                    .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                    .build(|| {
-                        ui.text(im_str!["Path: {}", &file_info.path]);
-                        ui.text(im_str!["Name: {}", &file_info.file.name]);
-                        dummy2 = ui.list_box(
-                            im_str!["Textures"], 
-                            &mut dummy,
-                            &texture_names,
-                            texture_names.len() as i32);
-                    });
-                },
+                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
+                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
                 _ => (),
             }
             
