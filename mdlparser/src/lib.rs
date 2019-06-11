@@ -12,8 +12,22 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
 #[derive(Clone)]
+pub struct MdlMesh {
+    pub triangle_count: u32,
+    pub skin_ref: u32,
+    pub normal_count: u32,
+}
+
+#[derive(Clone)]
+pub struct MdlModel {
+    pub name: String,
+    pub meshes: Vec<MdlMesh>,
+}
+
+#[derive(Clone)]
 pub struct MdlBodyPart {
     pub name: String,
+    pub models: Vec<MdlModel>
 }
 
 #[derive(Clone)]
@@ -53,6 +67,15 @@ impl TextureHeader {
         let name_string = name_string.trim_matches(char::from(0));
         name_string.to_string()
     }
+}
+
+#[derive(Copy, Clone, Deserialize)]
+struct MeshHeader {
+    triangle_count: u32,
+    triangle_offset: u32,
+    skin_ref: u32,
+    normal_count: u32,
+    normal_offset: u32,
 }
 
 #[derive(Copy, Clone, Deserialize)]
@@ -215,8 +238,41 @@ impl MdlFile {
 
             let mut body_parts = Vec::new();
             for body_header in body_part_headers {
+                file.seek(SeekFrom::Start(body_header.model_offset as u64)).unwrap();
+                let mut model_headers = Vec::new();
+                for i in 0..body_header.model_count {
+                    let model_header: ModelHeader = bincode::deserialize_from(&mut file).unwrap();
+                    model_headers.push(model_header);
+                }
+
+                let mut models = Vec::new();
+                for model_header in model_headers {
+                    let mut mesh_headers = Vec::new();
+                    file.seek(SeekFrom::Start(model_header.mesh_offset as u64)).unwrap();
+                    for i in 0..model_header.mesh_count {
+                        let mesh_header: MeshHeader = bincode::deserialize_from(&mut file).unwrap();
+                        mesh_headers.push(mesh_header);
+                    }
+
+                    let mut meshes = Vec::new();
+                    for mesh_header in mesh_headers {
+                        meshes.push(MdlMesh {
+                            triangle_count: mesh_header.triangle_count,
+                            skin_ref: mesh_header.skin_ref,
+                            normal_count: mesh_header.normal_count,
+                        });
+                    }
+
+                    models.push(MdlModel {
+                        name: model_header.name_string(),
+                        meshes: meshes,
+                    })
+                }
+                
+
                 body_parts.push(MdlBodyPart {
                     name: body_header.name_string(),
+                    models: models,
                 });
             }
 
