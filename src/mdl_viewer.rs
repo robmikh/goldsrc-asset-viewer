@@ -75,6 +75,9 @@ impl MdlViewer {
 
     pub fn reset_listbox_index(&mut self) {
         self.state.selected_file_index = 0;
+        self.state.selected_body_part_index = 0;
+        self.state.selected_model_index = 0;
+        self.state.selected_mesh_index = 0;
     }
 
     pub fn build_ui(&mut self, ui: &Ui, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer, force_new_selection: bool) {
