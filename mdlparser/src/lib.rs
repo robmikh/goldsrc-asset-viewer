@@ -12,6 +12,11 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
 #[derive(Clone)]
+pub struct MdlBodyPart {
+    pub name: String,
+}
+
+#[derive(Clone)]
 pub struct MdlTexture {
     pub name: String,
     pub width: u32,
@@ -23,6 +28,7 @@ pub struct MdlTexture {
 pub struct MdlFile {
     pub name: String,
     pub textures: Vec<MdlTexture>,
+    pub body_parts: Vec<MdlBodyPart>,
     header: MdlHeader,
     raw_data: Vec<u8>,
 }
@@ -37,6 +43,57 @@ struct TextureHeader {
 }
 
 impl TextureHeader {
+    fn name(&self) -> &[u8; 64] {
+        unsafe { std::mem::transmute(&self.name) }
+    }
+
+    fn name_string(&self) -> String {
+        let name = self.name();
+        let name_string = String::from_utf8_lossy(name);
+        let name_string = name_string.trim_matches(char::from(0));
+        name_string.to_string()
+    }
+}
+
+#[derive(Copy, Clone, Deserialize)]
+struct BodyPartHeader {
+    name: [[u8; 8]; 8],
+    model_count: u32,
+    base: u32,
+    model_offset: u32,
+}
+
+impl BodyPartHeader {
+    fn name(&self) -> &[u8; 64] {
+        unsafe { std::mem::transmute(&self.name) }
+    }
+
+    fn name_string(&self) -> String {
+        let name = self.name();
+        let name_string = String::from_utf8_lossy(name);
+        let name_string = name_string.trim_matches(char::from(0));
+        name_string.to_string()
+    }
+}
+
+#[derive(Copy, Clone, Deserialize)]
+struct ModelHeader {
+    name: [[u8; 8]; 8],
+    model_type: u32,
+    bounding_radius: f32,
+    mesh_count: u32,
+    mesh_offset: u32,
+    vertex_count: u32,
+    vertex_info_offset: u32,
+    vertex_offset: u32,
+    normal_count: u32,
+    normal_info_offset: u32,
+    normal_offset: u32,
+    groups_count: u32,
+    groups_offset: u32,
+}
+
+impl ModelHeader {
     fn name(&self) -> &[u8; 64] {
         unsafe { std::mem::transmute(&self.name) }
     }
@@ -146,6 +203,26 @@ impl MdlFile {
             read_textures(&mut file, &header)
         };
 
+        let body_parts = {
+            let mut body_part_headers = Vec::new();
+
+           file.seek(SeekFrom::Start(header.body_part_offset as u64)).unwrap();
+            for i in 0..header.body_part_count {
+                let body_header: BodyPartHeader = bincode::deserialize_from(&mut file).unwrap();
+
+                body_part_headers.push(body_header);
+            }
+
+            let mut body_parts = Vec::new();
+            for body_header in body_part_headers {
+                body_parts.push(MdlBodyPart {
+                    name: body_header.name_string(),
+                });
+            }
+
+            body_parts
+        };
+
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut file_data = vec![0u8; file_size as usize];
         file.read(&mut file_data).unwrap();
@@ -153,6 +230,7 @@ impl MdlFile {
         MdlFile {
             name: file_name,
             textures: textures,
+            body_parts: body_parts,
             header: header,
             raw_data: file_data,
         }

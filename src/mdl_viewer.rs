@@ -58,18 +58,33 @@ impl MdlViewer {
 
     pub fn build_ui(&mut self, ui: &Ui, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer, force_new_selection: bool) {
         let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
+        let body_part_names = &file_info.body_part_names.iter().collect::<Vec<_>>();
 
         ui.window(im_str!["Texture list"])
-        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-        .build(|| {
-            ui.text(im_str!["Path: {}", &file_info.path]);
-            ui.text(im_str!["Name: {}", &file_info.file.name]);
-            self.state.new_selection = ui.list_box(
-                im_str!["Textures"], 
-                &mut self.state.selected_file_index,
-                &texture_names,
-                texture_names.len() as i32);
-        });
+            .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+            .build(|| {
+                ui.text(im_str!["Path: {}", &file_info.path]);
+                ui.text(im_str!["Name: {}", &file_info.file.name]);
+                self.state.new_selection = ui.list_box(
+                    im_str!["Textures"], 
+                    &mut self.state.selected_file_index,
+                    &texture_names,
+                    texture_names.len() as i32);
+            });
+
+        let mut dummy1 = 0;
+        let mut dummy2 = false;
+        ui.window(im_str!["Body part list"])
+            .size((300.0, 400.0), ImGuiCond::FirstUseEver)
+            .position((100.0, 500.0), ImGuiCond::FirstUseEver)
+            .build(|| {
+                ui.text(im_str!["Body parts: {}", &file_info.file.body_parts.len()]);
+                dummy2 = ui.list_box(
+                    im_str!["Body parts"], 
+                    &mut dummy1, 
+                    &body_part_names, 
+                    body_part_names.len() as i32);
+            });
 
         if self.state.new_selection || force_new_selection {
             // unbind our previous textures

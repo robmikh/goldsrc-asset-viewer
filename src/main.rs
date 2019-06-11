@@ -26,6 +26,7 @@ pub struct MdlFile {
     pub path: String,
     pub file: mdlparser::MdlFile,
     pub texture_names: Vec<ImString>,
+    pub body_part_names: Vec<ImString>,
 }
 
 pub struct WadFile {
@@ -249,10 +250,17 @@ fn load_mdl_file(path: &str) -> MdlFile {
         texture_names.push(imgui_str);
     }
 
+    let mut body_part_names = Vec::new();
+    for body_part in &mdl_file.body_parts {
+        let imgui_str = ImString::new(body_part.name.clone());
+        body_part_names.push(imgui_str);
+    }
+
     MdlFile {
         path: path.to_string(),
         file: mdl_file,
         texture_names: texture_names,
+        body_part_names: body_part_names,
     }
 }
 
