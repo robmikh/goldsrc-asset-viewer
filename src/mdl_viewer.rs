@@ -126,7 +126,7 @@ impl MdlViewer {
                 let model_names = model_names.iter().collect::<Vec<_>>();
                 ui.window(im_str!["Model list"])
                     .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                    .position((500.0, 500.0), ImGuiCond::FirstUseEver)
+                    .position((400.0, 500.0), ImGuiCond::FirstUseEver)
                     .build(|| {
                         ui.text(im_str!["Models: {}", model_names.len()]);
                         self.state.new_model_selection = ui.list_box(
@@ -154,7 +154,7 @@ impl MdlViewer {
                     let mesh_names = mesh_names.iter().collect::<Vec<_>>();
                     ui.window(im_str!["Mesh list"])
                         .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                        .position((800.0, 500.0), ImGuiCond::FirstUseEver)
+                        .position((700.0, 500.0), ImGuiCond::FirstUseEver)
                         .build(|| {
                             ui.text(im_str!["Meshes: {}", mesh_names.len()]);
                             self.state.new_mesh_selection = ui.list_box(
@@ -167,7 +167,7 @@ impl MdlViewer {
                     let mesh = &model.meshes[self.state.selected_mesh_index as usize];
                     ui.window(im_str!["Mesh info"])
                         .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                        .position((1300.0, 500.0), ImGuiCond::FirstUseEver)
+                        .position((1000.0, 500.0), ImGuiCond::FirstUseEver)
                         .build(|| {
                             ui.text(im_str!["Triangles: {}", mesh.triangle_count]);
                             ui.text(im_str!["Skin Reference: {}", mesh.skin_ref]);
