@@ -12,8 +12,17 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
 #[derive(Copy, Clone)]
+pub struct MdlMeshVertex {
+    pub vertex_index: u32,
+    pub normal_index: u32,
+    pub s: u32,
+    pub t: u32,
+}
+
+#[derive(Clone)]
 pub struct MdlMesh {
-    pub triangle_count: u32,
+    pub vertices: Vec<MdlMeshVertex>,
+    pub vertices_count: u32,
     pub skin_ref: u32,
     pub normal_count: u32,
 }
@@ -23,6 +32,7 @@ pub struct MdlModel {
     pub name: String,
     pub meshes: Vec<MdlMesh>,
     pub vertices: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
 }
 
 #[derive(Clone)]
@@ -269,6 +279,18 @@ impl MdlFile {
                         vertices.push(vertex);
                     }
 
+                    // Model Normal
+                    let mut normals = Vec::new();
+                    file.seek(SeekFrom::Start(model_header.normal_offset as u64)).unwrap();
+                    for i in 0..model_header.normal_count {
+                        let mut normal = [0f32; 3];
+                        normal[0] = file.read_f32::<LittleEndian>().unwrap();
+                        normal[1] = file.read_f32::<LittleEndian>().unwrap();
+                        normal[2] = file.read_f32::<LittleEndian>().unwrap();
+
+                        normals.push(normal);
+                    }
+
                     // Mesh
                     let mut mesh_headers = Vec::new();
                     file.seek(SeekFrom::Start(model_header.mesh_offset as u64)).unwrap();
@@ -286,9 +308,21 @@ impl MdlFile {
                             let vertex_header: VertexHeader = bincode::deserialize_from(&mut file).unwrap();
                             vertex_headers.push(vertex_header);
                         }
+
+                        let mut mesh_vertices = Vec::with_capacity(vertex_headers.len());
+                        for vertex_header in vertex_headers {
+                            let mesh_vertex = MdlMeshVertex {
+                                vertex_index: vertex_header.vertex_index as u32,
+                                normal_index: vertex_header.normal_index as u32,
+                                s: vertex_header.s as u32,
+                                t: vertex_header.t as u32,
+                            };
+                            mesh_vertices.push(mesh_vertex);
+                        }
                         
                         meshes.push(MdlMesh {
-                            triangle_count: mesh_header.triangle_count,
+                            vertices: mesh_vertices,
+                            vertices_count: mesh_header.triangle_count,
                             skin_ref: mesh_header.skin_ref,
                             normal_count: mesh_header.normal_count,
                         });
@@ -298,6 +332,7 @@ impl MdlFile {
                         name: model_header.name_string(),
                         meshes: meshes,
                         vertices: vertices,
+                        normals: normals,
                     })
                 }
                 

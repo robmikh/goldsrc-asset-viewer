@@ -154,7 +154,19 @@ impl MdlViewer {
                             }
                         });
                 }
-                
+
+                if model.normals.len() > 0 {
+                    ui.window(im_str!["Model Normal Data"])
+                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+                        .position((700.0, 900.0), ImGuiCond::FirstUseEver)
+                        .build(|| {
+                            ui.text(im_str!["Number of normals: {}", model.normals.len()]);
+                            ui.text(im_str!["x, y, z"]);
+                            for normal in &model.normals {
+                                ui.text(im_str!["{}, {}, {}", normal[0], normal[1], normal[2]]);
+                            }
+                        });
+                }     
 
                 if model.meshes.len() > 0 {
                     let mesh_names = {
@@ -184,9 +196,13 @@ impl MdlViewer {
                         .size((300.0, 400.0), ImGuiCond::FirstUseEver)
                         .position((1000.0, 500.0), ImGuiCond::FirstUseEver)
                         .build(|| {
-                            ui.text(im_str!["Triangles: {}", mesh.triangle_count]);
+                            ui.text(im_str!["Vertices: {}", mesh.vertices_count]);
                             ui.text(im_str!["Skin Reference: {}", mesh.skin_ref]);
                             ui.text(im_str!["Normals: {}", mesh.normal_count]);
+                            ui.text(im_str!["v, n, s, t"]);
+                            for vertex in &mesh.vertices {
+                                ui.text(im_str!["{}, {}, {}, {}", vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t]);
+                            }
                         });
                 }
             }
