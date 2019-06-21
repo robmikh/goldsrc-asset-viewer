@@ -22,6 +22,7 @@ pub struct MdlMesh {
 pub struct MdlModel {
     pub name: String,
     pub meshes: Vec<MdlMesh>,
+    pub vertices: Vec<[f32; 3]>,
 }
 
 #[derive(Clone)]
@@ -76,6 +77,14 @@ struct MeshHeader {
     skin_ref: u32,
     normal_count: u32,
     normal_offset: u32,
+}
+
+#[derive(Copy, Clone, Deserialize)]
+struct VertexHeader {
+    vertex_index: u16,
+    normal_index: u16,
+    s: u16,
+    t: u16,
 }
 
 #[derive(Copy, Clone, Deserialize)]
@@ -238,6 +247,7 @@ impl MdlFile {
 
             let mut body_parts = Vec::new();
             for body_header in body_part_headers {
+                // Model
                 file.seek(SeekFrom::Start(body_header.model_offset as u64)).unwrap();
                 let mut model_headers = Vec::new();
                 for i in 0..body_header.model_count {
@@ -247,6 +257,19 @@ impl MdlFile {
 
                 let mut models = Vec::new();
                 for model_header in model_headers {
+                    // Model Vertex
+                    let mut vertices = Vec::new();
+                    file.seek(SeekFrom::Start(model_header.vertex_offset as u64)).unwrap();
+                    for i in 0..model_header.vertex_count {
+                        let mut vertex = [0f32; 3];
+                        vertex[0] = file.read_f32::<LittleEndian>().unwrap();
+                        vertex[1] = file.read_f32::<LittleEndian>().unwrap();
+                        vertex[2] = file.read_f32::<LittleEndian>().unwrap();
+
+                        vertices.push(vertex);
+                    }
+
+                    // Mesh
                     let mut mesh_headers = Vec::new();
                     file.seek(SeekFrom::Start(model_header.mesh_offset as u64)).unwrap();
                     for i in 0..model_header.mesh_count {
@@ -256,6 +279,14 @@ impl MdlFile {
 
                     let mut meshes = Vec::new();
                     for mesh_header in mesh_headers {
+                        // Mesh Vertex
+                        file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64)).unwrap();
+                        let mut vertex_headers = Vec::new();
+                        for i in 0..mesh_header.triangle_count {
+                            let vertex_header: VertexHeader = bincode::deserialize_from(&mut file).unwrap();
+                            vertex_headers.push(vertex_header);
+                        }
+                        
                         meshes.push(MdlMesh {
                             triangle_count: mesh_header.triangle_count,
                             skin_ref: mesh_header.skin_ref,
@@ -266,6 +297,7 @@ impl MdlFile {
                     models.push(MdlModel {
                         name: model_header.name_string(),
                         meshes: meshes,
+                        vertices: vertices,
                     })
                 }
                 

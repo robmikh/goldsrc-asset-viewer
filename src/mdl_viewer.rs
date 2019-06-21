@@ -141,6 +141,21 @@ impl MdlViewer {
                 }
 
                 let model = &body_part.models[self.state.selected_model_index as usize];
+
+                if model.vertices.len() > 0 {
+                    ui.window(im_str!["Model Vertex Data"])
+                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+                        .position((400.0, 900.0), ImGuiCond::FirstUseEver)
+                        .build(|| {
+                            ui.text(im_str!["Number of vertices: {}", model.vertices.len()]);
+                            ui.text(im_str!["x, y, z"]);
+                            for vertex in &model.vertices {
+                                ui.text(im_str!["{}, {}, {}", vertex[0], vertex[1], vertex[2]]);
+                            }
+                        });
+                }
+                
+
                 if model.meshes.len() > 0 {
                     let mesh_names = {
                         let mut mesh_names = Vec::with_capacity(body_part.models.len());
