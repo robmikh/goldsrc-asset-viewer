@@ -3,63 +3,33 @@ extern crate wad3parser;
 extern crate image;
 extern crate nfd;
 extern crate clap;
+extern crate mdlparser;
+
+mod graphics;
+mod wad_viewer;
+mod mdl_viewer;
 
 use clap::*;
 use imgui::*;
 use imgui_wgpu::Renderer;
 use imgui_winit_support;
 use std::collections::HashMap;
-use std::env;
+use std::path::Path;
+use std::ffi::OsStr;
 use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
+use wad3parser::{ WadArchive, WadFileInfo };
 use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
+use crate::wad_viewer::{WadViewer, load_wad_archive};
+use crate::mdl_viewer::{MdlViewer};
 
-#[derive(Clone)]
-struct TextureBundle {
-    pub mip_textures: Vec<MipTexture>,
-    pub extra_data: ExtraTextureData,
+pub struct MdlFile {
+    pub path: String,
+    pub file: mdlparser::MdlFile,
+    pub texture_names: Vec<ImString>,
+    pub body_part_names: Vec<ImString>,
 }
 
-#[derive(Clone)]
-struct MipTexture {
-    pub texture_id: ImTexture,
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Clone)]
-struct FontMetadata {
-    pub row_count: u32,
-    pub row_height: u32,
-    pub char_infos: [CharInfo; 256],
-}
-
-#[derive(Clone)]
-struct ExtraTextureData {
-    pub texture_type: TextureType,
-    pub font: Option<FontMetadata>,
-}
-
-impl TextureBundle {
-    fn clear(&mut self, renderer: &mut Renderer) {
-        // unbind our previous textures
-        for texture in self.mip_textures.drain(..) {
-            renderer.textures().remove(texture.texture_id);
-        }
-        self.extra_data.font = None;
-    }
-}
-
-impl ExtraTextureData {
-    fn new(texture_type: TextureType) -> ExtraTextureData {
-        ExtraTextureData {
-            texture_type: texture_type,
-            font: None,
-        }
-    }
-}
-
-struct WadFile {
+pub struct WadFile {
     pub path: String,
     pub archive: WadArchive,
     pub files: HashMap<ImString, WadFileInfo>,
@@ -69,6 +39,7 @@ struct WadFile {
 enum FileInfo {
     None,
     WadFile(WadFile),
+    MdlFile(MdlFile),
 }
 
 fn main() {
@@ -84,7 +55,7 @@ fn main() {
         .get_matches();
 
     if let Some(path) = arg_matches.value_of("file_path") {
-        file_info = FileInfo::WadFile(load_archive(path));
+        file_info = load_file(&path);
     }
 
     let instance = wgpu::Instance::new();
@@ -140,19 +111,16 @@ fn main() {
 
     let mut last_frame = Instant::now();
     //let mut demo_open = true;
-    let mut selected_file_index: i32 = 0;
-    let mut scale: f32 = 1.0;
-    let mut new_selection = false;
-    let mut font_overlay = false;
-    let mut texture_outline = false;
+    let mut wad_viewer = WadViewer::new();
+    let mut mdl_viewer = MdlViewer::new();
 
     let mut pending_path: Option<String> = None;
 
-    let mut texture_bundle: Option<TextureBundle> = None;
-    if let FileInfo::WadFile(file_info) = &file_info {
-        let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
-        texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
-    } 
+    match &file_info {
+        FileInfo::WadFile(file_info) => wad_viewer.pre_warm(&file_info, &mut device, &mut renderer),
+        FileInfo::MdlFile(file_info) => mdl_viewer.pre_warm(&file_info, &mut device, &mut renderer),
+        _ => (),
+    }
 
     let mut running = true;
     while running {
@@ -209,9 +177,10 @@ fn main() {
         let ui = imgui.frame(frame_size, delta_seconds);
         let force_new_selection = {
             if let Some(new_path) = pending_path {
-                file_info = FileInfo::WadFile(load_archive(&new_path));
+                file_info = load_file(&new_path);
 
-                selected_file_index = 0;
+                wad_viewer.reset_listbox_index();
+                mdl_viewer.reset_listbox_index();
                 pending_path = None;
                 true
             } else {
@@ -225,7 +194,7 @@ fn main() {
                     if ui.menu_item(im_str!["Open"])
                         .shortcut(im_str!["Ctrl+O"])
                         .build() {
-                        let result = nfd::open_file_dialog(Some("wad"), None).unwrap();
+                        let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
                         if let nfd::Response::Okay(new_path) = result {
                             pending_path = Some(new_path.to_string());
                         } 
@@ -236,89 +205,10 @@ fn main() {
                 });
             });
 
-            if let FileInfo::WadFile(file_info) = &file_info {
-                let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
-
-                ui.window(im_str!["File list"])
-                .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                .build(|| {
-                    ui.text(im_str!["Path: {}", &file_info.path]);
-                    new_selection = ui.list_box(
-                        im_str!["Files"], 
-                        &mut selected_file_index,
-                        &file_names,
-                        file_names.len() as i32);
-                });
-
-                if new_selection || force_new_selection {
-                    // unbind our previous textures
-                    if let Some(texture_bundle) = texture_bundle.as_mut() {
-                        texture_bundle.clear(&mut renderer);
-                    }
-
-                    let info = file_info.files.get(&file_info.file_names[selected_file_index as usize]).unwrap();
-                    texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, &mut device, &mut renderer));
-                }
-
-                if let Some(texture_bundle) = texture_bundle.as_ref() {
-                    ui.window(im_str!["File preview"])
-                        .position((500.0, 150.0), ImGuiCond::FirstUseEver)
-                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
-                        .horizontal_scrollbar(true)
-                        .build(|| {
-                            ui.text(&file_names[selected_file_index as usize]);
-                            ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
-                            ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
-                            match texture_bundle.extra_data.texture_type {
-                                TextureType::Font => {
-                                    if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                        ui.text(im_str!["Row Count: {}", font_data.row_count]);
-                                        ui.text(im_str!["Row Height: {}", font_data.row_height]);
-                                        ui.checkbox(im_str!["Char Info"], &mut font_overlay);
-                                    }
-                                },
-                                _ => (),
-                            }
-                            ui.slider_float(im_str!["Scale"], &mut scale, 1.0, 10.0)
-                                .build();
-                            ui.checkbox(im_str!["Texture outline"], &mut texture_outline);
-                            let (x, y) = ui.get_cursor_screen_pos();
-                            for texture in &texture_bundle.mip_textures {
-                                let (x, y) = ui.get_cursor_screen_pos();
-                                ui.image(texture.texture_id, (texture.width as f32 * scale, texture.height as f32 * scale))
-                                .build();
-                                if texture_outline {
-                                    ui.get_window_draw_list()
-                                        .add_rect((x, y), (x + ((texture.width as f32) * scale), y + ((texture.height as f32) * scale)), [0.0, 1.0, 0.0, 1.0])
-                                        .thickness(2.0)
-                                        .build();
-                                }
-                            }
-                            if font_overlay {
-                                if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                    let chars = font_data.char_infos.len();
-                                    for i in 0..chars {
-                                        let font_info = font_data.char_infos[i];
-                                        if font_info.width == 0 {
-                                            continue;
-                                        }
-                                        let local_x = font_info.x as f32 * scale;
-                                        let local_y = font_info.y as f32 * scale;
-                                        let width = font_info.width as f32 * scale;
-                                        let height = font_data.row_height as f32 * scale;
-
-                                        let x = x + local_x;
-                                        let y = y + local_y;
-
-                                        ui.get_window_draw_list()
-                                            .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
-                                            .thickness(2.0)
-                                            .build();
-                                    }
-                                }
-                            }
-                        });
-                }
+            match &file_info {
+                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
+                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
+                _ => (),
             }
             
             //ui.show_demo_window(&mut demo_open);
@@ -334,127 +224,15 @@ fn main() {
     }    
 }
 
-fn get_decoded_data(
-    archive: &WadArchive, 
-    info: &WadFileInfo,
-) -> (Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>>, ExtraTextureData) {
-    let mut extra_data = ExtraTextureData::new(info.texture_type);
-    let datas = {
-        if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
-            let image_data = archive.decode_mipmaped_image(&info);
-            vec![image_data.image, image_data.mipmap1, image_data.mipmap2, image_data.mipmap3]
-        } else if info.texture_type == TextureType::Image {
-            let image_data = archive.decode_image(&info);
-            vec![image_data.image]
-        } else if info.texture_type == TextureType::Font {
-            let font_data = archive.decode_font(&info);
-
-            extra_data.font = Some(FontMetadata {
-                row_count: font_data.row_count,
-                row_height: font_data.row_height,
-                char_infos: font_data.font_info,
-            });
-            vec![font_data.image]
-        } else {
-            panic!("New texture type! {:?}", info.texture_type);
-        }
-    };
-    (datas, extra_data)
+fn get_extension_from_path(path: &str) -> Option<&str> {
+    Path::new(path)
+        .extension()
+        .and_then(OsStr::to_str)
 }
 
-fn create_imgui_texture(
-    device: &mut wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
-) -> imgui_wgpu::Texture {
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Nearest,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Nearest,
-        lod_min_clamp: -100.0,
-        lod_max_clamp: 100.0,
-        compare_function: wgpu::CompareFunction::Always,
-    });
-
-    let (width, height) = image.dimensions();
-    let texture_extent = wgpu::Extent3d {
-        width: width as u32,
-        height: height as u32,
-        depth: 1,
-    };
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        size: texture_extent,
-        array_layer_count: 1,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm, // This should be bgra... something is wrong either here, in imgui-wgpu, or in wad3parser(likely)
-        usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
-    });
-
-    let image_data = image.into_vec();
-    let temp_buffer = device
-        .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::TRANSFER_SRC)
-        .fill_from_slice(&image_data);
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-    encoder.copy_buffer_to_texture(
-        wgpu::BufferCopyView {
-            buffer: &temp_buffer,
-            offset: 0,
-            row_pitch: 4 * width,
-            image_height: height,
-        }, 
-        wgpu::TextureCopyView {
-            texture: &texture,
-            mip_level: 0,
-            array_layer: 0,
-            origin: wgpu::Origin3d {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-        texture_extent,
-    );
-    device.get_queue().submit(&[encoder.finish()]);
-
-    imgui_wgpu::Texture::new(texture, sampler, bind_group_layout, device)
-}
-
-
-fn get_texture_bundle(
-    archive: &WadArchive, 
-    info: &WadFileInfo,
-    device: &mut wgpu::Device,
-    renderer: &mut Renderer,
-) -> TextureBundle {
-    let (decoded_images, texture_data) = get_decoded_data(&archive, &info);
-    let mut textures = Vec::with_capacity(decoded_images.len());
-
-    for decoded_image in decoded_images {
-        let (texture_width, texture_height) = decoded_image.dimensions();
-        let texture = create_imgui_texture(device, renderer.texture_layout(), decoded_image);
-        let texture_id = renderer.textures().insert(texture);
-
-        textures.push(MipTexture {
-            texture_id: texture_id,
-            width: texture_width,
-            height: texture_height,
-        });
-    }
-
-    TextureBundle {
-        mip_textures: textures, 
-        extra_data: texture_data,
-    }
-}
-
-fn load_archive(path: &str) -> WadFile {
+fn load_wad_file(path: &str) -> WadFile {
     let archive = WadArchive::open(path);
-    let (files, file_names) = load_file(&archive);
+    let (files, file_names) = load_wad_archive(&archive);
     WadFile {
         path: path.to_string(),
         archive: archive,
@@ -463,15 +241,37 @@ fn load_archive(path: &str) -> WadFile {
     }
 }
 
-fn load_file(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>, Vec<ImString>) {
-    let file_infos = &archive.files;
-    let mut files = HashMap::<ImString, WadFileInfo>::new();
-    let mut file_names = Vec::new();
-    for info in file_infos {
-        let imgui_str = ImString::new(info.name.to_string());
-        file_names.push(imgui_str.clone());
-        files.insert(imgui_str, info.clone());
+fn load_mdl_file(path: &str) -> MdlFile {
+    let mdl_file = mdlparser::MdlFile::open(path);
+
+    let mut texture_names = Vec::new();
+    for texture in &mdl_file.textures {
+        let imgui_str = ImString::new(texture.name.clone());
+        texture_names.push(imgui_str);
     }
 
-    (files, file_names)
+    let mut body_part_names = Vec::new();
+    for body_part in &mdl_file.body_parts {
+        let imgui_str = ImString::new(body_part.name.clone());
+        body_part_names.push(imgui_str);
+    }
+
+    MdlFile {
+        path: path.to_string(),
+        file: mdl_file,
+        texture_names: texture_names,
+        body_part_names: body_part_names,
+    }
+}
+
+fn load_file(path: &str) -> FileInfo {
+    let mut file_info = FileInfo::None;
+    if let Some(extension) = get_extension_from_path(&path) {
+        match extension {
+            "wad" => file_info = FileInfo::WadFile(load_wad_file(path)),
+            "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
+            _ => (),
+        }
+    }
+    file_info
 }
