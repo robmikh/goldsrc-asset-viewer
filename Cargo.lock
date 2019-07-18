@@ -568,7 +568,7 @@ dependencies = [
  "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "imgui 0.2.0-pre (git+https://github.com/Gekkio/imgui-rs.git)",
- "imgui-wgpu 0.1.0 (git+https://github.com/robmikh/imgui-wgpu-rs.git?branch=update)",
+ "imgui-wgpu 0.1.0 (git+https://github.com/robmikh/imgui-wgpu-rs.git)",
  "imgui-winit-support 0.2.0-pre (git+https://github.com/Gekkio/imgui-rs.git)",
  "mdlparser 0.1.0",
  "nalgebra 0.18.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -633,7 +633,7 @@ dependencies = [
 [[package]]
 name = "imgui-wgpu"
 version = "0.1.0"
-source = "git+https://github.com/robmikh/imgui-wgpu-rs.git?branch=update#1e562809cfe63e16925937c9fe492aab0034caf1"
+source = "git+https://github.com/robmikh/imgui-wgpu-rs.git#95deaa0137d3d6e192b5ad978af6d3b2538b1ac7"
 dependencies = [
  "cgmath 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1973,7 +1973,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum image 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)" = "99198e595d012efccf12abf4abc08da2d97be0b0355a2b08d101347527476ba4"
 "checksum imgui 0.2.0-pre (git+https://github.com/Gekkio/imgui-rs.git)" = "<none>"
 "checksum imgui-sys 0.2.0-pre (git+https://github.com/Gekkio/imgui-rs.git)" = "<none>"
-"checksum imgui-wgpu 0.1.0 (git+https://github.com/robmikh/imgui-wgpu-rs.git?branch=update)" = "<none>"
+"checksum imgui-wgpu 0.1.0 (git+https://github.com/robmikh/imgui-wgpu-rs.git)" = "<none>"
 "checksum imgui-winit-support 0.2.0-pre (git+https://github.com/Gekkio/imgui-rs.git)" = "<none>"
 "checksum inflate 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "1cdb29978cc5797bd8dcc8e5bf7de604891df2a8dc576973d71a281e916db2ff"
 "checksum jpeg-decoder 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)" = "c8b7d43206b34b3f94ea9445174bda196e772049b9bddbc620c9d29b2d20110d"

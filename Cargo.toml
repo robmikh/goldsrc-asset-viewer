@@ -16,7 +16,7 @@ image = "0.21.1"
 env_logger = "0.5"
 imgui = { git = "https://github.com/Gekkio/imgui-rs.git" }
 imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git" }
-imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "update" }
+imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "master" }
 mdlparser = { path = "mdlparser" }
 
 [build-dependencies]
