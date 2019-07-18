@@ -59,6 +59,7 @@ impl WadViewerState {
 pub struct WadViewer {
     state: WadViewerState,
     texture_bundle: Option<TextureBundle<ExtraTextureData>>,
+    last_file_path: String,
 }
 
 impl WadViewer {
@@ -66,31 +67,34 @@ impl WadViewer {
         WadViewer {
             state: WadViewerState::new(),
             texture_bundle: None,
+            last_file_path: String::new(),
         }
     }
 
-    pub fn pre_warm(&mut self, file_info: &WadFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
-        let info = file_info.files.get(&file_info.file_names[self.state.selected_file_index as usize]).unwrap();
-        self.texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, device, renderer));
-    }
-
-    pub fn reset_listbox_index(&mut self) {
+    fn reset_listbox_index(&mut self) {
         self.state.selected_file_index = 0;
     }
 
-    pub fn build_ui(&mut self, ui: &Ui, file_info: &WadFile, device: &mut wgpu::Device, renderer: &mut Renderer, force_new_selection: bool) {
+    pub fn build_ui(&mut self, ui: &Ui, file_info: &WadFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
         let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
+        let mut force_new_selection = false;
 
-        ui.window(im_str!["File list"])
-        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-        .build(|| {
-            ui.text(im_str!["Path: {}", &file_info.path]);
-            self.state.new_selection = ui.list_box(
-                im_str!["Files"], 
-                &mut self.state.selected_file_index,
-                &file_names,
-                file_names.len() as i32);
-        });
+        if self.last_file_path != file_info.path {
+            self.last_file_path = file_info.path.clone();
+            self.reset_listbox_index();
+            force_new_selection = true;
+        }
+
+        Window::new(im_str!["File list"])
+            .size([300.0, 400.0], Condition::FirstUseEver)
+            .build(ui, || {
+                ui.text(im_str!["Path: {}", &file_info.path]);
+                self.state.new_selection = ui.list_box(
+                    im_str!["Files"], 
+                    &mut self.state.selected_file_index,
+                    &file_names,
+                    file_names.len() as i32);
+            });
 
         if self.state.new_selection || force_new_selection {
             // unbind our previous textures
@@ -104,11 +108,11 @@ impl WadViewer {
 
         let mut temp_state = self.state.clone();
         if let Some(texture_bundle) = self.texture_bundle.as_ref() {
-            ui.window(im_str!["File preview"])
-                .position((500.0, 150.0), ImGuiCond::FirstUseEver)
-                .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+            Window::new(im_str!["File preview"])
+                .position([500.0, 150.0], Condition::FirstUseEver)
+                .size([300.0, 300.0], Condition::FirstUseEver)
                 .horizontal_scrollbar(true)
-                .build(|| {
+                .build(ui, || {
                     ui.text(&file_names[temp_state.selected_file_index as usize]);
                     ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
                     ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
@@ -122,17 +126,17 @@ impl WadViewer {
                         },
                         _ => (),
                     }
-                    ui.slider_float(im_str!["Scale"], &mut temp_state.scale, 1.0, 10.0)
-                        .build();
+                    Slider::new(im_str!["Scale"], 1.0..= 10.0)
+                        .build(ui, &mut temp_state.scale);
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
-                    let (x, y) = ui.get_cursor_screen_pos();
+                    let [x, y] = ui.cursor_screen_pos();
                     for texture in &texture_bundle.mip_textures {
-                        let (x, y) = ui.get_cursor_screen_pos();
-                        ui.image(texture.texture_id, (texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale))
-                        .build();
+                        let [x, y] = ui.cursor_screen_pos();
+                        Image::new(texture.texture_id, [texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale])
+                            .build(ui);
                         if temp_state.texture_outline {
                             ui.get_window_draw_list()
-                                .add_rect((x, y), (x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)), [0.0, 1.0, 0.0, 1.0])
+                                .add_rect([x, y], [x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)], [0.0, 1.0, 0.0, 1.0])
                                 .thickness(2.0)
                                 .build();
                         }
@@ -154,7 +158,7 @@ impl WadViewer {
                                 let y = y + local_y;
 
                                 ui.get_window_draw_list()
-                                    .add_rect((x, y), (x + width, y + height), [1.0, 0.0, 0.0, 1.0])
+                                    .add_rect([x, y], [x + width, y + height], [1.0, 0.0, 0.0, 1.0])
                                     .thickness(2.0)
                                     .build();
                             }

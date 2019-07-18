@@ -3,6 +3,7 @@ name = "goldsrc-asset-viewer"
 version = "0.1.0"
 authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
 edition = "2018"
+build = "build/build.rs"
 
 [dependencies]
 #wad3parser = { path = "../wad3parser" }
@@ -15,8 +16,11 @@ image = "0.21.1"
 env_logger = "0.5"
 imgui = { git = "https://github.com/Gekkio/imgui-rs.git" }
 imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git" }
-imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "dev" }
+imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs.git", branch = "update" }
 mdlparser = { path = "mdlparser" }
+
+[build-dependencies]
+shaderc = "0.3"
 
 [features]
 default = []

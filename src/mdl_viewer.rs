@@ -58,6 +58,7 @@ impl MdlViewerState {
 pub struct MdlViewer {
     state: MdlViewerState,
     texture_bundle: Option<TextureBundle<ExtraTextureData>>,
+    last_file_path: String,
 }
 
 impl MdlViewer {
@@ -65,28 +66,31 @@ impl MdlViewer {
         MdlViewer {
             state: MdlViewerState::new(),
             texture_bundle: None,
+            last_file_path: String::new(),
         }
     }
 
-    pub fn pre_warm(&mut self, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
-        let info = &file_info.file.textures[self.state.selected_file_index as usize];
-        self.texture_bundle = Some(get_texture_bundle(&info, device, renderer));
-    }
-
-    pub fn reset_listbox_index(&mut self) {
+    fn reset_listbox_index(&mut self) {
         self.state.selected_file_index = 0;
         self.state.selected_body_part_index = 0;
         self.state.selected_model_index = 0;
         self.state.selected_mesh_index = 0;
     }
 
-    pub fn build_ui(&mut self, ui: &Ui, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer, force_new_selection: bool) {
+    pub fn build_ui(&mut self, ui: &Ui, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
         let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
         let body_part_names = &file_info.body_part_names.iter().collect::<Vec<_>>();
+        let mut force_new_selection = false;
 
-        ui.window(im_str!["Texture list"])
-            .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-            .build(|| {
+        if self.last_file_path != file_info.path {
+            self.last_file_path = file_info.path.clone();
+            self.reset_listbox_index();
+            force_new_selection = true;
+        }
+
+        Window::new(im_str!["Texture list"])
+            .size([300.0, 400.0], Condition::FirstUseEver)
+            .build(ui, || {
                 ui.text(im_str!["Path: {}", &file_info.path]);
                 ui.text(im_str!["Name: {}", &file_info.file.name]);
                 self.state.new_selection = ui.list_box(
@@ -96,10 +100,10 @@ impl MdlViewer {
                     texture_names.len() as i32);
             });
 
-        ui.window(im_str!["Body part list"])
-            .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-            .position((100.0, 500.0), ImGuiCond::FirstUseEver)
-            .build(|| {
+        Window::new(im_str!["Body part list"])
+            .size([300.0, 400.0], Condition::FirstUseEver)
+            .position([100.0, 500.0], Condition::FirstUseEver)
+            .build(ui, || {
                 ui.text(im_str!["Body parts: {}", &file_info.file.body_parts.len()]);
                 self.state.new_body_part_selection = ui.list_box(
                     im_str!["Body parts"], 
@@ -124,10 +128,10 @@ impl MdlViewer {
                     model_names
                 };
                 let model_names = model_names.iter().collect::<Vec<_>>();
-                ui.window(im_str!["Model list"])
-                    .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                    .position((400.0, 500.0), ImGuiCond::FirstUseEver)
-                    .build(|| {
+                Window::new(im_str!["Model list"])
+                    .size([300.0, 400.0], Condition::FirstUseEver)
+                    .position([400.0, 500.0], Condition::FirstUseEver)
+                    .build(ui, || {
                         ui.text(im_str!["Models: {}", model_names.len()]);
                         self.state.new_model_selection = ui.list_box(
                             im_str!["Models"], 
@@ -143,10 +147,10 @@ impl MdlViewer {
                 let model = &body_part.models[self.state.selected_model_index as usize];
 
                 if model.vertices.len() > 0 {
-                    ui.window(im_str!["Model Vertex Data"])
-                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
-                        .position((400.0, 900.0), ImGuiCond::FirstUseEver)
-                        .build(|| {
+                    Window::new(im_str!["Model Vertex Data"])
+                        .size([300.0, 300.0], Condition::FirstUseEver)
+                        .position([400.0, 900.0], Condition::FirstUseEver)
+                        .build(ui, || {
                             ui.text(im_str!["Number of vertices: {}", model.vertices.len()]);
                             ui.text(im_str!["x, y, z"]);
                             for vertex in &model.vertices {
@@ -156,10 +160,10 @@ impl MdlViewer {
                 }
 
                 if model.normals.len() > 0 {
-                    ui.window(im_str!["Model Normal Data"])
-                        .size((300.0, 300.0), ImGuiCond::FirstUseEver)
-                        .position((700.0, 900.0), ImGuiCond::FirstUseEver)
-                        .build(|| {
+                    Window::new(im_str!["Model Normal Data"])
+                        .size([300.0, 300.0], Condition::FirstUseEver)
+                        .position([700.0, 900.0], Condition::FirstUseEver)
+                        .build(ui, || {
                             ui.text(im_str!["Number of normals: {}", model.normals.len()]);
                             ui.text(im_str!["x, y, z"]);
                             for normal in &model.normals {
@@ -179,10 +183,10 @@ impl MdlViewer {
                         mesh_names
                     };
                     let mesh_names = mesh_names.iter().collect::<Vec<_>>();
-                    ui.window(im_str!["Mesh list"])
-                        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                        .position((700.0, 500.0), ImGuiCond::FirstUseEver)
-                        .build(|| {
+                    Window::new(im_str!["Mesh list"])
+                        .size([300.0, 400.0], Condition::FirstUseEver)
+                        .position([700.0, 500.0], Condition::FirstUseEver)
+                        .build(ui, || {
                             ui.text(im_str!["Meshes: {}", mesh_names.len()]);
                             self.state.new_mesh_selection = ui.list_box(
                                 im_str!["Models"], 
@@ -192,10 +196,10 @@ impl MdlViewer {
                         });
 
                     let mesh = &model.meshes[self.state.selected_mesh_index as usize];
-                    ui.window(im_str!["Mesh info"])
-                        .size((300.0, 400.0), ImGuiCond::FirstUseEver)
-                        .position((1000.0, 500.0), ImGuiCond::FirstUseEver)
-                        .build(|| {
+                    Window::new(im_str!["Mesh info"])
+                        .size([300.0, 400.0], Condition::FirstUseEver)
+                        .position([1000.0, 500.0], Condition::FirstUseEver)
+                        .build(ui, || {
                             ui.text(im_str!["Vertices: {}", mesh.vertices_count]);
                             ui.text(im_str!["Skin Reference: {}", mesh.skin_ref]);
                             ui.text(im_str!["Normals: {}", mesh.normal_count]);
@@ -221,23 +225,23 @@ impl MdlViewer {
 
         let mut temp_state = self.state.clone();
         if let Some(texture_bundle) = self.texture_bundle.as_ref() {
-            ui.window(im_str!["Texture preview"])
-                .position((500.0, 150.0), ImGuiCond::FirstUseEver)
-                .size((300.0, 300.0), ImGuiCond::FirstUseEver)
+            Window::new(im_str!["Texture preview"])
+                .position([500.0, 150.0], Condition::FirstUseEver)
+                .size([300.0, 300.0], Condition::FirstUseEver)
                 .horizontal_scrollbar(true)
-                .build(|| {
+                .build(ui, || {
                     ui.text(&texture_names[temp_state.selected_file_index as usize]);
                     ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
-                    ui.slider_float(im_str!["Scale"], &mut temp_state.scale, 1.0, 10.0)
-                        .build();
+                    Slider::new(im_str!["Scale"], 1.0..= 10.0)
+                        .build(ui, &mut temp_state.scale);
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
                     for texture in &texture_bundle.mip_textures {
-                        let (x, y) = ui.get_cursor_screen_pos();
-                        ui.image(texture.texture_id, (texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale))
-                        .build();
+                        let [x, y] = ui.cursor_screen_pos();
+                        Image::new(texture.texture_id, [texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale])
+                            .build(ui);
                         if temp_state.texture_outline {
                             ui.get_window_draw_list()
-                                .add_rect((x, y), (x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)), [0.0, 1.0, 0.0, 1.0])
+                                .add_rect([x, y], [x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)], [0.0, 1.0, 0.0, 1.0])
                                 .thickness(2.0)
                                 .build();
                         }

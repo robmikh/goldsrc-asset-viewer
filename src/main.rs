@@ -12,7 +12,7 @@ mod mdl_viewer;
 use clap::*;
 use imgui::*;
 use imgui_wgpu::Renderer;
-use imgui_winit_support;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::collections::HashMap;
 use std::path::Path;
 use std::ffi::OsStr;
@@ -83,23 +83,28 @@ fn main() {
         format: wgpu::TextureFormat::Bgra8Unorm,
         width: size.width as u32,
         height: size.height as u32,
+        present_mode: wgpu::PresentMode::Vsync,
     };
     let mut swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
 
-    let mut imgui = ImGui::init();
+    let mut imgui = Context::create();
     imgui.set_ini_filename(None);
 
+    let mut platform = WinitPlatform::init(&mut imgui);
+
     let font_size = (13.0 * dpi_factor) as f32;
-    imgui.set_font_global_scale((1.0 / dpi_factor) as f32);
+    imgui.io_mut().font_global_scale = (1.0 / dpi_factor) as f32;
 
-    imgui.fonts().add_default_font_with_config(
-        ImFontConfig::new()
-            .oversample_h(1)
-            .pixel_snap_h(true)
-            .size_pixels(font_size),
-    );
+    imgui.fonts().add_font(&[
+        FontSource::DefaultFontData {
+            config: Some(FontConfig {
+                size_pixels: font_size,
+                ..FontConfig::default()
+            }),
+        },
+    ]);
 
-    imgui_winit_support::configure_keys(&mut imgui);
+    platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
 
     let clear_color = wgpu::Color {
         r: 0.1,
@@ -115,12 +120,6 @@ fn main() {
     let mut mdl_viewer = MdlViewer::new();
 
     let mut pending_path: Option<String> = None;
-
-    match &file_info {
-        FileInfo::WadFile(file_info) => wad_viewer.pre_warm(&file_info, &mut device, &mut renderer),
-        FileInfo::MdlFile(file_info) => mdl_viewer.pre_warm(&file_info, &mut device, &mut renderer),
-        _ => (),
-    }
 
     let mut running = true;
     while running {
@@ -138,6 +137,7 @@ fn main() {
                         format: wgpu::TextureFormat::Bgra8Unorm,
                         width: size.width as u32,
                         height: size.height as u32,
+                        present_mode: wgpu::PresentMode::Vsync,
                     };
 
                     swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
@@ -162,52 +162,40 @@ fn main() {
                 _ => (),
             }
 
-            imgui_winit_support::handle_event(&mut imgui, &event, dpi_factor, dpi_factor);
+            platform.handle_event(imgui.io_mut(), &window, &event);
         });
 
-        let now = Instant::now();
-        let delta = now - last_frame;
-        let delta_seconds = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
-        last_frame = now;
-
-        imgui_winit_support::update_mouse_cursor(&imgui, &window);
+        let io = imgui.io_mut();
+        platform.prepare_frame(io, &window).expect("Failed to start frame");
+        last_frame = io.update_delta_time(last_frame);
 
         let frame = swap_chain.get_next_texture();
-        let frame_size = imgui_winit_support::get_frame_size(&window, dpi_factor).unwrap();
-        let ui = imgui.frame(frame_size, delta_seconds);
-        let force_new_selection = {
-            if let Some(new_path) = pending_path {
-                file_info = load_file(&new_path);
-
-                wad_viewer.reset_listbox_index();
-                mdl_viewer.reset_listbox_index();
-                pending_path = None;
-                true
-            } else {
-                false
-            }
-        };
+        let mut ui = imgui.frame();
+        if let Some(new_path) = pending_path {
+            file_info = load_file(&new_path);
+            pending_path = None;
+        }
 
         {
             ui.main_menu_bar(|| {
-                ui.menu(im_str!["File"]).build(|| {
-                    if ui.menu_item(im_str!["Open"])
+                ui.menu(im_str!["File"], true, || {
+                    if MenuItem::new(im_str!["Open"])
                         .shortcut(im_str!["Ctrl+O"])
-                        .build() {
+                        .build(&ui) {
                         let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
                         if let nfd::Response::Okay(new_path) = result {
                             pending_path = Some(new_path.to_string());
                         } 
                     }
-                    if ui.menu_item(im_str!["Exit"]).build() {
+                    if MenuItem::new(im_str!["Exit"]).build(&ui) {
                         running = false;
                     }
                 });
             });
 
             match &file_info {
-                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
-                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer, force_new_selection),
+                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer),
+                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer),
                 _ => (),
             }
             
@@ -216,8 +204,9 @@ fn main() {
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor{ todo: 0 });
 
+        let draw_data = ui.render();
         renderer
-            .render(ui, &mut device, &mut encoder, &frame.view)
+            .render(draw_data, &mut device, &mut encoder, &frame.view)
             .unwrap();
 
         device.get_queue().submit(&[encoder.finish()]);

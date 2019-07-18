@@ -9,7 +9,7 @@ pub struct TextureBundle<T> {
 
 #[derive(Clone)]
 pub struct MipTexture {
-    pub texture_id: ImTexture,
+    pub texture_id: TextureId,
     pub width: u32,
     pub height: u32,
 }
@@ -27,7 +27,7 @@ pub fn create_imgui_texture(
     device: &mut wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
     image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
-) -> imgui_wgpu::Texture {
+) -> imgui_wgpu::WgpuTexture {
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -82,5 +82,5 @@ pub fn create_imgui_texture(
     );
     device.get_queue().submit(&[encoder.finish()]);
 
-    imgui_wgpu::Texture::new(texture, sampler, bind_group_layout, device)
+    imgui_wgpu::WgpuTexture::new(texture, sampler, bind_group_layout, device)
 }
