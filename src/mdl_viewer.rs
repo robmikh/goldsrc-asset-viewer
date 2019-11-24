@@ -77,7 +77,14 @@ impl MdlViewer {
         self.state.selected_mesh_index = 0;
     }
 
-    pub fn build_ui(&mut self, ui: &Ui, file_info: &MdlFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
+    pub fn build_ui(
+        &mut self, 
+        ui: &Ui, 
+        file_info: &MdlFile, 
+        device: &mut wgpu::Device, 
+        queue: &mut wgpu::Queue, 
+        renderer: &mut Renderer,
+    ) {
         let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
         let body_part_names = &file_info.body_part_names.iter().collect::<Vec<_>>();
         let mut force_new_selection = false;
@@ -220,7 +227,7 @@ impl MdlViewer {
             }
 
             let info = &file_info.file.textures[self.state.selected_file_index as usize];
-            self.texture_bundle = Some(get_texture_bundle(&info, device, renderer));
+            self.texture_bundle = Some(get_texture_bundle(&info, device, queue, renderer));
         }
 
         let mut temp_state = self.state.clone();
@@ -255,12 +262,13 @@ impl MdlViewer {
 pub fn get_texture_bundle(
     texture: &MdlTexture,
     device: &mut wgpu::Device,
+    queue: &mut wgpu::Queue,
     renderer: &mut Renderer,
 ) -> TextureBundle<ExtraTextureData> {
     let width = texture.width;
     let height = texture.height;
 
-    let texture = create_imgui_texture(device, renderer.texture_layout(), texture.image_data.clone());
+    let texture = create_imgui_texture(device, queue, renderer.texture_layout(), texture.image_data.clone());
     let texture_id = renderer.textures().insert(texture);
 
     let textures = vec![

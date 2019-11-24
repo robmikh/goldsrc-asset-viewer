@@ -75,7 +75,14 @@ impl WadViewer {
         self.state.selected_file_index = 0;
     }
 
-    pub fn build_ui(&mut self, ui: &Ui, file_info: &WadFile, device: &mut wgpu::Device, renderer: &mut Renderer) {
+    pub fn build_ui(
+        &mut self, 
+        ui: &Ui, 
+        file_info: &WadFile, 
+        device: &mut wgpu::Device, 
+        queue: &mut wgpu::Queue, 
+        renderer: &mut Renderer,
+    ) {
         let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
         let mut force_new_selection = false;
 
@@ -103,7 +110,7 @@ impl WadViewer {
             }
 
             let info = file_info.files.get(&file_info.file_names[self.state.selected_file_index as usize]).unwrap();
-            self.texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, device, renderer));
+            self.texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, device, queue, renderer));
         }
 
         let mut temp_state = self.state.clone();
@@ -202,6 +209,7 @@ pub fn get_texture_bundle(
     archive: &WadArchive, 
     info: &WadFileInfo,
     device: &mut wgpu::Device,
+    queue: &mut wgpu::Queue,
     renderer: &mut Renderer,
 ) -> TextureBundle<ExtraTextureData> {
     let (decoded_images, texture_data) = get_decoded_data(&archive, &info);
@@ -209,7 +217,7 @@ pub fn get_texture_bundle(
 
     for decoded_image in decoded_images {
         let (texture_width, texture_height) = decoded_image.dimensions();
-        let texture = create_imgui_texture(device, renderer.texture_layout(), decoded_image);
+        let texture = create_imgui_texture(device, queue, renderer.texture_layout(), decoded_image);
         let texture_id = renderer.textures().insert(texture);
 
         textures.push(MipTexture {

@@ -25,6 +25,7 @@ impl <T> TextureBundle<T> {
 
 pub fn create_imgui_texture(
     device: &mut wgpu::Device,
+    queue: &mut wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
     image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
 ) -> imgui_wgpu::WgpuTexture {
@@ -53,12 +54,12 @@ pub fn create_imgui_texture(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8Unorm, // This should be bgra... something is wrong either here, in imgui-wgpu, or in wad3parser(likely)
-        usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::TRANSFER_DST,
+        usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
     });
 
     let image_data = image.into_vec();
     let temp_buffer = device
-        .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::TRANSFER_SRC)
+        .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::COPY_SRC)
         .fill_from_slice(&image_data);
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
     encoder.copy_buffer_to_texture(
@@ -80,7 +81,7 @@ pub fn create_imgui_texture(
         },
         texture_extent,
     );
-    device.get_queue().submit(&[encoder.finish()]);
+    queue.submit(&[encoder.finish()]);
 
     imgui_wgpu::WgpuTexture::new(texture, sampler, bind_group_layout, device)
 }

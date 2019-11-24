@@ -18,7 +18,7 @@ use std::path::Path;
 use std::ffi::OsStr;
 use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo };
-use wgpu::winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
+use winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
 use crate::wad_viewer::{WadViewer, load_wad_archive};
 use crate::mdl_viewer::{MdlViewer};
 
@@ -58,11 +58,14 @@ fn main() {
         file_info = load_file(&path);
     }
 
-    let instance = wgpu::Instance::new();
-    let adapter = instance.get_adapter(&wgpu::AdapterDescriptor{
-        power_preference: wgpu::PowerPreference::LowPower,
-    });
-    let mut device = adapter.request_device(&wgpu::DeviceDescriptor {
+    let adapter = wgpu::Adapter::request(
+        &wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::Default,
+            backends: wgpu::BackendBit::PRIMARY,
+        },
+    ).unwrap();
+
+    let (mut device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
         extensions: wgpu::Extensions {
             anisotropic_filtering: false,
         },
@@ -70,10 +73,10 @@ fn main() {
     });
 
     let mut events_loop = EventsLoop::new();
-    let window = wgpu::winit::Window::new(&events_loop).unwrap();
+    let window = winit::Window::new(&events_loop).unwrap();
     window.set_title("goldsrc-asset-viewer");
 
-    let surface = instance.create_surface(&window);
+    let surface = wgpu::Surface::create(&window);
 
     let mut dpi_factor = window.get_hidpi_factor();
     let mut size = window.get_inner_size().unwrap().to_physical(dpi_factor);
@@ -112,7 +115,7 @@ fn main() {
         b: 0.3,
         a: 1.0,
     };
-    let mut renderer = Renderer::new(&mut imgui, &mut device, swap_chain_description.format, Some(clear_color)).unwrap();
+    let mut renderer = Renderer::new(&mut imgui, &mut device, &mut queue, swap_chain_description.format, Some(clear_color)).unwrap();
 
     let mut last_frame = Instant::now();
     //let mut demo_open = true;
@@ -194,8 +197,8 @@ fn main() {
             });
 
             match &file_info {
-                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer),
-                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut renderer),
+                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
+                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
                 _ => (),
             }
             
@@ -209,7 +212,7 @@ fn main() {
             .render(draw_data, &mut device, &mut encoder, &frame.view)
             .unwrap();
 
-        device.get_queue().submit(&[encoder.finish()]);
+        queue.submit(&[encoder.finish()]);
     }    
 }
 
