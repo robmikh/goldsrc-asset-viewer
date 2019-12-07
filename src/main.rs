@@ -126,6 +126,7 @@ fn main() {
 
     let mut running = true;
     while running {
+        let mut new_size = false;
         events_loop.poll_events(|event| {
             match event {
                 Event::WindowEvent {
@@ -134,16 +135,7 @@ fn main() {
                 } => {
                     dpi_factor = window.get_hidpi_factor();
                     size = window.get_inner_size().unwrap().to_physical(dpi_factor);
-
-                    swap_chain_description = wgpu::SwapChainDescriptor {
-                        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-                        format: wgpu::TextureFormat::Bgra8Unorm,
-                        width: size.width as u32,
-                        height: size.height as u32,
-                        present_mode: wgpu::PresentMode::Vsync,
-                    };
-
-                    swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
+                    new_size = true;
                 },
                 Event::WindowEvent {
                     event: WindowEvent::KeyboardInput {
@@ -167,6 +159,18 @@ fn main() {
 
             platform.handle_event(imgui.io_mut(), &window, &event);
         });
+
+        if new_size {
+            swap_chain_description = wgpu::SwapChainDescriptor {
+                usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                width: size.width as u32,
+                height: size.height as u32,
+                present_mode: wgpu::PresentMode::Vsync,
+            };
+
+            swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
+        }
 
         let io = imgui.io_mut();
         platform.prepare_frame(io, &window).expect("Failed to start frame");
