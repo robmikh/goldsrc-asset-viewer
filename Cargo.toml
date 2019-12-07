@@ -6,8 +6,7 @@ edition = "2018"
 build = "build/build.rs"
 
 [dependencies]
-#wad3parser = { path = "../wad3parser" }
-wad3parser = { git = "https://github.com/robmikh/wad3parser.git" }
+wad3parser = { path = "wad3parser" }
 wgpu = "0.4.0"
 winit = "0.19.5"
 clap = "2.33.0"
