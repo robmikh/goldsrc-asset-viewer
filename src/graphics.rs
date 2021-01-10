@@ -39,6 +39,7 @@ pub fn create_imgui_texture(
             ..Default::default()
         },
         label: Some("sprite texture"),
+        filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     };
     let texture = Texture::new(&device, &renderer, texture_config);
