@@ -239,7 +239,8 @@ impl MdlViewer {
                 .build(ui, || {
                     ui.text(&texture_names[temp_state.selected_file_index as usize]);
                     ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
-                    Slider::new(im_str!["Scale"], 1.0..= 10.0)
+                    Slider::new(im_str!["Scale"])
+                        .range(1.0..= 10.0)
                         .build(ui, &mut temp_state.scale);
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
                     for texture in &texture_bundle.mip_textures {
@@ -268,8 +269,8 @@ pub fn get_texture_bundle(
     let width = texture.width;
     let height = texture.height;
 
-    let texture = create_imgui_texture(device, queue, renderer.texture_layout(), texture.image_data.clone());
-    let texture_id = renderer.textures().insert(texture);
+    let texture = create_imgui_texture(device, queue, renderer, texture.image_data.clone());
+    let texture_id = renderer.textures.insert(texture);
 
     let textures = vec![
         MipTexture {

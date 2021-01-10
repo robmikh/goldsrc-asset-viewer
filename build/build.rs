@@ -2,7 +2,7 @@ extern crate shaderc;
 
 use std::error::Error;
 
-fn main() -> Result<(), Box<Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let base_shader_path = "data/shaders";
     let generated_shader_path = "data/generated/shaders";
 

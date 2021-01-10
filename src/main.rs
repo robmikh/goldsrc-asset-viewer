@@ -1,24 +1,23 @@
-extern crate imgui_wgpu;
-extern crate wad3parser;
-extern crate image;
-extern crate nfd;
-extern crate clap;
-extern crate mdlparser;
-
 mod graphics;
 mod wad_viewer;
 mod mdl_viewer;
 
+use futures::executor::block_on;
 use clap::*;
 use imgui::*;
-use imgui_wgpu::Renderer;
+use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::collections::HashMap;
 use std::path::Path;
 use std::ffi::OsStr;
 use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo };
-use winit::{ ElementState, Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowEvent, };
+use winit::{
+    dpi::LogicalSize,
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::Window,
+};
 use crate::wad_viewer::{WadViewer, load_wad_archive};
 use crate::mdl_viewer::{MdlViewer};
 
@@ -58,56 +57,59 @@ fn main() {
         file_info = load_file(&path);
     }
 
-    let adapter = wgpu::Adapter::request(
-        &wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::Default,
-            backends: wgpu::BackendBit::PRIMARY,
-        },
-    ).unwrap();
+    let event_loop = EventLoop::new();
+    let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+    let (window, size, surface) = {
+        let window = Window::new(&event_loop).unwrap();
+        window.set_inner_size(LogicalSize {
+            width: 1447.0,
+            height: 867.0,
+        });
+        window.set_title("goldsrc-asset-viewer");
+        let size = window.inner_size();
+        let surface = unsafe {
+            instance.create_surface(&window)
+        };
+        (window, size, surface)
+    };
 
-    let (mut device, mut queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-        extensions: wgpu::Extensions {
-            anisotropic_filtering: false,
-        },
-        limits: wgpu::Limits::default(),
-    });
+    let mut hidpi_factor = window.scale_factor();
 
-    let mut events_loop = EventsLoop::new();
-    let window = winit::Window::new(&events_loop).unwrap();
-    window.set_title("goldsrc-asset-viewer");
+    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(&surface),
+    })).unwrap();
+    let (mut device, mut queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
 
-    let surface = wgpu::Surface::create(&window);
-
-    let mut dpi_factor = window.get_hidpi_factor();
-    let mut size = window.get_inner_size().unwrap().to_physical(dpi_factor);
-
-    let mut swap_chain_description = wgpu::SwapChainDescriptor {
+    let swap_chain_desc = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
         format: wgpu::TextureFormat::Bgra8Unorm,
         width: size.width as u32,
         height: size.height as u32,
-        present_mode: wgpu::PresentMode::Vsync,
+        present_mode: wgpu::PresentMode::Mailbox,
     };
-    let mut swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
+    let mut swap_chain = device.create_swap_chain(&surface, &swap_chain_desc);
 
-    let mut imgui = Context::create();
+    let mut imgui = imgui::Context::create();
+    let mut platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
+    platform.attach_window(
+        imgui.io_mut(),
+        &window,
+        imgui_winit_support::HiDpiMode::Default,
+    );
     imgui.set_ini_filename(None);
 
-    let mut platform = WinitPlatform::init(&mut imgui);
+    let font_size = (13.0 * hidpi_factor) as f32;
+    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
-    let font_size = (13.0 * dpi_factor) as f32;
-    imgui.io_mut().font_global_scale = (1.0 / dpi_factor) as f32;
-
-    imgui.fonts().add_font(&[
-        FontSource::DefaultFontData {
-            config: Some(FontConfig {
-                size_pixels: font_size,
-                ..FontConfig::default()
-            }),
-        },
-    ]);
-
-    platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
+    imgui.fonts().add_font(&[FontSource::DefaultFontData {
+        config: Some(imgui::FontConfig {
+            oversample_h: 1,
+            pixel_snap_h: true,
+            size_pixels: font_size,
+            ..Default::default()
+        }),
+    }]);
 
     let clear_color = wgpu::Color {
         r: 0.1,
@@ -115,109 +117,147 @@ fn main() {
         b: 0.3,
         a: 1.0,
     };
-    let mut renderer = Renderer::new(&mut imgui, &mut device, &mut queue, swap_chain_description.format, Some(clear_color)).unwrap();
+
+    let renderer_config = RendererConfig {
+        texture_format: swap_chain_desc.format,
+        ..Default::default()
+    };
+
+    let mut renderer = Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
     let mut last_frame = Instant::now();
+    let mut last_cursor = None;
     //let mut demo_open = true;
     let mut wad_viewer = WadViewer::new();
     let mut mdl_viewer = MdlViewer::new();
 
     let mut pending_path: Option<String> = None;
 
-    let mut running = true;
-    while running {
-        let mut new_size = false;
-        events_loop.poll_events(|event| {
-            match event {
-                Event::WindowEvent {
-                    event: WindowEvent::Resized(_),
-                    ..
-                } => {
-                    dpi_factor = window.get_hidpi_factor();
-                    size = window.get_inner_size().unwrap().to_physical(dpi_factor);
-                    new_size = true;
-                },
-                Event::WindowEvent {
-                    event: WindowEvent::KeyboardInput {
-                        input: KeyboardInput {
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            state: ElementState::Pressed,
-                            ..
-                        },
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = if cfg!(feature = "metal-auto-capture") {
+            ControlFlow::Exit
+        } else {
+            ControlFlow::Poll
+        };
+        match event {
+            Event::MainEventsCleared => window.request_redraw(),
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                let size = window.inner_size();
+
+                let swap_chain_desc = wgpu::SwapChainDescriptor {
+                    usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+                    format: wgpu::TextureFormat::Bgra8Unorm,
+                    width: size.width as u32,
+                    height: size.height as u32,
+                    present_mode: wgpu::PresentMode::Mailbox,
+                };
+
+                swap_chain = device.create_swap_chain(&surface, &swap_chain_desc);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::KeyboardInput {
+                    input: winit::event::KeyboardInput {
+                        virtual_keycode: Some(VirtualKeyCode::Escape),
+                        state: ElementState::Pressed,
                         ..
                     },
                     ..
-                }
-                | Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    running = false;
                 },
-                _ => (),
+                ..
             }
-
-            platform.handle_event(imgui.io_mut(), &window, &event);
-        });
-
-        if new_size {
-            swap_chain_description = wgpu::SwapChainDescriptor {
-                usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                width: size.width as u32,
-                height: size.height as u32,
-                present_mode: wgpu::PresentMode::Vsync,
-            };
-
-            swap_chain = device.create_swap_chain(&surface, &swap_chain_description);
-        }
-
-        let io = imgui.io_mut();
-        platform.prepare_frame(io, &window).expect("Failed to start frame");
-        last_frame = io.update_delta_time(last_frame);
-
-        let frame = swap_chain.get_next_texture();
-        let mut ui = imgui.frame();
-        if let Some(new_path) = pending_path {
-            file_info = load_file(&new_path);
-            pending_path = None;
-        }
-
-        {
-            ui.main_menu_bar(|| {
-                ui.menu(im_str!["File"], true, || {
-                    if MenuItem::new(im_str!["Open"])
-                        .shortcut(im_str!["Ctrl+O"])
-                        .build(&ui) {
-                        let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
-                        if let nfd::Response::Okay(new_path) = result {
-                            pending_path = Some(new_path.to_string());
-                        } 
-                    }
-                    if MenuItem::new(im_str!["Exit"]).build(&ui) {
-                        running = false;
-                    }
-                });
-            });
-
-            match &file_info {
-                FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
-                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
-                _ => (),
+            | Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
             }
-            
-            //ui.show_demo_window(&mut demo_open);
-        }
+            Event::RedrawRequested(_) => {
+                let now = Instant::now();
+                imgui.io_mut().update_delta_time(now - last_frame);
+                last_frame = now;
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor{ todo: 0 });
+                let frame = match swap_chain.get_current_frame() {
+                    Ok(frame) => frame,
+                    Err(e) => {
+                        eprintln!("dropped frame: {:?}", e);
+                        return;
+                    }
+                };
+                platform
+                    .prepare_frame(imgui.io_mut(), &window)
+                    .expect("Failed to prepare frame");
+                let ui = imgui.frame();
 
-        let draw_data = ui.render();
-        renderer
-            .render(draw_data, &mut device, &mut encoder, &frame.view)
-            .unwrap();
+                if let Some(new_path) = &pending_path {
+                    file_info = load_file(new_path);
+                    pending_path = None;
+                }
+        
+                {
+                    ui.main_menu_bar(|| {
+                        ui.menu(im_str!["File"], true, || {
+                            if MenuItem::new(im_str!["Open"])
+                                .shortcut(im_str!["Ctrl+O"])
+                                .build(&ui) {
+                                let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
+                                if let nfd::Response::Okay(new_path) = result {
+                                    pending_path = Some(new_path.to_string());
+                                } 
+                            }
+                            if MenuItem::new(im_str!["Exit"]).build(&ui) {
+                                *control_flow = ControlFlow::Wait;
+                            }
+                        });
+                    });
+        
+                    match &file_info {
+                        FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
+                        FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
+                        _ => (),
+                    }
+                    
+                    //ui.show_demo_window(&mut demo_open);
+                }
+        
+                let mut encoder: wgpu::CommandEncoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        queue.submit(&[encoder.finish()]);
-    }    
+                if last_cursor != Some(ui.mouse_cursor()) {
+                    last_cursor = Some(ui.mouse_cursor());
+                    platform.prepare_render(&ui, &window);
+                }
+
+                {
+                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.output.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(clear_color),
+                                store: true,
+                            },
+                        }],
+                        depth_stencil_attachment: None,
+                    });
+    
+                    renderer
+                        .render(ui.render(), &queue, &device, &mut rpass)
+                        .expect("Rendering failed");
+                }
+
+                queue.submit(Some(encoder.finish()));
+            }
+            _ => (),
+        };
+        platform.handle_event(imgui.io_mut(), &window, &event);
+    });    
 }
 
 fn get_extension_from_path(path: &str) -> Option<&str> {

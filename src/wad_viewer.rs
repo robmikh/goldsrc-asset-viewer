@@ -133,7 +133,8 @@ impl WadViewer {
                         },
                         _ => (),
                     }
-                    Slider::new(im_str!["Scale"], 1.0..= 10.0)
+                    Slider::new(im_str!["Scale"])
+                        .range(1.0..= 10.0)
                         .build(ui, &mut temp_state.scale);
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
                     let [x, y] = ui.cursor_screen_pos();
@@ -217,8 +218,8 @@ pub fn get_texture_bundle(
 
     for decoded_image in decoded_images {
         let (texture_width, texture_height) = decoded_image.dimensions();
-        let texture = create_imgui_texture(device, queue, renderer.texture_layout(), decoded_image);
-        let texture_id = renderer.textures().insert(texture);
+        let texture = create_imgui_texture(device, queue, renderer, decoded_image);
+        let texture_id = renderer.textures.insert(texture);
 
         textures.push(MipTexture {
             texture_id: texture_id,
