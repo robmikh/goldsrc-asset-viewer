@@ -7,15 +7,15 @@ build = "build/build.rs"
 
 [dependencies]
 wad3parser = { path = "wad3parser" }
-wgpu = "0.6.2"
+wgpu = "0.7.0"
 winit = "0.24.0"
 clap = "2.33.3"
 nalgebra = "0.18"
 nfd = "0.0.4"
 image = "0.23.12"
 env_logger = "0.5"
-imgui = "0.6.1"
-imgui-winit-support = "0.6.1"
+imgui = "0.7.0"
+imgui-winit-support = "0.7.0"
 imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs" }
 futures = "0.3.8"
 mdlparser = { path = "mdlparser" }

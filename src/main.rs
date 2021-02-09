@@ -82,7 +82,7 @@ fn main() {
     let (mut device, mut queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
 
     let swap_chain_desc = wgpu::SwapChainDescriptor {
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+        usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
         format: wgpu::TextureFormat::Bgra8Unorm,
         width: size.width as u32,
         height: size.height as u32,
@@ -152,7 +152,7 @@ fn main() {
                 let size = window.inner_size();
 
                 let swap_chain_desc = wgpu::SwapChainDescriptor {
-                    usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+                    usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
                     format: wgpu::TextureFormat::Bgra8Unorm,
                     width: size.width as u32,
                     height: size.height as u32,
@@ -236,6 +236,7 @@ fn main() {
 
                 {
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: None,
                         color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                             attachment: &frame.output.view,
                             resolve_target: None,
