@@ -212,7 +212,7 @@ fn main() {
                                 } 
                             }
                             if MenuItem::new(im_str!["Exit"]).build(&ui) {
-                                *control_flow = ControlFlow::Wait;
+                                *control_flow = ControlFlow::Exit;
                             }
                         });
                     });
