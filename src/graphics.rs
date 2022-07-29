@@ -1,6 +1,7 @@
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use image::{ImageBuffer, Bgra};
+use wgpu::SamplerDescriptor;
 
 #[derive(Clone)]
 pub struct TextureBundle<T> {
@@ -39,7 +40,12 @@ pub fn create_imgui_texture(
             ..Default::default()
         },
         label: Some("sprite texture"),
-        filter: wgpu::FilterMode::Nearest,
+        sampler_desc: SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let texture = Texture::new(&device, &renderer, texture_config);

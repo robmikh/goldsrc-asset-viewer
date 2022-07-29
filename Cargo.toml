@@ -2,21 +2,21 @@
 name = "goldsrc-asset-viewer"
 version = "0.1.0"
 authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
-edition = "2018"
+edition = "2021"
 build = "build/build.rs"
 
 [dependencies]
 wad3parser = { path = "wad3parser" }
-wgpu = "0.9.0"
-winit = "0.24.0"
+wgpu = "0.13.1"
+winit = "0.26"
 clap = "2.33.3"
 nalgebra = "0.18"
 nfd = "0.0.4"
 image = "0.23.12"
 env_logger = "0.5"
-imgui = "0.7.0"
-imgui-winit-support = "0.7.0"
-imgui-wgpu = { git = "https://github.com/robmikh/imgui-wgpu-rs" }
+imgui = "0.8.2"
+imgui-winit-support = { version = "0.8.2", features = ["winit-26"] }
+imgui-wgpu = "0.20.0"
 futures = "0.3.8"
 mdlparser = { path = "mdlparser" }
 

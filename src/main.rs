@@ -58,13 +58,10 @@ fn main() {
     }
 
     let event_loop = EventLoop::new();
-    let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+    let instance = wgpu::Instance::new(wgpu::Backends::all());
     let (window, size, surface) = {
         let window = Window::new(&event_loop).unwrap();
-        window.set_inner_size(LogicalSize {
-            width: 1447.0,
-            height: 867.0,
-        });
+        window.set_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
         window.set_title("goldsrc-asset-viewer");
         let size = window.inner_size();
         let surface = unsafe {
@@ -75,20 +72,22 @@ fn main() {
 
     let mut hidpi_factor = window.scale_factor();
 
-    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: Some(&surface),
-    })).unwrap();
+    let adapter = block_on(instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        })).unwrap();
     let (mut device, mut queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
 
-    let swap_chain_desc = wgpu::SwapChainDescriptor {
-        usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+    let surface_config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: wgpu::TextureFormat::Bgra8Unorm,
         width: size.width as u32,
         height: size.height as u32,
         present_mode: wgpu::PresentMode::Mailbox,
     };
-    let mut swap_chain = device.create_swap_chain(&surface, &swap_chain_desc);
+    surface.configure(&device, &surface_config);
 
     let mut imgui = imgui::Context::create();
     let mut platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
@@ -119,7 +118,7 @@ fn main() {
     };
 
     let renderer_config = RendererConfig {
-        texture_format: swap_chain_desc.format,
+        texture_format: surface_config.format,
         ..Default::default()
     };
 
@@ -151,15 +150,14 @@ fn main() {
             } => {
                 let size = window.inner_size();
 
-                let swap_chain_desc = wgpu::SwapChainDescriptor {
-                    usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+                let surface_config = wgpu::SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                     format: wgpu::TextureFormat::Bgra8Unorm,
                     width: size.width as u32,
                     height: size.height as u32,
                     present_mode: wgpu::PresentMode::Mailbox,
                 };
-
-                swap_chain = device.create_swap_chain(&surface, &swap_chain_desc);
+                surface.configure(&device, &surface_config);
             }
             Event::WindowEvent {
                 event: WindowEvent::KeyboardInput {
@@ -183,7 +181,7 @@ fn main() {
                 imgui.io_mut().update_delta_time(now - last_frame);
                 last_frame = now;
 
-                let frame = match swap_chain.get_current_frame() {
+                let frame = match surface.get_current_texture() {
                     Ok(frame) => frame,
                     Err(e) => {
                         eprintln!("dropped frame: {:?}", e);
@@ -202,7 +200,7 @@ fn main() {
         
                 {
                     ui.main_menu_bar(|| {
-                        ui.menu(im_str!["File"], true, || {
+                        ui.menu(im_str!["File"], || {
                             if MenuItem::new(im_str!["Open"])
                                 .shortcut(im_str!["Ctrl+O"])
                                 .build(&ui) {
@@ -235,16 +233,19 @@ fn main() {
                 }
 
                 {
+                    let view = frame
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: None,
-                        color_attachments: &[wgpu::RenderPassColorAttachment {
-                            view: &frame.output.view,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(clear_color),
                                 store: true,
                             },
-                        }],
+                        })],
                         depth_stencil_attachment: None,
                     });
     
@@ -254,6 +255,7 @@ fn main() {
                 }
 
                 queue.submit(Some(encoder.finish()));
+                frame.present();
             }
             _ => (),
         };

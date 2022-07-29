@@ -133,8 +133,7 @@ impl WadViewer {
                         },
                         _ => (),
                     }
-                    Slider::new(im_str!["Scale"])
-                        .range(1.0..= 10.0)
+                    Slider::new(im_str!["Scale"], 1.0, 10.0)
                         .build(ui, &mut temp_state.scale);
                     ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
                     let [x, y] = ui.cursor_screen_pos();
