@@ -5,7 +5,7 @@ extern crate serde;
 
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::Path;
 use std::str;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -223,7 +223,8 @@ impl MdlHeader {
 }
 
 impl MdlFile {
-    pub fn open(mdl_path: &str) -> MdlFile {
+    pub fn open<P: AsRef<Path>>(mdl_path: P) -> MdlFile {
+        let mdl_path = mdl_path.as_ref();
         let file = File::open(mdl_path).unwrap();
         let file_size = file.metadata().unwrap().len();
         let mut file = BufReader::new(file);
@@ -232,7 +233,7 @@ impl MdlFile {
         let file_name = header.name_string();
 
         let textures = if header.texture_count == 0 {
-            let mut texture_mdl_path = PathBuf::from(mdl_path);
+            let mut texture_mdl_path = mdl_path.to_owned();
             let file_stem = texture_mdl_path
                 .file_stem()
                 .unwrap()

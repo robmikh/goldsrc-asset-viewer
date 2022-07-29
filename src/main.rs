@@ -1,3 +1,4 @@
+mod cli;
 mod graphics;
 mod mdl_viewer;
 mod wad_viewer;
@@ -5,10 +6,10 @@ mod wad_viewer;
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use clap::*;
+use cli::Cli;
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Instant;
 use wad3parser::{WadArchive, WadFileInfo};
@@ -44,15 +45,10 @@ fn main() {
 
     let mut file_info = FileInfo::None;
 
-    let arg_matches = App::new("goldsrc-asset-viewer")
-        .version(crate_version!())
-        .author("Robert Mikhayelyan <rob.mikh@outlook.com>")
-        .about("A tool to view assets from GoldSource games.")
-        .args_from_usage("[file_path] 'Open the specified file.'")
-        .get_matches();
+    let cli = Cli::parse();
 
-    if let Some(path) = arg_matches.value_of("file_path") {
-        file_info = load_file(&path);
+    if let Some(path) = &cli.file_path {
+        file_info = load_file(path);
     }
 
     let event_loop = EventLoop::new();
@@ -273,22 +269,27 @@ fn main() {
     });
 }
 
-fn get_extension_from_path(path: &str) -> Option<&str> {
-    Path::new(path).extension().and_then(OsStr::to_str)
+fn get_extension_from_path<P: AsRef<Path>>(path: P) -> Option<String> {
+    let path = path.as_ref();
+    let extension = path.extension()?;
+    let extension_str = extension.to_str()?;
+    Some(extension_str.to_owned())
 }
 
-fn load_wad_file(path: &str) -> WadFile {
+fn load_wad_file<P: AsRef<Path>>(path: P) -> WadFile {
+    let path = path.as_ref();
     let archive = WadArchive::open(path);
     let (files, file_names) = load_wad_archive(&archive);
     WadFile {
-        path: path.to_string(),
+        path: path.display().to_string(),
         archive: archive,
         files: files,
         file_names: file_names,
     }
 }
 
-fn load_mdl_file(path: &str) -> MdlFile {
+fn load_mdl_file<P: AsRef<Path>>(path: P) -> MdlFile {
+    let path = path.as_ref();
     let mdl_file = mdlparser::MdlFile::open(path);
 
     let mut texture_names = Vec::new();
@@ -304,17 +305,18 @@ fn load_mdl_file(path: &str) -> MdlFile {
     }
 
     MdlFile {
-        path: path.to_string(),
+        path: path.display().to_string(),
         file: mdl_file,
         texture_names: texture_names,
         body_part_names: body_part_names,
     }
 }
 
-fn load_file(path: &str) -> FileInfo {
+fn load_file<P: AsRef<Path>>(path: P) -> FileInfo {
+    let path = path.as_ref();
     let mut file_info = FileInfo::None;
-    if let Some(extension) = get_extension_from_path(&path) {
-        match extension {
+    if let Some(extension) = get_extension_from_path(path) {
+        match extension.as_str() {
             "wad" => file_info = FileInfo::WadFile(load_wad_file(path)),
             "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
             _ => (),

@@ -5,6 +5,7 @@ extern crate serde;
 
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+use std::path::Path;
 use std::str;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -129,7 +130,7 @@ impl FontHeader {
 }
 
 impl WadArchive {
-    pub fn open(wad_path: &str) -> WadArchive {
+    pub fn open<P: AsRef<Path>>(wad_path: P) -> WadArchive {
         let file = File::open(wad_path).unwrap();
         let file_size = file.metadata().unwrap().len();
         let mut file = BufReader::new(file);
