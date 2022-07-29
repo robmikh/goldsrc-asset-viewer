@@ -3,7 +3,6 @@ name = "goldsrc-asset-viewer"
 version = "0.1.0"
 authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
 edition = "2021"
-build = "build/build.rs"
 
 [dependencies]
 wad3parser = { path = "wad3parser" }
@@ -19,6 +18,3 @@ imgui-winit-support = { version = "0.8.2", features = ["winit-26"] }
 imgui-wgpu = "0.20.0"
 futures = "0.3.8"
 mdlparser = { path = "mdlparser" }
-
-[build-dependencies]
-shaderc = "0.6.2"
