@@ -5,8 +5,7 @@ mod mdl_viewer;
 use futures::executor::block_on;
 use clap::*;
 use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
-use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use imgui_wgpu::{Renderer, RendererConfig};
 use std::collections::HashMap;
 use std::path::Path;
 use std::ffi::OsStr;
@@ -14,7 +13,7 @@ use std::time::Instant;
 use wad3parser::{ WadArchive, WadFileInfo };
 use winit::{
     dpi::LogicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{ElementState, Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -70,7 +69,7 @@ fn main() {
         (window, size, surface)
     };
 
-    let mut hidpi_factor = window.scale_factor();
+    let hidpi_factor = window.scale_factor();
 
     let adapter = block_on(instance
         .request_adapter(&wgpu::RequestAdapterOptions {
@@ -200,16 +199,16 @@ fn main() {
         
                 {
                     ui.main_menu_bar(|| {
-                        ui.menu(im_str!["File"], || {
-                            if MenuItem::new(im_str!["Open"])
-                                .shortcut(im_str!["Ctrl+O"])
+                        ui.menu("File", || {
+                            if MenuItem::new("Open")
+                                .shortcut("Ctrl+O")
                                 .build(&ui) {
                                 let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
                                 if let nfd::Response::Okay(new_path) = result {
                                     pending_path = Some(new_path.to_string());
                                 } 
                             }
-                            if MenuItem::new(im_str!["Exit"]).build(&ui) {
+                            if MenuItem::new("Exit").build(&ui) {
                                 *control_flow = ControlFlow::Exit;
                             }
                         });

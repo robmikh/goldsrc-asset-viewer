@@ -83,6 +83,7 @@ struct WadHeader {
     dir_offset: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct WadDirectory {
     file_position: u32,
@@ -94,6 +95,7 @@ struct WadDirectory {
     name: [u8; 16],
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct MipmappedTextureHeader {
     name: [u8; 16],

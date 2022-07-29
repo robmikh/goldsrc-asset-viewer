@@ -1,5 +1,5 @@
 use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
+use imgui_wgpu::{Renderer, Texture, TextureConfig};
 use image::{ImageBuffer, Bgra};
 use wgpu::SamplerDescriptor;
 

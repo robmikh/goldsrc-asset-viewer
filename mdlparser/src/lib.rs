@@ -3,9 +3,9 @@ extern crate bincode;
 extern crate image;
 extern crate byteorder;
 
-use std::io::{Cursor, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -49,6 +49,7 @@ pub struct MdlTexture {
     pub image_data: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct MdlFile {
     pub name: String,
@@ -58,6 +59,7 @@ pub struct MdlFile {
     raw_data: Vec<u8>,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct TextureHeader {
     name: [[u8; 8]; 8],
@@ -80,6 +82,7 @@ impl TextureHeader {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct MeshHeader {
     triangle_count: u32,
@@ -97,6 +100,7 @@ struct VertexHeader {
     t: u16,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct BodyPartHeader {
     name: [[u8; 8]; 8],
@@ -118,6 +122,7 @@ impl BodyPartHeader {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct ModelHeader {
     name: [[u8; 8]; 8],
@@ -148,6 +153,7 @@ impl ModelHeader {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize)]
 struct MdlHeader {
     id: u32,
@@ -227,13 +233,13 @@ impl MdlFile {
 
         let textures = if header.texture_count == 0 {
             let mut texture_mdl_path = PathBuf::from(mdl_path);
-            let file_stem = texture_mdl_path.file_stem().unwrap().to_str().unwrap();
+            let file_stem = texture_mdl_path.file_stem().unwrap().to_str().unwrap().to_owned();
             texture_mdl_path.set_file_name(format!("{}t.mdl", file_stem));
             let texture_mdl_path = texture_mdl_path.into_os_string();
             let texture_mdl_path = texture_mdl_path.into_string().unwrap();
 
             let file = File::open(texture_mdl_path).unwrap();
-            let file_size = file.metadata().unwrap().len();
+            //let file_size = file.metadata().unwrap().len();
             let mut file = BufReader::new(file);
             let texture_header: MdlHeader = bincode::deserialize_from(&mut file).unwrap();
 
@@ -249,7 +255,7 @@ impl MdlFile {
             let mut body_part_headers = Vec::new();
 
            file.seek(SeekFrom::Start(header.body_part_offset as u64)).unwrap();
-            for i in 0..header.body_part_count {
+            for _ in 0..header.body_part_count {
                 let body_header: BodyPartHeader = bincode::deserialize_from(&mut file).unwrap();
 
                 body_part_headers.push(body_header);
@@ -260,7 +266,7 @@ impl MdlFile {
                 // Model
                 file.seek(SeekFrom::Start(body_header.model_offset as u64)).unwrap();
                 let mut model_headers = Vec::new();
-                for i in 0..body_header.model_count {
+                for _ in 0..body_header.model_count {
                     let model_header: ModelHeader = bincode::deserialize_from(&mut file).unwrap();
                     model_headers.push(model_header);
                 }
@@ -270,7 +276,7 @@ impl MdlFile {
                     // Model Vertex
                     let mut vertices = Vec::new();
                     file.seek(SeekFrom::Start(model_header.vertex_offset as u64)).unwrap();
-                    for i in 0..model_header.vertex_count {
+                    for _ in 0..model_header.vertex_count {
                         let mut vertex = [0f32; 3];
                         vertex[0] = file.read_f32::<LittleEndian>().unwrap();
                         vertex[1] = file.read_f32::<LittleEndian>().unwrap();
@@ -282,7 +288,7 @@ impl MdlFile {
                     // Model Normal
                     let mut normals = Vec::new();
                     file.seek(SeekFrom::Start(model_header.normal_offset as u64)).unwrap();
-                    for i in 0..model_header.normal_count {
+                    for _ in 0..model_header.normal_count {
                         let mut normal = [0f32; 3];
                         normal[0] = file.read_f32::<LittleEndian>().unwrap();
                         normal[1] = file.read_f32::<LittleEndian>().unwrap();
@@ -294,7 +300,7 @@ impl MdlFile {
                     // Mesh
                     let mut mesh_headers = Vec::new();
                     file.seek(SeekFrom::Start(model_header.mesh_offset as u64)).unwrap();
-                    for i in 0..model_header.mesh_count {
+                    for _ in 0..model_header.mesh_count {
                         let mesh_header: MeshHeader = bincode::deserialize_from(&mut file).unwrap();
                         mesh_headers.push(mesh_header);
                     }
@@ -304,7 +310,7 @@ impl MdlFile {
                         // Mesh Vertex
                         file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64)).unwrap();
                         let mut vertex_headers = Vec::new();
-                        for i in 0..mesh_header.triangle_count {
+                        for _ in 0..mesh_header.triangle_count {
                             let vertex_header: VertexHeader = bincode::deserialize_from(&mut file).unwrap();
                             vertex_headers.push(vertex_header);
                         }
@@ -364,7 +370,7 @@ fn read_textures<T: Read + Seek>(mut reader: &mut T, header: &MdlHeader) -> Vec<
     let num_textures = header.texture_count as usize;
     let mut texture_headers = Vec::with_capacity(num_textures);
     reader.seek(SeekFrom::Start(header.texture_offset as u64)).unwrap();
-    for i in 0..num_textures {
+    for _ in 0..num_textures {
         let texture_header: TextureHeader = bincode::deserialize_from(&mut reader).unwrap();
         texture_headers.push(texture_header);
     }

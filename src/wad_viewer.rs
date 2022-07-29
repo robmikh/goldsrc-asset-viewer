@@ -92,12 +92,12 @@ impl WadViewer {
             force_new_selection = true;
         }
 
-        Window::new(im_str!["File list"])
+        Window::new("File list")
             .size([300.0, 400.0], Condition::FirstUseEver)
             .build(ui, || {
-                ui.text(im_str!["Path: {}", &file_info.path]);
+                ui.text(format!("Path: {}", &file_info.path));
                 self.state.new_selection = ui.list_box(
-                    im_str!["Files"], 
+                    "Files", 
                     &mut self.state.selected_file_index,
                     &file_names,
                     file_names.len() as i32);
@@ -115,27 +115,27 @@ impl WadViewer {
 
         let mut temp_state = self.state.clone();
         if let Some(texture_bundle) = self.texture_bundle.as_ref() {
-            Window::new(im_str!["File preview"])
+            Window::new("File preview")
                 .position([500.0, 150.0], Condition::FirstUseEver)
                 .size([300.0, 300.0], Condition::FirstUseEver)
                 .horizontal_scrollbar(true)
                 .build(ui, || {
                     ui.text(&file_names[temp_state.selected_file_index as usize]);
-                    ui.text(im_str!["Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8]);
-                    ui.text(im_str!["Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height]);
+                    ui.text(format!("Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8));
+                    ui.text(format!("Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height));
                     match texture_bundle.extra_data.texture_type {
                         TextureType::Font => {
                             if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
-                                ui.text(im_str!["Row Count: {}", font_data.row_count]);
-                                ui.text(im_str!["Row Height: {}", font_data.row_height]);
-                                ui.checkbox(im_str!["Char Info"], &mut temp_state.font_overlay);
+                                ui.text(format!("Row Count: {}", font_data.row_count));
+                                ui.text(format!("Row Height: {}", font_data.row_height));
+                                ui.checkbox("Char Info", &mut temp_state.font_overlay);
                             }
                         },
                         _ => (),
                     }
-                    Slider::new(im_str!["Scale"], 1.0, 10.0)
+                    Slider::new("Scale", 1.0, 10.0)
                         .build(ui, &mut temp_state.scale);
-                    ui.checkbox(im_str!["Texture outline"], &mut temp_state.texture_outline);
+                    ui.checkbox("Texture outline", &mut temp_state.texture_outline);
                     let [x, y] = ui.cursor_screen_pos();
                     for texture in &texture_bundle.mip_textures {
                         let [x, y] = ui.cursor_screen_pos();
