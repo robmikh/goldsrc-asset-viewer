@@ -14,7 +14,7 @@ nfd = "0.0.4"
 image = "0.23.12"
 env_logger = "0.9.0"
 imgui = "0.8.2"
-imgui-winit-support = { version = "0.8.2", default-features=false, features = ["winit-26"] }
+imgui-winit-support = { version = "0.8.2", default-features = false, features = ["winit-26"] }
 imgui-wgpu = "0.20.0"
 pollster = "0.2.5"
 mdlparser = { path = "mdlparser" }
