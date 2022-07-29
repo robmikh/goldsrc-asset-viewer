@@ -10,7 +10,7 @@ wad3parser = { path = "wad3parser" }
 wgpu = "0.13.1"
 winit = "0.26"
 clap = "2.33.3"
-nalgebra = "0.18"
+glam = "0.21.2"
 nfd = "0.0.4"
 image = "0.23.12"
 env_logger = "0.5"
