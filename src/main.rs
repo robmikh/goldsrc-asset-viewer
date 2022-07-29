@@ -5,7 +5,6 @@ mod wad_viewer;
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use clap::*;
-use futures::executor::block_on;
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
 use std::collections::HashMap;
@@ -69,14 +68,15 @@ fn main() {
 
     let hidpi_factor = window.scale_factor();
 
-    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
     }))
     .unwrap();
     let (mut device, mut queue) =
-        block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            .unwrap();
 
     let surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
