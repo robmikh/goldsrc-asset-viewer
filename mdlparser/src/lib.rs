@@ -1,10 +1,10 @@
-extern crate serde;
 extern crate bincode;
-extern crate image;
 extern crate byteorder;
+extern crate image;
+extern crate serde;
 
-use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::str;
 
@@ -38,7 +38,7 @@ pub struct MdlModel {
 #[derive(Clone)]
 pub struct MdlBodyPart {
     pub name: String,
-    pub models: Vec<MdlModel>
+    pub models: Vec<MdlModel>,
 }
 
 #[derive(Clone)]
@@ -175,7 +175,7 @@ struct MdlHeader {
     bone_offset: u32,
 
     bone_controller_count: u32,
-    bone_controller_offset :u32,
+    bone_controller_offset: u32,
 
     hit_box_count: u32,
     hit_box_offset: u32,
@@ -228,12 +228,17 @@ impl MdlFile {
         let file_size = file.metadata().unwrap().len();
         let mut file = BufReader::new(file);
 
-        let mut header : MdlHeader = bincode::deserialize_from(&mut file).unwrap();
+        let mut header: MdlHeader = bincode::deserialize_from(&mut file).unwrap();
         let file_name = header.name_string();
 
         let textures = if header.texture_count == 0 {
             let mut texture_mdl_path = PathBuf::from(mdl_path);
-            let file_stem = texture_mdl_path.file_stem().unwrap().to_str().unwrap().to_owned();
+            let file_stem = texture_mdl_path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned();
             texture_mdl_path.set_file_name(format!("{}t.mdl", file_stem));
             let texture_mdl_path = texture_mdl_path.into_os_string();
             let texture_mdl_path = texture_mdl_path.into_string().unwrap();
@@ -254,7 +259,8 @@ impl MdlFile {
         let body_parts = {
             let mut body_part_headers = Vec::new();
 
-           file.seek(SeekFrom::Start(header.body_part_offset as u64)).unwrap();
+            file.seek(SeekFrom::Start(header.body_part_offset as u64))
+                .unwrap();
             for _ in 0..header.body_part_count {
                 let body_header: BodyPartHeader = bincode::deserialize_from(&mut file).unwrap();
 
@@ -264,7 +270,8 @@ impl MdlFile {
             let mut body_parts = Vec::new();
             for body_header in body_part_headers {
                 // Model
-                file.seek(SeekFrom::Start(body_header.model_offset as u64)).unwrap();
+                file.seek(SeekFrom::Start(body_header.model_offset as u64))
+                    .unwrap();
                 let mut model_headers = Vec::new();
                 for _ in 0..body_header.model_count {
                     let model_header: ModelHeader = bincode::deserialize_from(&mut file).unwrap();
@@ -275,7 +282,8 @@ impl MdlFile {
                 for model_header in model_headers {
                     // Model Vertex
                     let mut vertices = Vec::new();
-                    file.seek(SeekFrom::Start(model_header.vertex_offset as u64)).unwrap();
+                    file.seek(SeekFrom::Start(model_header.vertex_offset as u64))
+                        .unwrap();
                     for _ in 0..model_header.vertex_count {
                         let mut vertex = [0f32; 3];
                         vertex[0] = file.read_f32::<LittleEndian>().unwrap();
@@ -287,7 +295,8 @@ impl MdlFile {
 
                     // Model Normal
                     let mut normals = Vec::new();
-                    file.seek(SeekFrom::Start(model_header.normal_offset as u64)).unwrap();
+                    file.seek(SeekFrom::Start(model_header.normal_offset as u64))
+                        .unwrap();
                     for _ in 0..model_header.normal_count {
                         let mut normal = [0f32; 3];
                         normal[0] = file.read_f32::<LittleEndian>().unwrap();
@@ -299,7 +308,8 @@ impl MdlFile {
 
                     // Mesh
                     let mut mesh_headers = Vec::new();
-                    file.seek(SeekFrom::Start(model_header.mesh_offset as u64)).unwrap();
+                    file.seek(SeekFrom::Start(model_header.mesh_offset as u64))
+                        .unwrap();
                     for _ in 0..model_header.mesh_count {
                         let mesh_header: MeshHeader = bincode::deserialize_from(&mut file).unwrap();
                         mesh_headers.push(mesh_header);
@@ -308,10 +318,12 @@ impl MdlFile {
                     let mut meshes = Vec::new();
                     for mesh_header in mesh_headers {
                         // Mesh Vertex
-                        file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64)).unwrap();
+                        file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64))
+                            .unwrap();
                         let mut vertex_headers = Vec::new();
                         for _ in 0..mesh_header.triangle_count {
-                            let vertex_header: VertexHeader = bincode::deserialize_from(&mut file).unwrap();
+                            let vertex_header: VertexHeader =
+                                bincode::deserialize_from(&mut file).unwrap();
                             vertex_headers.push(vertex_header);
                         }
 
@@ -325,7 +337,7 @@ impl MdlFile {
                             };
                             mesh_vertices.push(mesh_vertex);
                         }
-                        
+
                         meshes.push(MdlMesh {
                             vertices: mesh_vertices,
                             vertices_count: mesh_header.triangle_count,
@@ -341,7 +353,6 @@ impl MdlFile {
                         normals: normals,
                     })
                 }
-                
 
                 body_parts.push(MdlBodyPart {
                     name: body_header.name_string(),
@@ -369,24 +380,33 @@ impl MdlFile {
 fn read_textures<T: Read + Seek>(mut reader: &mut T, header: &MdlHeader) -> Vec<MdlTexture> {
     let num_textures = header.texture_count as usize;
     let mut texture_headers = Vec::with_capacity(num_textures);
-    reader.seek(SeekFrom::Start(header.texture_offset as u64)).unwrap();
+    reader
+        .seek(SeekFrom::Start(header.texture_offset as u64))
+        .unwrap();
     for _ in 0..num_textures {
         let texture_header: TextureHeader = bincode::deserialize_from(&mut reader).unwrap();
         texture_headers.push(texture_header);
     }
-    
+
     let mut textures = Vec::with_capacity(num_textures);
     for texture_header in &texture_headers {
         let name_string = texture_header.name_string();
 
         let mut image_data = vec![0u8; (texture_header.width * texture_header.height) as usize];
-        reader.seek(SeekFrom::Start(texture_header.offset as u64)).unwrap();
+        reader
+            .seek(SeekFrom::Start(texture_header.offset as u64))
+            .unwrap();
         reader.read_exact(image_data.as_mut_slice()).unwrap();
 
         let mut palette_data = [0u8; 256 * 3];
         reader.read_exact(&mut palette_data).unwrap();
 
-        let converted_image = create_image(&image_data, &palette_data, texture_header.width, texture_header.height);
+        let converted_image = create_image(
+            &image_data,
+            &palette_data,
+            texture_header.width,
+            texture_header.height,
+        );
 
         textures.push(MdlTexture {
             name: name_string.to_string(),
@@ -400,7 +420,12 @@ fn read_textures<T: Read + Seek>(mut reader: &mut T, header: &MdlHeader) -> Vec<
 }
 
 // TODO: Consolodate these image decoders into one crate
-fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, texture_height: u32) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+fn create_image(
+    image_data: &[u8],
+    palette_data: &[u8],
+    texture_width: u32,
+    texture_height: u32,
+) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
     let mut image_bgra_data = Vec::<u8>::new();
     for palette_index in image_data {
         let index = (*palette_index as usize) * 3;
@@ -408,9 +433,7 @@ fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, text
         let g_color = palette_data[index + 1];
         let b_color = palette_data[index + 2];
 
-        if r_color == 0 &&
-            g_color == 0 &&
-            b_color == 255 {
+        if r_color == 0 && g_color == 0 && b_color == 255 {
             image_bgra_data.push(0);
             image_bgra_data.push(0);
             image_bgra_data.push(0);
@@ -425,5 +448,10 @@ fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, text
         }
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(texture_width, texture_height, image_bgra_data).unwrap()
+    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+        texture_width,
+        texture_height,
+        image_bgra_data,
+    )
+    .unwrap()
 }

@@ -1,6 +1,6 @@
+use image::{Bgra, ImageBuffer};
 use imgui::*;
 use imgui_wgpu::{Renderer, Texture, TextureConfig};
-use image::{ImageBuffer, Bgra};
 use wgpu::SamplerDescriptor;
 
 #[derive(Clone)]
@@ -16,7 +16,7 @@ pub struct MipTexture {
     pub height: u32,
 }
 
-impl <T> TextureBundle<T> {
+impl<T> TextureBundle<T> {
     pub fn clear(&mut self, renderer: &mut Renderer) {
         // unbind our previous textures
         for texture in self.mip_textures.drain(..) {

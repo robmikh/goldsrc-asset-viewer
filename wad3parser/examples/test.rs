@@ -1,7 +1,7 @@
 extern crate wad3parser;
 
 use std::env;
-use wad3parser::{ WadArchive, TextureType };
+use wad3parser::{TextureType, WadArchive};
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -16,7 +16,9 @@ fn main() {
         println!("{} - {:?}", name, info.texture_type);
 
         if name == search {
-            if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
+            if info.texture_type == TextureType::Decal
+                || info.texture_type == TextureType::MipmappedImage
+            {
                 let image_data = match info.texture_type {
                     TextureType::Decal => archive.decode_decal(&info),
                     TextureType::MipmappedImage => archive.decode_mipmaped_image(&info),

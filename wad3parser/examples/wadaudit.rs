@@ -1,9 +1,9 @@
-extern crate wad3parser;
 extern crate glob;
+extern crate wad3parser;
 
 use glob::glob;
 use std::env;
-use wad3parser::{ WadArchive, TextureType };
+use wad3parser::{TextureType, WadArchive};
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -20,7 +20,7 @@ fn main() {
         let archive = WadArchive::open(&wad_path);
         let file_infos = &archive.files;
         for info in file_infos {
-            let  name = &info.name;
+            let name = &info.name;
             if info.texture_type == TextureType::Font {
                 println!("{} - {:?}", name, info.texture_type);
 

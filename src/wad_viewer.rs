@@ -1,9 +1,9 @@
-use crate::graphics::{create_imgui_texture, TextureBundle, MipTexture};
+use crate::graphics::{create_imgui_texture, MipTexture, TextureBundle};
 use crate::WadFile;
 use imgui::*;
 use imgui_wgpu::Renderer;
 use std::collections::HashMap;
-use wad3parser::{ WadArchive, WadFileInfo, TextureType, CharInfo };
+use wad3parser::{CharInfo, TextureType, WadArchive, WadFileInfo};
 
 #[derive(Clone)]
 pub struct FontMetadata {
@@ -76,11 +76,11 @@ impl WadViewer {
     }
 
     pub fn build_ui(
-        &mut self, 
-        ui: &Ui, 
-        file_info: &WadFile, 
-        device: &mut wgpu::Device, 
-        queue: &mut wgpu::Queue, 
+        &mut self,
+        ui: &Ui,
+        file_info: &WadFile,
+        device: &mut wgpu::Device,
+        queue: &mut wgpu::Queue,
         renderer: &mut Renderer,
     ) {
         let file_names = &file_info.file_names.iter().collect::<Vec<_>>();
@@ -97,10 +97,11 @@ impl WadViewer {
             .build(ui, || {
                 ui.text(format!("Path: {}", &file_info.path));
                 self.state.new_selection = ui.list_box(
-                    "Files", 
+                    "Files",
                     &mut self.state.selected_file_index,
                     &file_names,
-                    file_names.len() as i32);
+                    file_names.len() as i32,
+                );
             });
 
         if self.state.new_selection || force_new_selection {
@@ -109,8 +110,17 @@ impl WadViewer {
                 texture_bundle.clear(renderer);
             }
 
-            let info = file_info.files.get(&file_info.file_names[self.state.selected_file_index as usize]).unwrap();
-            self.texture_bundle = Some(get_texture_bundle(&file_info.archive, &info, device, queue, renderer));
+            let info = file_info
+                .files
+                .get(&file_info.file_names[self.state.selected_file_index as usize])
+                .unwrap();
+            self.texture_bundle = Some(get_texture_bundle(
+                &file_info.archive,
+                &info,
+                device,
+                queue,
+                renderer,
+            ));
         }
 
         let mut temp_state = self.state.clone();
@@ -121,8 +131,15 @@ impl WadViewer {
                 .horizontal_scrollbar(true)
                 .build(ui, || {
                     ui.text(&file_names[temp_state.selected_file_index as usize]);
-                    ui.text(format!("Type: {:?} (0x{:X})", texture_bundle.extra_data.texture_type, texture_bundle.extra_data.texture_type as u8));
-                    ui.text(format!("Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height));
+                    ui.text(format!(
+                        "Type: {:?} (0x{:X})",
+                        texture_bundle.extra_data.texture_type,
+                        texture_bundle.extra_data.texture_type as u8
+                    ));
+                    ui.text(format!(
+                        "Size: {} x {}",
+                        texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height
+                    ));
                     match texture_bundle.extra_data.texture_type {
                         TextureType::Font => {
                             if let Some(font_data) = texture_bundle.extra_data.font.as_ref() {
@@ -130,20 +147,32 @@ impl WadViewer {
                                 ui.text(format!("Row Height: {}", font_data.row_height));
                                 ui.checkbox("Char Info", &mut temp_state.font_overlay);
                             }
-                        },
+                        }
                         _ => (),
                     }
-                    Slider::new("Scale", 1.0, 10.0)
-                        .build(ui, &mut temp_state.scale);
+                    Slider::new("Scale", 1.0, 10.0).build(ui, &mut temp_state.scale);
                     ui.checkbox("Texture outline", &mut temp_state.texture_outline);
                     let [x, y] = ui.cursor_screen_pos();
                     for texture in &texture_bundle.mip_textures {
                         let [x, y] = ui.cursor_screen_pos();
-                        Image::new(texture.texture_id, [texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale])
-                            .build(ui);
+                        Image::new(
+                            texture.texture_id,
+                            [
+                                texture.width as f32 * temp_state.scale,
+                                texture.height as f32 * temp_state.scale,
+                            ],
+                        )
+                        .build(ui);
                         if temp_state.texture_outline {
                             ui.get_window_draw_list()
-                                .add_rect([x, y], [x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)], [0.0, 1.0, 0.0, 1.0])
+                                .add_rect(
+                                    [x, y],
+                                    [
+                                        x + ((texture.width as f32) * temp_state.scale),
+                                        y + ((texture.height as f32) * temp_state.scale),
+                                    ],
+                                    [0.0, 1.0, 0.0, 1.0],
+                                )
                                 .thickness(2.0)
                                 .build();
                         }
@@ -178,14 +207,24 @@ impl WadViewer {
 }
 
 pub fn get_decoded_data(
-    archive: &WadArchive, 
+    archive: &WadArchive,
     info: &WadFileInfo,
-) -> (Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>>, ExtraTextureData) {
+) -> (
+    Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>>,
+    ExtraTextureData,
+) {
     let mut extra_data = ExtraTextureData::new(info.texture_type);
     let datas = {
-        if info.texture_type == TextureType::Decal || info.texture_type == TextureType::MipmappedImage {
+        if info.texture_type == TextureType::Decal
+            || info.texture_type == TextureType::MipmappedImage
+        {
             let image_data = archive.decode_mipmaped_image(&info);
-            vec![image_data.image, image_data.mipmap1, image_data.mipmap2, image_data.mipmap3]
+            vec![
+                image_data.image,
+                image_data.mipmap1,
+                image_data.mipmap2,
+                image_data.mipmap3,
+            ]
         } else if info.texture_type == TextureType::Image {
             let image_data = archive.decode_image(&info);
             vec![image_data.image]
@@ -206,7 +245,7 @@ pub fn get_decoded_data(
 }
 
 pub fn get_texture_bundle(
-    archive: &WadArchive, 
+    archive: &WadArchive,
     info: &WadFileInfo,
     device: &mut wgpu::Device,
     queue: &mut wgpu::Queue,
@@ -228,7 +267,7 @@ pub fn get_texture_bundle(
     }
 
     TextureBundle {
-        mip_textures: textures, 
+        mip_textures: textures,
         extra_data: texture_data,
     }
 }
@@ -245,4 +284,3 @@ pub fn load_wad_archive(archive: &WadArchive) -> (HashMap<ImString, WadFileInfo>
 
     (files, file_names)
 }
-

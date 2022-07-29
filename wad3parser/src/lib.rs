@@ -1,10 +1,10 @@
-extern crate serde;
 extern crate bincode;
-extern crate image;
 extern crate byteorder;
+extern crate image;
+extern crate serde;
 
-use std::io::{Cursor, BufReader, Read, Seek, SeekFrom};
 use std::fs::File;
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::str;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -119,7 +119,7 @@ struct FontHeader {
     height: u32,
     row_count: u32,
     row_height: u32,
-    font_data: [[u8; 32]; 32]
+    font_data: [[u8; 32]; 32],
 }
 
 impl FontHeader {
@@ -134,16 +134,17 @@ impl WadArchive {
         let file_size = file.metadata().unwrap().len();
         let mut file = BufReader::new(file);
 
-        let header : WadHeader = bincode::deserialize_from(&mut file).unwrap();
+        let header: WadHeader = bincode::deserialize_from(&mut file).unwrap();
         assert_eq!(header.magic[0], 87); // 'W' in ASCII
         assert_eq!(header.magic[1], 65); // 'A' in ASCII
         assert_eq!(header.magic[2], 68); // 'D' in ASCII
         assert_eq!(header.magic[3], 51); // '3' in ASCII
 
         let mut file_infos = Vec::new();
-        file.seek(SeekFrom::Start(header.dir_offset as u64)).unwrap();
+        file.seek(SeekFrom::Start(header.dir_offset as u64))
+            .unwrap();
         for _i in 0..header.num_dir {
-            let wad_dir : WadDirectory = bincode::deserialize_from(&mut file).unwrap();
+            let wad_dir: WadDirectory = bincode::deserialize_from(&mut file).unwrap();
             let name = str::from_utf8(&wad_dir.name).unwrap();
             let name = name.trim_matches(char::from(0));
             let texture_type = match wad_dir.dir_type {
@@ -174,17 +175,32 @@ impl WadArchive {
         assert_eq!(file_info.texture_type, TextureType::Decal);
 
         let mut reader = self.get_file_data(file_info);
-        let texture_header : MipmappedTextureHeader = bincode::deserialize_from(&mut reader).unwrap();
+        let texture_header: MipmappedTextureHeader =
+            bincode::deserialize_from(&mut reader).unwrap();
 
-        let (image_data, mipmap1_data, mipmap2_data, mipmap3_data) = read_mipmapped_image_data(&texture_header, &mut reader);
+        let (image_data, mipmap1_data, mipmap2_data, mipmap3_data) =
+            read_mipmapped_image_data(&texture_header, &mut reader);
 
         let num_colors = reader.read_u16::<LittleEndian>().unwrap();
         assert_eq!(num_colors, 256);
 
-        let converted_image = create_image_greyscale(&image_data, texture_header.width, texture_header.height);
-        let converted_mipmap1 = create_image_greyscale(&mipmap1_data, texture_header.width / 2, texture_header.height / 2);
-        let converted_mipmap2 = create_image_greyscale(&mipmap2_data, texture_header.width / 4, texture_header.height / 4);
-        let converted_mipmap3 = create_image_greyscale(&mipmap3_data, texture_header.width / 8, texture_header.height / 8);
+        let converted_image =
+            create_image_greyscale(&image_data, texture_header.width, texture_header.height);
+        let converted_mipmap1 = create_image_greyscale(
+            &mipmap1_data,
+            texture_header.width / 2,
+            texture_header.height / 2,
+        );
+        let converted_mipmap2 = create_image_greyscale(
+            &mipmap2_data,
+            texture_header.width / 4,
+            texture_header.height / 4,
+        );
+        let converted_mipmap3 = create_image_greyscale(
+            &mipmap3_data,
+            texture_header.width / 8,
+            texture_header.height / 8,
+        );
 
         MipmapedTextureData {
             image_width: texture_header.width,
@@ -198,21 +214,46 @@ impl WadArchive {
 
     pub fn decode_mipmaped_image(&self, file_info: &WadFileInfo) -> MipmapedTextureData {
         // the only decal in half-life is LOGO in tempdecal.wad, and it has the same layout as a mipmapped image.
-        assert!(file_info.texture_type == TextureType::MipmappedImage || file_info.texture_type == TextureType::Decal);
+        assert!(
+            file_info.texture_type == TextureType::MipmappedImage
+                || file_info.texture_type == TextureType::Decal
+        );
 
         let mut reader = self.get_file_data(file_info);
-        let texture_header : MipmappedTextureHeader = bincode::deserialize_from(&mut reader).unwrap();
+        let texture_header: MipmappedTextureHeader =
+            bincode::deserialize_from(&mut reader).unwrap();
 
-        let (image_data, mipmap1_data, mipmap2_data, mipmap3_data) = read_mipmapped_image_data(&texture_header, &mut reader);
+        let (image_data, mipmap1_data, mipmap2_data, mipmap3_data) =
+            read_mipmapped_image_data(&texture_header, &mut reader);
 
         let num_colors = reader.read_u16::<LittleEndian>().unwrap();
         let mut palette_data = vec![0u8; (3 * num_colors) as usize];
         reader.read_exact(&mut palette_data).unwrap();
 
-        let converted_image = create_image(&image_data, &palette_data, texture_header.width, texture_header.height);
-        let converted_mipmap1 = create_image(&mipmap1_data, &palette_data, texture_header.width / 2, texture_header.height / 2);
-        let converted_mipmap2 = create_image(&mipmap2_data, &palette_data, texture_header.width / 4, texture_header.height / 4);
-        let converted_mipmap3 = create_image(&mipmap3_data, &palette_data, texture_header.width / 8, texture_header.height / 8);
+        let converted_image = create_image(
+            &image_data,
+            &palette_data,
+            texture_header.width,
+            texture_header.height,
+        );
+        let converted_mipmap1 = create_image(
+            &mipmap1_data,
+            &palette_data,
+            texture_header.width / 2,
+            texture_header.height / 2,
+        );
+        let converted_mipmap2 = create_image(
+            &mipmap2_data,
+            &palette_data,
+            texture_header.width / 4,
+            texture_header.height / 4,
+        );
+        let converted_mipmap3 = create_image(
+            &mipmap3_data,
+            &palette_data,
+            texture_header.width / 8,
+            texture_header.height / 8,
+        );
 
         MipmapedTextureData {
             image_width: texture_header.width,
@@ -229,7 +270,7 @@ impl WadArchive {
 
         let mut reader = self.get_file_data(file_info);
 
-        let texture_header : TextureHeader = bincode::deserialize_from(&mut reader).unwrap();
+        let texture_header: TextureHeader = bincode::deserialize_from(&mut reader).unwrap();
 
         let mut image_data = vec![0u8; (texture_header.width * texture_header.height) as usize];
         reader.read_exact(image_data.as_mut_slice()).unwrap();
@@ -238,7 +279,12 @@ impl WadArchive {
         let mut palette_data = vec![0u8; (3 * num_colors) as usize];
         reader.read_exact(&mut palette_data).unwrap();
 
-        let converted_image = create_image(&image_data, &palette_data, texture_header.width, texture_header.height);
+        let converted_image = create_image(
+            &image_data,
+            &palette_data,
+            texture_header.width,
+            texture_header.height,
+        );
 
         TextureData {
             image_width: texture_header.width,
@@ -289,7 +335,13 @@ impl WadArchive {
         // Otherwise we would hit the end of the file before we read enough bytes.
         reader.read(palette_data.as_mut_slice()).unwrap();
 
-        let converted_image = create_image_with_alpha_key(&image_data, &palette_data, texture_header.width, texture_header.height, 255);
+        let converted_image = create_image_with_alpha_key(
+            &image_data,
+            &palette_data,
+            texture_header.width,
+            texture_header.height,
+            255,
+        );
 
         FontData {
             image_width: texture_header.width,
@@ -312,7 +364,12 @@ impl WadArchive {
     }
 }
 
-fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, texture_height: u32) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+fn create_image(
+    image_data: &[u8],
+    palette_data: &[u8],
+    texture_width: u32,
+    texture_height: u32,
+) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
     let mut image_bgra_data = Vec::<u8>::new();
     for palette_index in image_data {
         let index = (*palette_index as usize) * 3;
@@ -320,9 +377,7 @@ fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, text
         let g_color = palette_data[index + 1];
         let b_color = palette_data[index + 2];
 
-        if r_color == 0 &&
-            g_color == 0 &&
-            b_color == 255 {
+        if r_color == 0 && g_color == 0 && b_color == 255 {
             image_bgra_data.push(0);
             image_bgra_data.push(0);
             image_bgra_data.push(0);
@@ -337,10 +392,21 @@ fn create_image(image_data: &[u8], palette_data: &[u8], texture_width: u32, text
         }
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(texture_width, texture_height, image_bgra_data).unwrap()
+    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+        texture_width,
+        texture_height,
+        image_bgra_data,
+    )
+    .unwrap()
 }
 
-fn create_image_with_alpha_key(image_data: &[u8], palette_data: &[u8], texture_width: u32, texture_height: u32, alpha_key: u8) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+fn create_image_with_alpha_key(
+    image_data: &[u8],
+    palette_data: &[u8],
+    texture_width: u32,
+    texture_height: u32,
+    alpha_key: u8,
+) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
     let mut image_bgra_data = Vec::<u8>::new();
     for palette_index in image_data {
         let index = (*palette_index as usize) * 3;
@@ -348,9 +414,7 @@ fn create_image_with_alpha_key(image_data: &[u8], palette_data: &[u8], texture_w
         let g_color = palette_data[index + 1];
         let b_color = palette_data[index + 2];
 
-        if (r_color == 0 &&
-            g_color == 0 &&
-            b_color == 255) || *palette_index == alpha_key {
+        if (r_color == 0 && g_color == 0 && b_color == 255) || *palette_index == alpha_key {
             image_bgra_data.push(0);
             image_bgra_data.push(0);
             image_bgra_data.push(0);
@@ -365,10 +429,19 @@ fn create_image_with_alpha_key(image_data: &[u8], palette_data: &[u8], texture_w
         }
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(texture_width, texture_height, image_bgra_data).unwrap()
+    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+        texture_width,
+        texture_height,
+        image_bgra_data,
+    )
+    .unwrap()
 }
 
-fn create_image_greyscale(image_data: &[u8], texture_width: u32, texture_height: u32) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
+fn create_image_greyscale(
+    image_data: &[u8],
+    texture_width: u32,
+    texture_height: u32,
+) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
     let mut image_bgra_data = Vec::<u8>::new();
     for value in image_data {
         image_bgra_data.push(*value);
@@ -377,22 +450,41 @@ fn create_image_greyscale(image_data: &[u8], texture_width: u32, texture_height:
         image_bgra_data.push(255);
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(texture_width, texture_height, image_bgra_data).unwrap()
+    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+        texture_width,
+        texture_height,
+        image_bgra_data,
+    )
+    .unwrap()
 }
 
-fn read_mipmapped_image_data(texture_header: &MipmappedTextureHeader, reader: &mut Cursor<&[u8]>) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+fn read_mipmapped_image_data(
+    texture_header: &MipmappedTextureHeader,
+    reader: &mut Cursor<&[u8]>,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut image_data = vec![0u8; (texture_header.width * texture_header.height) as usize];
-    let mut mipmap1_data = vec![0u8; ((texture_header.width / 2) * (texture_header.height / 2)) as usize];
-    let mut mipmap2_data = vec![0u8; ((texture_header.width / 4) * (texture_header.height / 4)) as usize];
-    let mut mipmap3_data = vec![0u8; ((texture_header.width / 8) * (texture_header.height / 8)) as usize];
+    let mut mipmap1_data =
+        vec![0u8; ((texture_header.width / 2) * (texture_header.height / 2)) as usize];
+    let mut mipmap2_data =
+        vec![0u8; ((texture_header.width / 4) * (texture_header.height / 4)) as usize];
+    let mut mipmap3_data =
+        vec![0u8; ((texture_header.width / 8) * (texture_header.height / 8)) as usize];
 
-    reader.seek(SeekFrom::Start(texture_header.image_offset as u64)).unwrap();
+    reader
+        .seek(SeekFrom::Start(texture_header.image_offset as u64))
+        .unwrap();
     reader.read_exact(image_data.as_mut_slice()).unwrap();
-    reader.seek(SeekFrom::Start(texture_header.mipmap1_offset as u64)).unwrap();
+    reader
+        .seek(SeekFrom::Start(texture_header.mipmap1_offset as u64))
+        .unwrap();
     reader.read_exact(mipmap1_data.as_mut_slice()).unwrap();
-    reader.seek(SeekFrom::Start(texture_header.mipmap2_offset as u64)).unwrap();
+    reader
+        .seek(SeekFrom::Start(texture_header.mipmap2_offset as u64))
+        .unwrap();
     reader.read_exact(mipmap2_data.as_mut_slice()).unwrap();
-    reader.seek(SeekFrom::Start(texture_header.mipmap3_offset as u64)).unwrap();
+    reader
+        .seek(SeekFrom::Start(texture_header.mipmap3_offset as u64))
+        .unwrap();
     reader.read_exact(mipmap3_data.as_mut_slice()).unwrap();
 
     (image_data, mipmap1_data, mipmap2_data, mipmap3_data)

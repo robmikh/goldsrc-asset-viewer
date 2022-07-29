@@ -1,24 +1,24 @@
 mod graphics;
-mod wad_viewer;
 mod mdl_viewer;
+mod wad_viewer;
 
-use futures::executor::block_on;
+use crate::mdl_viewer::MdlViewer;
+use crate::wad_viewer::{load_wad_archive, WadViewer};
 use clap::*;
+use futures::executor::block_on;
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
 use std::collections::HashMap;
-use std::path::Path;
 use std::ffi::OsStr;
+use std::path::Path;
 use std::time::Instant;
-use wad3parser::{ WadArchive, WadFileInfo };
+use wad3parser::{WadArchive, WadFileInfo};
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
-use crate::wad_viewer::{WadViewer, load_wad_archive};
-use crate::mdl_viewer::{MdlViewer};
 
 pub struct MdlFile {
     pub path: String,
@@ -63,21 +63,20 @@ fn main() {
         window.set_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
         window.set_title("goldsrc-asset-viewer");
         let size = window.inner_size();
-        let surface = unsafe {
-            instance.create_surface(&window)
-        };
+        let surface = unsafe { instance.create_surface(&window) };
         (window, size, surface)
     };
 
     let hidpi_factor = window.scale_factor();
 
-    let adapter = block_on(instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        })).unwrap();
-    let (mut device, mut queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: None,
+        force_fallback_adapter: false,
+    }))
+    .unwrap();
+    let (mut device, mut queue) =
+        block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
 
     let surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -159,14 +158,16 @@ fn main() {
                 surface.configure(&device, &surface_config);
             }
             Event::WindowEvent {
-                event: WindowEvent::KeyboardInput {
-                    input: winit::event::KeyboardInput {
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                        state: ElementState::Pressed,
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                state: ElementState::Pressed,
+                                ..
+                            },
                         ..
                     },
-                    ..
-                },
                 ..
             }
             | Event::WindowEvent {
@@ -196,33 +197,43 @@ fn main() {
                     file_info = load_file(new_path);
                     pending_path = None;
                 }
-        
+
                 {
                     ui.main_menu_bar(|| {
                         ui.menu("File", || {
-                            if MenuItem::new("Open")
-                                .shortcut("Ctrl+O")
-                                .build(&ui) {
+                            if MenuItem::new("Open").shortcut("Ctrl+O").build(&ui) {
                                 let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
                                 if let nfd::Response::Okay(new_path) = result {
                                     pending_path = Some(new_path.to_string());
-                                } 
+                                }
                             }
                             if MenuItem::new("Exit").build(&ui) {
                                 *control_flow = ControlFlow::Exit;
                             }
                         });
                     });
-        
+
                     match &file_info {
-                        FileInfo::WadFile(file_info) => wad_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
-                        FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(&ui, &file_info, &mut device, &mut queue, &mut renderer),
+                        FileInfo::WadFile(file_info) => wad_viewer.build_ui(
+                            &ui,
+                            &file_info,
+                            &mut device,
+                            &mut queue,
+                            &mut renderer,
+                        ),
+                        FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
+                            &ui,
+                            &file_info,
+                            &mut device,
+                            &mut queue,
+                            &mut renderer,
+                        ),
                         _ => (),
                     }
-                    
+
                     //ui.show_demo_window(&mut demo_open);
                 }
-        
+
                 let mut encoder: wgpu::CommandEncoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -247,7 +258,7 @@ fn main() {
                         })],
                         depth_stencil_attachment: None,
                     });
-    
+
                     renderer
                         .render(ui.render(), &queue, &device, &mut rpass)
                         .expect("Rendering failed");
@@ -259,13 +270,11 @@ fn main() {
             _ => (),
         };
         platform.handle_event(imgui.io_mut(), &window, &event);
-    });    
+    });
 }
 
 fn get_extension_from_path(path: &str) -> Option<&str> {
-    Path::new(path)
-        .extension()
-        .and_then(OsStr::to_str)
+    Path::new(path).extension().and_then(OsStr::to_str)
 }
 
 fn load_wad_file(path: &str) -> WadFile {

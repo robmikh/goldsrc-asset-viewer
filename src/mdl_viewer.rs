@@ -2,11 +2,10 @@ use crate::graphics::*;
 use crate::MdlFile;
 use imgui::*;
 use imgui_wgpu::Renderer;
-use mdlparser::{ MdlTexture };
+use mdlparser::MdlTexture;
 
 #[derive(Clone)]
-pub struct ExtraTextureData {
-}
+pub struct ExtraTextureData {}
 
 #[derive(Copy, Clone)]
 struct MdlViewerState {
@@ -78,11 +77,11 @@ impl MdlViewer {
     }
 
     pub fn build_ui(
-        &mut self, 
-        ui: &Ui, 
-        file_info: &MdlFile, 
-        device: &mut wgpu::Device, 
-        queue: &mut wgpu::Queue, 
+        &mut self,
+        ui: &Ui,
+        file_info: &MdlFile,
+        device: &mut wgpu::Device,
+        queue: &mut wgpu::Queue,
         renderer: &mut Renderer,
     ) {
         let texture_names = &file_info.texture_names.iter().collect::<Vec<_>>();
@@ -101,10 +100,11 @@ impl MdlViewer {
                 ui.text(format!("Path: {}", &file_info.path));
                 ui.text(format!("Name: {}", &file_info.file.name));
                 self.state.new_selection = ui.list_box(
-                    "Textures", 
+                    "Textures",
                     &mut self.state.selected_file_index,
                     &texture_names,
-                    texture_names.len() as i32);
+                    texture_names.len() as i32,
+                );
             });
 
         Window::new("Body part list")
@@ -113,10 +113,11 @@ impl MdlViewer {
             .build(ui, || {
                 ui.text(format!("Body parts: {}", &file_info.file.body_parts.len()));
                 self.state.new_body_part_selection = ui.list_box(
-                    "Body parts", 
-                    &mut self.state.selected_body_part_index, 
-                    &body_part_names, 
-                    body_part_names.len() as i32);
+                    "Body parts",
+                    &mut self.state.selected_body_part_index,
+                    &body_part_names,
+                    body_part_names.len() as i32,
+                );
             });
 
         if self.state.new_body_part_selection {
@@ -125,7 +126,8 @@ impl MdlViewer {
         }
 
         if file_info.file.body_parts.len() > 0 {
-            let body_part = &file_info.file.body_parts[self.state.selected_body_part_index as usize];
+            let body_part =
+                &file_info.file.body_parts[self.state.selected_body_part_index as usize];
             if body_part.models.len() > 0 {
                 let model_names = {
                     let mut model_names = Vec::with_capacity(body_part.models.len());
@@ -141,10 +143,11 @@ impl MdlViewer {
                     .build(ui, || {
                         ui.text(format!("Models: {}", model_names.len()));
                         self.state.new_model_selection = ui.list_box(
-                            "Models", 
-                            &mut self.state.selected_model_index, 
-                            &model_names, 
-                            model_names.len() as i32);
+                            "Models",
+                            &mut self.state.selected_model_index,
+                            &model_names,
+                            model_names.len() as i32,
+                        );
                     });
 
                 if self.state.new_model_selection {
@@ -177,7 +180,7 @@ impl MdlViewer {
                                 ui.text(format!("{}, {}, {}", normal[0], normal[1], normal[2]));
                             }
                         });
-                }     
+                }
 
                 if model.meshes.len() > 0 {
                     let mesh_names = {
@@ -194,10 +197,11 @@ impl MdlViewer {
                         .build(ui, || {
                             ui.text(format!("Meshes: {}", mesh_names.len()));
                             self.state.new_mesh_selection = ui.list_box(
-                                "Models", 
-                                &mut self.state.selected_mesh_index, 
-                                &mesh_names, 
-                                mesh_names.len() as i32);
+                                "Models",
+                                &mut self.state.selected_mesh_index,
+                                &mesh_names,
+                                mesh_names.len() as i32,
+                            );
                         });
 
                     let mesh = &model.meshes[self.state.selected_mesh_index as usize];
@@ -210,13 +214,15 @@ impl MdlViewer {
                             ui.text(format!("Normals: {}", mesh.normal_count));
                             ui.text("v, n, s, t");
                             for vertex in &mesh.vertices {
-                                ui.text(format!("{}, {}, {}, {}", vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t));
+                                ui.text(format!(
+                                    "{}, {}, {}, {}",
+                                    vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t
+                                ));
                             }
                         });
                 }
             }
         }
-        
 
         if self.state.new_selection || force_new_selection {
             // unbind our previous textures
@@ -236,17 +242,32 @@ impl MdlViewer {
                 .horizontal_scrollbar(true)
                 .build(ui, || {
                     ui.text(&texture_names[temp_state.selected_file_index as usize]);
-                    ui.text(format!("Size: {} x {}", texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height));
-                    Slider::new("Scale", 1.0, 10.0)
-                        .build(ui, &mut temp_state.scale);
+                    ui.text(format!(
+                        "Size: {} x {}",
+                        texture_bundle.mip_textures[0].width, texture_bundle.mip_textures[0].height
+                    ));
+                    Slider::new("Scale", 1.0, 10.0).build(ui, &mut temp_state.scale);
                     ui.checkbox("Texture outline", &mut temp_state.texture_outline);
                     for texture in &texture_bundle.mip_textures {
                         let [x, y] = ui.cursor_screen_pos();
-                        Image::new(texture.texture_id, [texture.width as f32 * temp_state.scale, texture.height as f32 * temp_state.scale])
-                            .build(ui);
+                        Image::new(
+                            texture.texture_id,
+                            [
+                                texture.width as f32 * temp_state.scale,
+                                texture.height as f32 * temp_state.scale,
+                            ],
+                        )
+                        .build(ui);
                         if temp_state.texture_outline {
                             ui.get_window_draw_list()
-                                .add_rect([x, y], [x + ((texture.width as f32) * temp_state.scale), y + ((texture.height as f32) * temp_state.scale)], [0.0, 1.0, 0.0, 1.0])
+                                .add_rect(
+                                    [x, y],
+                                    [
+                                        x + ((texture.width as f32) * temp_state.scale),
+                                        y + ((texture.height as f32) * temp_state.scale),
+                                    ],
+                                    [0.0, 1.0, 0.0, 1.0],
+                                )
                                 .thickness(2.0)
                                 .build();
                         }
@@ -269,16 +290,14 @@ pub fn get_texture_bundle(
     let texture = create_imgui_texture(device, queue, renderer, texture.image_data.clone());
     let texture_id = renderer.textures.insert(texture);
 
-    let textures = vec![
-        MipTexture {
-            texture_id: texture_id,
-            width: width,
-            height: height,
-        }
-    ];
+    let textures = vec![MipTexture {
+        texture_id: texture_id,
+        width: width,
+        height: height,
+    }];
 
     TextureBundle {
-        mip_textures: textures, 
+        mip_textures: textures,
         extra_data: ExtraTextureData {},
     }
 }
