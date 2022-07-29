@@ -383,11 +383,9 @@ fn create_image(
             image_bgra_data.push(0);
             image_bgra_data.push(0);
         } else {
-            // documentation says that this should be RGB data...
-            // but it looks to be bgr?
-            image_bgra_data.push(r_color); // should be b
+            image_bgra_data.push(b_color);
             image_bgra_data.push(g_color);
-            image_bgra_data.push(b_color); // should be r
+            image_bgra_data.push(r_color);
             image_bgra_data.push(255);
         }
     }
@@ -420,11 +418,9 @@ fn create_image_with_alpha_key(
             image_bgra_data.push(0);
             image_bgra_data.push(0);
         } else {
-            // documentation says that this should be RGB data...
-            // but it looks to be bgr?
-            image_bgra_data.push(r_color); // should be b
+            image_bgra_data.push(b_color);
             image_bgra_data.push(g_color);
-            image_bgra_data.push(b_color); // should be r
+            image_bgra_data.push(r_color);
             image_bgra_data.push(255);
         }
     }
