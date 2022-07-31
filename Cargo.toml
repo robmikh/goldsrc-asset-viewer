@@ -11,7 +11,7 @@ wgpu = "0.13.1"
 winit = "0.26"
 clap = { version = "3.2.15", features = ["derive"] }
 glam = "0.21.2"
-nfd = "0.0.4"
+rfd = "0.10.0"
 image = "0.23.12"
 env_logger = "0.9.0"
 imgui = "0.8.2"

@@ -9,8 +9,9 @@ use clap::*;
 use cli::Cli;
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
+use rfd::FileDialog;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use wad3parser::{WadArchive, WadFileInfo};
 use winit::{
@@ -124,7 +125,7 @@ fn main() {
     let mut wad_viewer = WadViewer::new();
     let mut mdl_viewer = MdlViewer::new();
 
-    let mut pending_path: Option<String> = None;
+    let mut pending_path: Option<PathBuf> = None;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
@@ -198,9 +199,12 @@ fn main() {
                     ui.main_menu_bar(|| {
                         ui.menu("File", || {
                             if MenuItem::new("Open").shortcut("Ctrl+O").build(&ui) {
-                                let result = nfd::open_file_dialog(Some("wad;mdl"), None).unwrap();
-                                if let nfd::Response::Okay(new_path) = result {
-                                    pending_path = Some(new_path.to_string());
+                                if let Some(new_path) = FileDialog::new()
+                                    .add_filter("Half-Life Assets", &["wad", "mdl"])
+                                    .set_directory("/")
+                                    .pick_file()
+                                {
+                                    pending_path = Some(new_path);
                                 }
                             }
                             if MenuItem::new("Exit").build(&ui) {
