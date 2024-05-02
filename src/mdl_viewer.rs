@@ -209,15 +209,18 @@ impl MdlViewer {
                         .size([300.0, 400.0], Condition::FirstUseEver)
                         .position([1000.0, 500.0], Condition::FirstUseEver)
                         .build(ui, || {
-                            ui.text(format!("Vertices: {}", mesh.vertices_count));
+                            ui.text(format!("Vertices: {}", mesh.triverts_count));
                             ui.text(format!("Skin Reference: {}", mesh.skin_ref));
                             ui.text(format!("Normals: {}", mesh.normal_count));
                             ui.text("v, n, s, t");
-                            for vertex in &mesh.vertices {
-                                ui.text(format!(
-                                    "{}, {}, {}, {}",
-                                    vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t
-                                ));
+                            for sequence in &mesh.sequences {
+                                ui.text(format!("{:?}", sequence.ty));
+                                for vertex in &sequence.triverts {
+                                    ui.text(format!(
+                                        "  {}, {}, {}, {}",
+                                        vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t
+                                    ));
+                                }
                             }
                         });
                 }

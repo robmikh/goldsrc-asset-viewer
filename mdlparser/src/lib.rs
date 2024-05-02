@@ -11,7 +11,7 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct MdlMeshVertex {
     pub vertex_index: u32,
     pub normal_index: u32,
@@ -19,15 +19,27 @@ pub struct MdlMeshVertex {
     pub t: u32,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
+pub enum MdlMeshSequenceType {
+    TriangleStrip,
+    TriangleFan,
+}
+
+#[derive(Clone, Debug)]
+pub struct MdlMeshSequence {
+    pub ty: MdlMeshSequenceType,
+    pub triverts: Vec<MdlMeshVertex>,
+}
+
+#[derive(Clone, Debug)]
 pub struct MdlMesh {
-    pub vertices: Vec<MdlMeshVertex>,
-    pub vertices_count: u32,
+    pub sequences: Vec<MdlMeshSequence>,
+    pub triverts_count: u32,
     pub skin_ref: u32,
     pub normal_count: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MdlModel {
     pub name: String,
     pub meshes: Vec<MdlMesh>,
@@ -35,13 +47,13 @@ pub struct MdlModel {
     pub normals: Vec<[f32; 3]>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MdlBodyPart {
     pub name: String,
     pub models: Vec<MdlModel>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MdlTexture {
     pub name: String,
     pub width: u32,
@@ -50,7 +62,7 @@ pub struct MdlTexture {
 }
 
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MdlFile {
     pub name: String,
     pub textures: Vec<MdlTexture>,
@@ -60,7 +72,7 @@ pub struct MdlFile {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct TextureHeader {
     name: [[u8; 8]; 8],
     flags: u32,
@@ -83,7 +95,7 @@ impl TextureHeader {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct MeshHeader {
     triangle_count: u32,
     triangle_offset: u32,
@@ -92,7 +104,7 @@ struct MeshHeader {
     normal_offset: u32,
 }
 
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct VertexHeader {
     vertex_index: u16,
     normal_index: u16,
@@ -101,7 +113,7 @@ struct VertexHeader {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct BodyPartHeader {
     name: [[u8; 8]; 8],
     model_count: u32,
@@ -123,7 +135,7 @@ impl BodyPartHeader {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct ModelHeader {
     name: [[u8; 8]; 8],
     model_type: u32,
@@ -154,7 +166,7 @@ impl ModelHeader {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Deserialize)]
+#[derive(Copy, Clone, Deserialize, Debug)]
 struct MdlHeader {
     id: u32,
     version: u32,
@@ -321,32 +333,38 @@ impl MdlFile {
                         // Mesh Vertex
                         file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64))
                             .unwrap();
-                        let mut vertex_headers = Vec::new();
-                        while vertex_headers.len() < mesh_header.triangle_count as usize {
+                        let mut sequences = Vec::new();
+                        let mut total_triverts = 0;
+                        while total_triverts < mesh_header.triangle_count as usize {
                             let num_triverts: i16 = bincode::deserialize_from(&mut file).unwrap();
-                            // TODO: Positive means triangle strip, negative means triangel fan
-                            let num_triverts = num_triverts.abs();
-                            for _ in 0..num_triverts {
+                            // Positive means triangle strip, negative means triangle fan
+                            let sequence_ty = if num_triverts > 0 {
+                                MdlMeshSequenceType::TriangleStrip
+                            } else {
+                                MdlMeshSequenceType::TriangleFan
+                            };
+                            let mut triverts = Vec::with_capacity(mesh_header.triangle_count as usize);
+                            for _ in 0..num_triverts.abs() {
                                 let vertex_header: VertexHeader =
                                     bincode::deserialize_from(&mut file).unwrap();
-                                vertex_headers.push(vertex_header);
+                                let vertex = MdlMeshVertex {
+                                    vertex_index: vertex_header.vertex_index as u32,
+                                    normal_index: vertex_header.normal_index as u32,
+                                    s: vertex_header.s as u32,
+                                    t: vertex_header.t as u32,
+                                };
+                                triverts.push(vertex);
                             }
-                        }
-
-                        let mut mesh_vertices = Vec::with_capacity(vertex_headers.len());
-                        for vertex_header in vertex_headers {
-                            let mesh_vertex = MdlMeshVertex {
-                                vertex_index: vertex_header.vertex_index as u32,
-                                normal_index: vertex_header.normal_index as u32,
-                                s: vertex_header.s as u32,
-                                t: vertex_header.t as u32,
-                            };
-                            mesh_vertices.push(mesh_vertex);
+                            sequences.push(MdlMeshSequence {
+                                ty: sequence_ty,
+                                triverts,
+                            });
+                            total_triverts += num_triverts.abs() as usize;
                         }
 
                         meshes.push(MdlMesh {
-                            vertices: mesh_vertices,
-                            vertices_count: mesh_header.triangle_count,
+                            sequences,
+                            triverts_count: mesh_header.triangle_count,
                             skin_ref: mesh_header.skin_ref,
                             normal_count: mesh_header.normal_count,
                         });
