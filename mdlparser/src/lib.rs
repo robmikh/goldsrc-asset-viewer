@@ -11,7 +11,7 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MdlMeshVertex {
     pub vertex_index: u32,
     pub normal_index: u32,
@@ -19,7 +19,7 @@ pub struct MdlMeshVertex {
     pub t: u32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MdlMeshSequenceType {
     TriangleStrip,
     TriangleFan,

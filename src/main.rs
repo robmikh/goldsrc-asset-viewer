@@ -2,6 +2,7 @@ mod cli;
 mod graphics;
 mod mdl_viewer;
 mod wad_viewer;
+mod gltf;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -220,7 +221,15 @@ fn main() {
                                     .set_directory("/")
                                     .save_file()
                                 {
-                                    // TODO: Export gltf
+                                    let mdl_file = if let Some(file_info) = file_info.as_ref() {
+                                        match file_info {
+                                            FileInfo::MdlFile(file) => file,
+                                            _ => panic!(),
+                                        }
+                                    } else {
+                                        panic!()
+                                    };
+                                    gltf::export::export(&mdl_file.file, new_path).unwrap();
                                 }
                             }
                             if MenuItem::new("Exit").build(&ui) {
