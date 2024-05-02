@@ -322,10 +322,15 @@ impl MdlFile {
                         file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64))
                             .unwrap();
                         let mut vertex_headers = Vec::new();
-                        for _ in 0..mesh_header.triangle_count {
-                            let vertex_header: VertexHeader =
-                                bincode::deserialize_from(&mut file).unwrap();
-                            vertex_headers.push(vertex_header);
+                        while vertex_headers.len() < mesh_header.triangle_count as usize {
+                            let num_triverts: i16 = bincode::deserialize_from(&mut file).unwrap();
+                            // TODO: Positive means triangle strip, negative means triangel fan
+                            let num_triverts = num_triverts.abs();
+                            for _ in 0..num_triverts {
+                                let vertex_header: VertexHeader =
+                                    bincode::deserialize_from(&mut file).unwrap();
+                                vertex_headers.push(vertex_header);
+                            }
                         }
 
                         let mut mesh_vertices = Vec::with_capacity(vertex_headers.len());
