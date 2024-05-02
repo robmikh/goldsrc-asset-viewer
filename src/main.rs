@@ -36,7 +36,6 @@ pub struct WadFile {
 }
 
 enum FileInfo {
-    None,
     WadFile(WadFile),
     MdlFile(MdlFile),
 }
@@ -44,7 +43,7 @@ enum FileInfo {
 fn main() {
     env_logger::init();
 
-    let mut file_info = FileInfo::None;
+    let mut file_info = None;
 
     let cli = Cli::parse();
 
@@ -207,28 +206,46 @@ fn main() {
                                     pending_path = Some(new_path);
                                 }
                             }
+                            let is_mdl = if let Some(file_info) = file_info.as_ref() {
+                                match file_info {
+                                    FileInfo::MdlFile(_) => true,
+                                    _ => false
+                                }
+                            } else {
+                                false
+                            };
+                            if MenuItem::new("Export").enabled(is_mdl).build(&ui) {
+                                if let Some(new_path) = FileDialog::new()
+                                    .add_filter("GLTF File", &["gltf"])
+                                    .set_directory("/")
+                                    .save_file()
+                                {
+                                    // TODO: Export gltf
+                                }
+                            }
                             if MenuItem::new("Exit").build(&ui) {
                                 *control_flow = ControlFlow::Exit;
                             }
                         });
                     });
 
-                    match &file_info {
-                        FileInfo::WadFile(file_info) => wad_viewer.build_ui(
-                            &ui,
-                            &file_info,
-                            &mut device,
-                            &mut queue,
-                            &mut renderer,
-                        ),
-                        FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
-                            &ui,
-                            &file_info,
-                            &mut device,
-                            &mut queue,
-                            &mut renderer,
-                        ),
-                        _ => (),
+                    if let Some(file_info) = file_info.as_ref() {
+                        match file_info {
+                            FileInfo::WadFile(file_info) => wad_viewer.build_ui(
+                                &ui,
+                                &file_info,
+                                &mut device,
+                                &mut queue,
+                                &mut renderer,
+                            ),
+                            FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
+                                &ui,
+                                &file_info,
+                                &mut device,
+                                &mut queue,
+                                &mut renderer,
+                            ),
+                        }
                     }
 
                     //ui.show_demo_window(&mut demo_open);
@@ -316,15 +333,15 @@ fn load_mdl_file<P: AsRef<Path>>(path: P) -> MdlFile {
     }
 }
 
-fn load_file<P: AsRef<Path>>(path: P) -> FileInfo {
+fn load_file<P: AsRef<Path>>(path: P) -> Option<FileInfo> {
     let path = path.as_ref();
-    let mut file_info = FileInfo::None;
     if let Some(extension) = get_extension_from_path(path) {
         match extension.as_str() {
-            "wad" => file_info = FileInfo::WadFile(load_wad_file(path)),
-            "mdl" => file_info = FileInfo::MdlFile(load_mdl_file(path)),
-            _ => (),
+            "wad" => Some(FileInfo::WadFile(load_wad_file(path))),
+            "mdl" => Some(FileInfo::MdlFile(load_mdl_file(path))),
+            _ => None,
         }
+    } else {
+        None
     }
-    file_info
 }
