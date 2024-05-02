@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
 use image::DynamicImage;
-use mdlparser::{MdlFile, MdlMeshSequenceType};
+use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use super::{BufferSlice, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER};
 
@@ -33,25 +33,21 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             let mut vertices = Vec::new();
             let mut vertex_map = HashMap::new();
             for sequence in &mdl_mesh.sequences {
-                // TODO: Convert fans to strips
-                if sequence.ty == MdlMeshSequenceType::TriangleStrip {
-                    for trivert in &sequence.triverts {
-                        let index = if let Some(index) = vertex_map.get(trivert) {
-                            *index
-                        } else {
-                            let pos = model.vertices[trivert.vertex_index as usize];
-                            let normal = model.normals[trivert.normal_index as usize];
-                            let uv = [
-                                trivert.s as f32 / texture_width,
-                                trivert.t as f32 / texture_height
-                            ];
-                            let index = vertices.len();
-                            vertices.push(Vertex { pos, normal, uv });
-                            vertex_map.insert(*trivert, index);
-                            index
-                        };
-                        indices.push(index as u32);
-                    }
+                match sequence.ty {
+                    MdlMeshSequenceType::TriangleStrip => process_triangle_strip(model, texture_width, texture_height, &sequence.triverts, &mut indices, &mut vertices, &mut vertex_map),
+                    MdlMeshSequenceType::TriangleFan => {
+                        let mut triverts = Vec::new();
+                        let mut iter = sequence.triverts.iter();
+                        let center = *iter.next().unwrap();
+                        let mut last = *iter.next().unwrap();
+                        for next in iter {
+                            triverts.push(center);
+                            triverts.push(last);
+                            triverts.push(*next);
+                            last = *next;
+                        }
+                        process_triangle_strip(model, texture_width, texture_height, &triverts, &mut indices, &mut vertices, &mut vertex_map);
+                    },
                 }
             }
 
@@ -247,4 +243,28 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
 
     Ok(())
+}
+
+fn process_triangle_strip(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
+    // TODO: Winding order?
+    //for trivert in triverts {
+    for triverts in triverts.chunks(3) {
+        for trivert in triverts.iter().rev() {
+            let index = if let Some(index) = vertex_map.get(trivert) {
+                *index
+            } else {
+                let pos = model.vertices[trivert.vertex_index as usize];
+                let normal = model.normals[trivert.normal_index as usize];
+                let uv = [
+                    trivert.s as f32 / texture_width,
+                    trivert.t as f32 / texture_height
+                ];
+                let index = vertices.len();
+                vertices.push(Vertex { pos, normal, uv });
+                vertex_map.insert(*trivert, index);
+                index
+            };
+            indices.push(index as u32);
+        }
+    }
 }
