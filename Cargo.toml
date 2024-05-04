@@ -19,3 +19,4 @@ imgui-winit-support = { version = "0.8.2", default-features = false, features = 
 imgui-wgpu = "0.20.0"
 pollster = "0.2.5"
 mdlparser = { path = "mdlparser" }
+id_tree = "1.8.0"

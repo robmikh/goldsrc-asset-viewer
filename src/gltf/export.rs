@@ -1,7 +1,11 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
+use glam::{Mat4, Vec3, Vec4};
+use id_tree::{Node, TreeBuilder, InsertBehavior::{AsRoot, UnderNode}};
 use image::DynamicImage;
 use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
+
+use crate::numerics::ToVec3;
 
 use super::{BufferSlice, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER};
 
@@ -21,6 +25,61 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
+    // Compute bone transforms
+    let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
+    let mut bone_tree = TreeBuilder::new().with_node_capacity(file.bones.len()).build();
+    let mut bone_map = HashMap::new();
+    //let mut bone_iter = file.bones.iter().enumerate();
+    //let (root_bone_index, first_bone) = bone_iter.next().unwrap();  
+    for (i, bone) in file.bones.iter().enumerate() {
+        //println!("Bone {} : Parnet {}", i, bone.parent);
+        let behavior = if bone.parent < 0 {
+            AsRoot
+        } else {
+            let parent_node = bone_map.get(&(bone.parent as usize)).unwrap();
+            UnderNode(parent_node)
+        };
+        let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
+        bone_map.insert(i, bone_id);
+        let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
+        let bone_transform = Mat4::from_translation(bone_pos) * 
+            Mat4::from_rotation_x(bone.value[3]) *
+            Mat4::from_rotation_y(bone.value[4]) *
+            Mat4::from_rotation_z(bone.value[5]);
+            
+        //let bone_transform =  
+        //Mat4::from_rotation_z(bone.value[5]) * 
+        //Mat4::from_rotation_y(bone.value[4]) *
+        //Mat4::from_rotation_x(bone.value[3]) *
+        //Mat4::from_translation(bone_pos);
+        local_bone_transforms.push(bone_transform);
+    }
+    let mut world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
+    for node_id in bone_tree
+        .traverse_pre_order_ids(bone_tree.root_node_id().unwrap())
+        .unwrap()
+    {
+        let parent_index = {
+            let mut ancestors = bone_tree.ancestors(&node_id).unwrap();
+            if let Some(node) = ancestors.next() {
+                Some(*node.data())
+            } else {
+                None
+            }
+        };
+
+        let parent_transform = if let Some(parent_index) = parent_index {
+            world_bone_transforms[parent_index]
+        } else {
+            Mat4::IDENTITY
+        };
+        let node_index = *bone_tree.get(&node_id).unwrap().data();
+        let node_transform = *local_bone_transforms.get(node_index).unwrap();
+        let node_world_transform = parent_transform * node_transform;
+
+        world_bone_transforms[node_index] = node_world_transform;
+    }
+
     // Gather mesh data
     let meshes = {
         let mut meshes = Vec::with_capacity(model.meshes.len());
@@ -34,7 +93,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             let mut vertex_map = HashMap::new();
             for sequence in &mdl_mesh.sequences {
                 match sequence.ty {
-                    MdlMeshSequenceType::TriangleStrip => process_triangle_strip(model, texture_width, texture_height, &sequence.triverts, &mut indices, &mut vertices, &mut vertex_map),
+                    MdlMeshSequenceType::TriangleStrip => process_triangle_strip(model, texture_width, texture_height, &sequence.triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map),
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
                         let mut iter = sequence.triverts.iter();
@@ -46,7 +105,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                             triverts.push(*next);
                             last = *next;
                         }
-                        process_triangle_strip(model, texture_width, texture_height, &triverts, &mut indices, &mut vertices, &mut vertex_map);
+                        process_triangle_strip(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
                     },
                 }
             }
@@ -59,6 +118,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         }
         meshes
     };
+    println!("Num meshes: {}", meshes.len());
 
     // Write our vertex and index data
     // TODO: Don't use seperate buffers for each mesh
@@ -96,7 +156,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         slices.push(Box::new(uvs_slice));
 
         // DEBUG: Remove later
-        break;
+        //break;
     }
 
     // Create primitives
@@ -245,7 +305,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     Ok(())
 }
 
-fn process_triangle_strip(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
+fn process_triangle_strip(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], world_bone_transforms: &[Mat4], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
     // TODO: Winding order?
     //for trivert in triverts {
     for triverts in triverts.chunks(3) {
@@ -254,6 +314,17 @@ fn process_triangle_strip(model: &MdlModel, texture_width: f32, texture_height: 
                 *index
             } else {
                 let pos = model.vertices[trivert.vertex_index as usize];
+                let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
+                //println!("{}", bone_index);
+                let pos = if bone_index < 0 {
+                    pos
+                } else {
+                    let bone = world_bone_transforms[bone_index as usize];
+                    let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 0.0);
+                    let pos = pos.to_vec3().to_array();
+                    pos
+                };
+                
                 let normal = model.normals[trivert.normal_index as usize];
                 let uv = [
                     trivert.s as f32 / texture_width,

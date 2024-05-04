@@ -3,6 +3,7 @@ mod graphics;
 mod mdl_viewer;
 mod wad_viewer;
 mod gltf;
+mod numerics;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};

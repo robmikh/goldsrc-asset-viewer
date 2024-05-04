@@ -47,7 +47,7 @@ pub struct MdlModel {
     pub meshes: Vec<MdlMesh>,
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
-    pub vertex_bone_indices: Vec<u32>,
+    pub vertex_bone_indices: Vec<i32>,
 }
 
 #[derive(Clone, Debug)]
@@ -78,7 +78,7 @@ pub struct MdlFile {
 #[derive(Clone, Debug, Deserialize)]
 pub struct BoneHeader {
     pub name: [u8; 32],
-    pub parent: u32,
+    pub parent: i32,
     pub flags: u32,
     pub bone_controller: [i32; 6],
     pub value: [f32; 6],
@@ -338,7 +338,10 @@ impl MdlFile {
                     file.seek(SeekFrom::Start(model_header.vertex_info_offset as u64))
                         .unwrap();
                     for _ in 0..model_header.vertex_count {
-                        vertex_bone_indices.push(file.read_u32::<LittleEndian>().unwrap());
+                        //let index = file.read_i32::<LittleEndian>().unwrap();
+                        let index = file.read_u8().unwrap() as i32;
+                        //println!("{}", index);
+                        vertex_bone_indices.push(index);
                     }
 
                     // Mesh
