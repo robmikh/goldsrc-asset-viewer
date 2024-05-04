@@ -11,6 +11,8 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
+
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MdlMeshVertex {
     pub vertex_index: u32,
@@ -45,6 +47,7 @@ pub struct MdlModel {
     pub meshes: Vec<MdlMesh>,
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
+    pub vertex_bone_indices: Vec<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,8 +70,19 @@ pub struct MdlFile {
     pub name: String,
     pub textures: Vec<MdlTexture>,
     pub body_parts: Vec<MdlBodyPart>,
+    pub bones: Vec<BoneHeader>, // TODO: Change
     header: MdlHeader,
     raw_data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct BoneHeader {
+    pub name: [u8; 32],
+    pub parent: u32,
+    pub flags: u32,
+    pub bone_controller: [i32; 6],
+    pub value: [f32; 6],
+    pub scale: [f32; 6],
 }
 
 #[allow(dead_code)]
@@ -319,6 +333,14 @@ impl MdlFile {
                         normals.push(normal);
                     }
 
+                    // Model Vertex bone indices
+                    let mut vertex_bone_indices = Vec::new();
+                    file.seek(SeekFrom::Start(model_header.vertex_info_offset as u64))
+                        .unwrap();
+                    for _ in 0..model_header.vertex_count {
+                        vertex_bone_indices.push(file.read_u32::<LittleEndian>().unwrap());
+                    }
+
                     // Mesh
                     let mut mesh_headers = Vec::new();
                     file.seek(SeekFrom::Start(model_header.mesh_offset as u64))
@@ -375,6 +397,7 @@ impl MdlFile {
                         meshes: meshes,
                         vertices: vertices,
                         normals: normals,
+                        vertex_bone_indices,
                     })
                 }
 
@@ -387,6 +410,22 @@ impl MdlFile {
             body_parts
         };
 
+        // Bones
+        let bones = {
+            let mut bones = Vec::new();
+
+            file.seek(SeekFrom::Start(header.bone_offset as u64))
+                .unwrap();
+            for _ in 0..header.bone_count {
+                let body_header: BoneHeader = bincode::deserialize_from(&mut file).unwrap();
+
+                bones.push(body_header);
+            }
+
+            bones
+        };
+
+
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut file_data = vec![0u8; file_size as usize];
         file.read(&mut file_data).unwrap();
@@ -395,6 +434,7 @@ impl MdlFile {
             name: file_name,
             textures: textures,
             body_parts: body_parts,
+            bones,
             header: header,
             raw_data: file_data,
         }
