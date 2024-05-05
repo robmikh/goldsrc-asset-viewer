@@ -74,13 +74,16 @@ fn show_ui(cli: Cli) {
     }
 
     let event_loop = EventLoop::new();
-    let instance = wgpu::Instance::new(wgpu::Backends::all());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
     let (window, size, surface) = {
         let window = Window::new(&event_loop).unwrap();
         window.set_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
         window.set_title("goldsrc-asset-viewer");
         let size = window.inner_size();
-        let surface = unsafe { instance.create_surface(&window) };
+        let surface = unsafe { instance.create_surface(&window).unwrap() };
         (window, size, surface)
     };
 
@@ -102,6 +105,10 @@ fn show_ui(cli: Cli) {
         width: size.width as u32,
         height: size.height as u32,
         present_mode: wgpu::PresentMode::Mailbox,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![
+            wgpu::TextureFormat::Bgra8Unorm
+        ],
     };
     surface.configure(&device, &surface_config);
 
@@ -172,6 +179,10 @@ fn show_ui(cli: Cli) {
                     width: size.width as u32,
                     height: size.height as u32,
                     present_mode: wgpu::PresentMode::Mailbox,
+                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                    view_formats: vec![
+                        wgpu::TextureFormat::Bgra8Unorm
+                    ],
                 };
                 surface.configure(&device, &surface_config);
             }
@@ -219,7 +230,7 @@ fn show_ui(cli: Cli) {
                 {
                     ui.main_menu_bar(|| {
                         ui.menu("File", || {
-                            if MenuItem::new("Open").shortcut("Ctrl+O").build(&ui) {
+                            if ui.menu_item_config("Open").shortcut("Ctrl+O").build() {
                                 if let Some(new_path) = FileDialog::new()
                                     .add_filter("Half-Life Assets", &["wad", "mdl"])
                                     .set_directory("/")
@@ -236,7 +247,7 @@ fn show_ui(cli: Cli) {
                             } else {
                                 false
                             };
-                            if MenuItem::new("Export").enabled(is_mdl).build(&ui) {
+                            if ui.menu_item_config("Export").enabled(is_mdl).build() {
                                 if let Some(new_path) = FileDialog::new()
                                     .add_filter("GLTF File", &["gltf"])
                                     .set_directory("/")
@@ -253,7 +264,7 @@ fn show_ui(cli: Cli) {
                                     gltf::export::export(&mdl_file.file, new_path).unwrap();
                                 }
                             }
-                            if MenuItem::new("Exit").build(&ui) {
+                            if ui.menu_item("Exit") {
                                 *control_flow = ControlFlow::Exit;
                             }
                         });
@@ -307,7 +318,7 @@ fn show_ui(cli: Cli) {
                     });
 
                     renderer
-                        .render(ui.render(), &queue, &device, &mut rpass)
+                        .render(imgui.render(), &queue, &device, &mut rpass)
                         .expect("Rendering failed");
                 }
 

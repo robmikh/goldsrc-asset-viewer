@@ -92,9 +92,9 @@ impl WadViewer {
             force_new_selection = true;
         }
 
-        Window::new("File list")
+        ui.window("File list")
             .size([300.0, 400.0], Condition::FirstUseEver)
-            .build(ui, || {
+            .build(|| {
                 ui.text(format!("Path: {}", &file_info.path));
                 self.state.new_selection = ui.list_box(
                     "Files",
@@ -125,11 +125,11 @@ impl WadViewer {
 
         let mut temp_state = self.state.clone();
         if let Some(texture_bundle) = self.texture_bundle.as_ref() {
-            Window::new("File preview")
+            ui.window("File preview")
                 .position([500.0, 150.0], Condition::FirstUseEver)
                 .size([300.0, 300.0], Condition::FirstUseEver)
                 .horizontal_scrollbar(true)
-                .build(ui, || {
+                .build(|| {
                     ui.text(&file_names[temp_state.selected_file_index as usize]);
                     ui.text(format!(
                         "Type: {:?} (0x{:X})",
@@ -150,7 +150,7 @@ impl WadViewer {
                         }
                         _ => (),
                     }
-                    Slider::new("Scale", 1.0, 10.0).build(ui, &mut temp_state.scale);
+                    ui.slider("Scale", 1.0, 10.0, &mut temp_state.scale);
                     ui.checkbox("Texture outline", &mut temp_state.texture_outline);
                     let [x, y] = ui.cursor_screen_pos();
                     for texture in &texture_bundle.mip_textures {
