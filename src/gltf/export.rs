@@ -1,7 +1,13 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use glam::{Mat4, Vec3, Vec4};
-use id_tree::{Node, TreeBuilder, InsertBehavior::{AsRoot, UnderNode}};
+use id_tree::{
+    InsertBehavior::{AsRoot, UnderNode},
+    Node, TreeBuilder,
+};
 use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
@@ -26,10 +32,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
     // Compute bone transforms
     let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
-    let mut bone_tree = TreeBuilder::new().with_node_capacity(file.bones.len()).build();
+    let mut bone_tree = TreeBuilder::new()
+        .with_node_capacity(file.bones.len())
+        .build();
     let mut bone_map = HashMap::new();
     //let mut bone_iter = file.bones.iter().enumerate();
-    //let (root_bone_index, first_bone) = bone_iter.next().unwrap();  
+    //let (root_bone_index, first_bone) = bone_iter.next().unwrap();
     for (i, bone) in file.bones.iter().enumerate() {
         //println!("Bone {} : Parnet {}", i, bone.parent);
         let behavior = if bone.parent < 0 {
@@ -39,25 +47,24 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             UnderNode(parent_node)
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
-        bone_map.insert(i, bone_id);    
+        bone_map.insert(i, bone_id);
         //println!("{:?}", bone.value);
         let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
-        let bone_transform = 
-            Mat4::from_translation(bone_pos) * 
-            Mat4::from_rotation_x(bone.value[3]) *
-            Mat4::from_rotation_y(bone.value[4]) *
-            Mat4::from_rotation_z(bone.value[5]);
-            
-        //let bone_transform =  
-        //    Mat4::from_rotation_z(bone.value[5]) * 
+        let bone_transform = Mat4::from_translation(bone_pos)
+            * Mat4::from_rotation_x(bone.value[3])
+            * Mat4::from_rotation_y(bone.value[4])
+            * Mat4::from_rotation_z(bone.value[5]);
+
+        //let bone_transform =
+        //    Mat4::from_rotation_z(bone.value[5]) *
         //    Mat4::from_rotation_y(bone.value[4]) *
         //    Mat4::from_rotation_x(bone.value[3]) *
         //    Mat4::from_translation(bone_pos);
 
-        //let bone_transform = 
+        //let bone_transform =
         //    Mat4::from_rotation_x(bone.value[3]) *
         //    Mat4::from_rotation_y(bone.value[4]) *
-        //    Mat4::from_rotation_z(bone.value[5]) * 
+        //    Mat4::from_rotation_z(bone.value[5]) *
         //    Mat4::from_translation(bone_pos);
         local_bone_transforms.push(bone_transform);
     }
@@ -125,7 +132,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 match sequence.ty {
                     MdlMeshSequenceType::TriangleStrip => {
                         let mut triverts = Vec::new();
-                        for i in 0..sequence.triverts.len()-2 {
+                        for i in 0..sequence.triverts.len() - 2 {
                             if i % 2 == 0 {
                                 triverts.push(sequence.triverts[i + 2]);
                                 triverts.push(sequence.triverts[i]);
@@ -136,7 +143,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 triverts.push(sequence.triverts[i]);
                             }
                         }
-                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &final_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
+                        process_indexed_triangles(
+                            model,
+                            texture_width,
+                            texture_height,
+                            &triverts,
+                            &final_bone_transforms,
+                            &mut indices,
+                            &mut vertices,
+                            &mut vertex_map,
+                        );
                     }
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
@@ -149,8 +165,17 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                             triverts.push(*next);
                             last = *next;
                         }
-                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &final_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
-                    },
+                        process_indexed_triangles(
+                            model,
+                            texture_width,
+                            texture_height,
+                            &triverts,
+                            &final_bone_transforms,
+                            &mut indices,
+                            &mut vertices,
+                            &mut vertex_map,
+                        );
+                    }
                 }
             }
 
@@ -170,7 +195,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
     let mut mesh_slices = Vec::new();
     for mesh in &meshes {
-
         //println!("Indices {}       Vertices: {}       {}", mesh.indices.len(), mesh.vertices.len(), mesh.indices.len() % 3);
 
         // Split out the vertex data
@@ -185,18 +209,19 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         // Write data
         let indices_slice = BufferSlice::record(&mut data, &mesh.indices, ELEMENT_ARRAY_BUFFER);
-        let vertex_positions_slice =
-            BufferSlice::record(&mut data, &positions, ARRAY_BUFFER);
+        let vertex_positions_slice = BufferSlice::record(&mut data, &positions, ARRAY_BUFFER);
         let vertex_normals_slice = BufferSlice::record(&mut data, &normals, ARRAY_BUFFER);
-        let uvs_slice = BufferSlice::record(
-            &mut data,
-            &uvs,
-            ARRAY_BUFFER,
-        );
+        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);
 
         // Record indices
         let base_index = slices.len();
-        mesh_slices.push((base_index, base_index + 1, base_index + 2, base_index + 3, mesh.texture_index));
+        mesh_slices.push((
+            base_index,
+            base_index + 1,
+            base_index + 2,
+            base_index + 3,
+            mesh.texture_index,
+        ));
         slices.push(Box::new(indices_slice));
         slices.push(Box::new(vertex_positions_slice));
         slices.push(Box::new(vertex_normals_slice));
@@ -209,7 +234,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     // Create primitives
     let mut primitives = Vec::with_capacity(meshes.len());
     for (indices, positions, normals, uvs, material) in mesh_slices {
-        primitives.push(format!(r#"         {{
+        primitives.push(format!(
+            r#"         {{
             "attributes" : {{
             "POSITION" : {},
             "NORMAL" : {},
@@ -217,7 +243,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             }},
             "indices" : {},
             "material" : {}
-        }}"#, positions, normals, uvs, indices, material));
+        }}"#,
+            positions, normals, uvs, indices, material
+        ));
     }
     let primitives = primitives.join(",\n");
 
@@ -226,7 +254,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut textures = Vec::with_capacity(file.textures.len());
     let mut images = Vec::with_capacity(file.textures.len());
     for (i, texture) in file.textures.iter().enumerate() {
-        materials.push(format!(r#"          {{
+        materials.push(format!(
+            r#"          {{
             "pbrMetallicRoughness" : {{
               "baseColorTexture" : {{
                 "index" : {}
@@ -234,16 +263,24 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
               "metallicFactor" : 0.0,
               "roughnessFactor" : 1.0
             }}
-          }}"#, i));
+          }}"#,
+            i
+        ));
 
-        textures.push(format!(r#"           {{
+        textures.push(format!(
+            r#"           {{
             "sampler" : 0,
             "source" : {}
-          }}"#, i));
+          }}"#,
+            i
+        ));
 
-        images.push(format!(r#"         {{
+        images.push(format!(
+            r#"         {{
             "uri" : "{}.png"
-          }}"#, texture.name));
+          }}"#,
+            texture.name
+        ));
     }
     let materials = materials.join(",\n");
     let textures = textures.join(",\n");
@@ -259,7 +296,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let buffer_views = buffer_views.join(",\n");
     let accessors = accessors.join(",\n");
 
-    let gltf_text = format!(r#"{{
+    let gltf_text = format!(
+        r#"{{
         "scene" : 0,
         "scenes" : [
             {{
@@ -317,7 +355,15 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 "version" : "2.0"
             }}
         }}
-    "#, primitives, materials, textures, images, data.len(), buffer_views, accessors);
+    "#,
+        primitives,
+        materials,
+        textures,
+        images,
+        data.len(),
+        buffer_views,
+        accessors
+    );
 
     let path = output_path.as_ref();
     let data_path = if let Some(parent_path) = path.parent() {
@@ -341,15 +387,31 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     };
     for texture in &file.textures {
         texture_path.set_file_name(format!("{}.png", texture.name));
-        texture.image_data.save_with_format(&texture_path, image::ImageFormat::Png).unwrap();
+        texture
+            .image_data
+            .save_with_format(&texture_path, image::ImageFormat::Png)
+            .unwrap();
     }
 
     Ok(())
 }
 
-fn process_indexed_triangles(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], world_bone_transforms: &[Mat4], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
-    assert!(triverts.len() % 3 == 0, "Vertices are not a multiple of 3: {}", triverts.len());
-    
+fn process_indexed_triangles(
+    model: &MdlModel,
+    texture_width: f32,
+    texture_height: f32,
+    triverts: &[MdlMeshVertex],
+    world_bone_transforms: &[Mat4],
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<Vertex>,
+    vertex_map: &mut HashMap<MdlMeshVertex, usize>,
+) {
+    assert!(
+        triverts.len() % 3 == 0,
+        "Vertices are not a multiple of 3: {}",
+        triverts.len()
+    );
+
     let mut process_trivert = |trivert| {
         let index = if let Some(index) = vertex_map.get(trivert) {
             *index
@@ -365,11 +427,11 @@ fn process_indexed_triangles(model: &MdlModel, texture_width: f32, texture_heigh
                 let pos = pos.to_vec3().to_array();
                 pos
             };
-            
+
             let normal = model.normals[trivert.normal_index as usize];
             let uv = [
                 trivert.s as f32 / texture_width,
-                trivert.t as f32 / texture_height
+                trivert.t as f32 / texture_height,
             ];
             let index = vertices.len();
             vertices.push(Vertex { pos, normal, uv });
@@ -378,8 +440,7 @@ fn process_indexed_triangles(model: &MdlModel, texture_width: f32, texture_heigh
         };
         indices.push(index as u32);
     };
-    
-    
+
     // TODO: Winding order?
     //for trivert in triverts {
     //    process_trivert(trivert);
@@ -389,6 +450,4 @@ fn process_indexed_triangles(model: &MdlModel, texture_width: f32, texture_heigh
             process_trivert(trivert);
         }
     }
-
-
 }

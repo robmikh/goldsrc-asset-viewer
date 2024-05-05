@@ -11,8 +11,6 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
-
-
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MdlMeshVertex {
     pub vertex_index: u32,
@@ -368,7 +366,8 @@ impl MdlFile {
                             } else {
                                 MdlMeshSequenceType::TriangleFan
                             };
-                            let mut triverts = Vec::with_capacity(mesh_header.triangle_count as usize);
+                            let mut triverts =
+                                Vec::with_capacity(mesh_header.triangle_count as usize);
                             for _ in 0..num_triverts.abs() {
                                 let vertex_header: VertexHeader =
                                     bincode::deserialize_from(&mut file).unwrap();
@@ -428,7 +427,6 @@ impl MdlFile {
 
             bones
         };
-
 
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut file_data = vec![0u8; file_size as usize];

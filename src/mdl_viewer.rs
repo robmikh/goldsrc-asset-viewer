@@ -218,7 +218,10 @@ impl MdlViewer {
                                 for vertex in &sequence.triverts {
                                     ui.text(format!(
                                         "  {}, {}, {}, {}",
-                                        vertex.vertex_index, vertex.normal_index, vertex.s, vertex.t
+                                        vertex.vertex_index,
+                                        vertex.normal_index,
+                                        vertex.s,
+                                        vertex.t
                                     ));
                                 }
                             }

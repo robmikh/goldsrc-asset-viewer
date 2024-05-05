@@ -1,4 +1,4 @@
-use image::{Rgba, ImageBuffer};
+use image::{ImageBuffer, Rgba};
 use imgui::*;
 use imgui_wgpu::{Renderer, Texture, TextureConfig};
 use wgpu::SamplerDescriptor;

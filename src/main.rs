@@ -1,9 +1,9 @@
 mod cli;
+mod gltf;
 mod graphics;
 mod mdl_viewer;
-mod wad_viewer;
-mod gltf;
 mod numerics;
+mod wad_viewer;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -106,9 +106,7 @@ fn show_ui(cli: Cli) {
         height: size.height as u32,
         present_mode: wgpu::PresentMode::Mailbox,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        view_formats: vec![
-            wgpu::TextureFormat::Rgba8Unorm
-        ],
+        view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
     };
     surface.configure(&device, &surface_config);
 
@@ -180,9 +178,7 @@ fn show_ui(cli: Cli) {
                     height: size.height as u32,
                     present_mode: wgpu::PresentMode::Mailbox,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                    view_formats: vec![
-                        wgpu::TextureFormat::Rgba8Unorm
-                    ],
+                    view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
                 };
                 surface.configure(&device, &surface_config);
             }
@@ -242,7 +238,7 @@ fn show_ui(cli: Cli) {
                             let is_mdl = if let Some(file_info) = file_info.as_ref() {
                                 match file_info {
                                     FileInfo::MdlFile(_) => true,
-                                    _ => false
+                                    _ => false,
                                 }
                             } else {
                                 false
