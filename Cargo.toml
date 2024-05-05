@@ -9,14 +9,14 @@ description = "A tool to view assets from GoldSource games."
 wad3parser = { path = "wad3parser" }
 wgpu = "0.17"
 winit = "0.27.2"
-clap = { version = "3.2.15", features = ["derive"] }
-glam = "0.21.2"
-rfd = "0.10.0"
+clap = { version = "4.5.4", features = ["derive"] }
+glam = "0.27.0"
+rfd = "0.14.1"
 image = "0.23.12"
-env_logger = "0.9.0"
+env_logger = "0.11.3"
 imgui = "0.11.0"
 imgui-winit-support = { version = "0.11.0", default-features = false }
 imgui-wgpu = "0.24.0"
-pollster = "0.2.5"
+pollster = "0.3.0"
 mdlparser = { path = "mdlparser" }
 id_tree = "1.8.0"
