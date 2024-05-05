@@ -380,6 +380,7 @@ impl MdlFile {
                                 };
                                 triverts.push(vertex);
                             }
+                            assert_eq!(triverts.len(), num_triverts.abs() as usize);
                             sequences.push(MdlMeshSequence {
                                 ty: sequence_ty,
                                 triverts,

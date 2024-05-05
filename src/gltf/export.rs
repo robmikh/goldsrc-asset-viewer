@@ -42,16 +42,17 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
         let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
-        let bone_transform = Mat4::from_translation(bone_pos) * 
+        let bone_transform = 
+            Mat4::from_translation(bone_pos) * 
             Mat4::from_rotation_x(bone.value[3]) *
             Mat4::from_rotation_y(bone.value[4]) *
             Mat4::from_rotation_z(bone.value[5]);
             
         //let bone_transform =  
-        //Mat4::from_rotation_z(bone.value[5]) * 
-        //Mat4::from_rotation_y(bone.value[4]) *
-        //Mat4::from_rotation_x(bone.value[3]) *
-        //Mat4::from_translation(bone_pos);
+        //    Mat4::from_rotation_z(bone.value[5]) * 
+        //    Mat4::from_rotation_y(bone.value[4]) *
+        //    Mat4::from_rotation_x(bone.value[3]) *
+        //    Mat4::from_translation(bone_pos);
         local_bone_transforms.push(bone_transform);
     }
     let mut world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
@@ -79,6 +80,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         world_bone_transforms[node_index] = node_world_transform;
     }
+    //let world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
 
     // Gather mesh data
     let meshes = {
@@ -93,7 +95,20 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             let mut vertex_map = HashMap::new();
             for sequence in &mdl_mesh.sequences {
                 match sequence.ty {
-                    MdlMeshSequenceType::TriangleStrip => process_triangle_strip(model, texture_width, texture_height, &sequence.triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map),
+                    MdlMeshSequenceType::TriangleStrip => {
+                        let mut triverts = Vec::new();
+                        let mut iter = sequence.triverts.iter();
+                        let mut last_0 = *iter.next().unwrap();
+                        let mut last_1 = *iter.next().unwrap();
+                        for next in iter {
+                            triverts.push(last_0);
+                            triverts.push(last_1);
+                            triverts.push(*next);
+                            last_0 = last_1;
+                            last_1 = *next;
+                        }
+                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
+                    }
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
                         let mut iter = sequence.triverts.iter();
@@ -105,7 +120,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                             triverts.push(*next);
                             last = *next;
                         }
-                        process_triangle_strip(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
+                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
                     },
                 }
             }
@@ -126,6 +141,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
     let mut mesh_slices = Vec::new();
     for mesh in &meshes {
+
+        //println!("Indices {}       Vertices: {}       {}", mesh.indices.len(), mesh.vertices.len(), mesh.indices.len() % 3);
+
         // Split out the vertex data
         let mut positions = Vec::with_capacity(mesh.vertices.len());
         let mut normals = Vec::with_capacity(mesh.vertices.len());
@@ -156,13 +174,13 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         slices.push(Box::new(uvs_slice));
 
         // DEBUG: Remove later
-        //break;
+        break;
     }
 
     // Create primitives
     let mut primitives = Vec::with_capacity(meshes.len());
     for (indices, positions, normals, uvs, material) in mesh_slices {
-        primitives.push(format!(r#"{{
+        primitives.push(format!(r#"         {{
             "attributes" : {{
             "POSITION" : {},
             "NORMAL" : {},
@@ -179,7 +197,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut textures = Vec::with_capacity(file.textures.len());
     let mut images = Vec::with_capacity(file.textures.len());
     for (i, texture) in file.textures.iter().enumerate() {
-        materials.push(format!(r#"{{
+        materials.push(format!(r#"          {{
             "pbrMetallicRoughness" : {{
               "baseColorTexture" : {{
                 "index" : {}
@@ -189,12 +207,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             }}
           }}"#, i));
 
-        textures.push(format!(r#"{{
+        textures.push(format!(r#"           {{
             "sampler" : 0,
             "source" : {}
           }}"#, i));
 
-        images.push(format!(r#"{{
+        images.push(format!(r#"         {{
             "uri" : "{}.png"
           }}"#, texture.name));
     }
@@ -232,7 +250,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         "meshes" : [
             {{
             "primitives" : [ 
-                {}
+{}
              ]
             }}
         ],
@@ -305,37 +323,48 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     Ok(())
 }
 
-fn process_triangle_strip(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], world_bone_transforms: &[Mat4], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
+fn process_indexed_triangles(model: &MdlModel, texture_width: f32, texture_height: f32, triverts: &[MdlMeshVertex], world_bone_transforms: &[Mat4], indices: &mut Vec<u32>, vertices: &mut Vec<Vertex>, vertex_map: &mut HashMap<MdlMeshVertex, usize>) {
+    assert!(triverts.len() % 3 == 0, "Vertices are not a multiple of 3: {}", triverts.len());
+    
+    let mut process_trivert = |trivert| {
+        let index = if let Some(index) = vertex_map.get(trivert) {
+            *index
+        } else {
+            let pos = model.vertices[trivert.vertex_index as usize];
+            let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
+            //println!("{}", bone_index);
+            let pos = if bone_index < 0 {
+                pos
+            } else {
+                let bone = world_bone_transforms[bone_index as usize];
+                let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 0.0);
+                let pos = pos.to_vec3().to_array();
+                pos
+            };
+            
+            let normal = model.normals[trivert.normal_index as usize];
+            let uv = [
+                trivert.s as f32 / texture_width,
+                trivert.t as f32 / texture_height
+            ];
+            let index = vertices.len();
+            vertices.push(Vertex { pos, normal, uv });
+            vertex_map.insert(*trivert, index);
+            index
+        };
+        indices.push(index as u32);
+    };
+    
+    
     // TODO: Winding order?
     //for trivert in triverts {
-    for triverts in triverts.chunks(3) {
+    //    process_trivert(trivert);
+    //}
+    for triverts in triverts.chunks_exact(3) {
         for trivert in triverts.iter().rev() {
-            let index = if let Some(index) = vertex_map.get(trivert) {
-                *index
-            } else {
-                let pos = model.vertices[trivert.vertex_index as usize];
-                let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
-                //println!("{}", bone_index);
-                let pos = if bone_index < 0 {
-                    pos
-                } else {
-                    let bone = world_bone_transforms[bone_index as usize];
-                    let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 0.0);
-                    let pos = pos.to_vec3().to_array();
-                    pos
-                };
-                
-                let normal = model.normals[trivert.normal_index as usize];
-                let uv = [
-                    trivert.s as f32 / texture_width,
-                    trivert.t as f32 / texture_height
-                ];
-                let index = vertices.len();
-                vertices.push(Vertex { pos, normal, uv });
-                vertex_map.insert(*trivert, index);
-                index
-            };
-            indices.push(index as u32);
+            process_trivert(trivert);
         }
     }
+
+
 }
