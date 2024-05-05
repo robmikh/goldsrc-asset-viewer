@@ -367,8 +367,7 @@ impl MdlFile {
                                 } else {
                                     (MdlMeshSequenceType::TriangleFan, -num_triverts as usize)
                                 };
-                                let mut triverts =
-                                    Vec::with_capacity(num_triverts);
+                                let mut triverts = Vec::with_capacity(num_triverts);
                                 for _ in 0..num_triverts {
                                     let vertex_header: VertexHeader =
                                         bincode::deserialize_from(&mut file).unwrap();
