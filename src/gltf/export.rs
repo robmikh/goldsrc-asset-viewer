@@ -49,7 +49,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
         let bone_angles = Vec3::new(bone.value[3], bone.value[4], bone.value[5]);
         let bone_transform = Mat4::from_rotation_translation(Quat::from_euler(
-            EulerRot::XYZ,
+            EulerRot::ZYX,
             bone_angles.x,
             bone_angles.y,
             bone_angles.z,
