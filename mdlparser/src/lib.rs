@@ -109,8 +109,8 @@ impl TextureHeader {
 #[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize, Debug)]
 struct MeshHeader {
-    triangle_count: u32,
-    triangle_offset: u32,
+    trivert_count: u32,
+    trivert_offset: u32,
     skin_ref: u32,
     normal_count: u32,
     normal_offset: u32,
@@ -354,42 +354,46 @@ impl MdlFile {
                     let mut meshes = Vec::new();
                     for mesh_header in mesh_headers {
                         // Mesh Vertex
-                        file.seek(SeekFrom::Start(mesh_header.triangle_offset as u64))
+                        file.seek(SeekFrom::Start(mesh_header.trivert_offset as u64))
                             .unwrap();
                         let mut sequences = Vec::new();
                         let mut total_triverts = 0;
-                        while total_triverts < mesh_header.triangle_count as usize {
-                            let num_triverts: i16 = bincode::deserialize_from(&mut file).unwrap();
-                            // Positive means triangle strip, negative means triangle fan
-                            let sequence_ty = if num_triverts > 0 {
-                                MdlMeshSequenceType::TriangleStrip
-                            } else {
-                                MdlMeshSequenceType::TriangleFan
-                            };
-                            let mut triverts =
-                                Vec::with_capacity(mesh_header.triangle_count as usize);
-                            for _ in 0..num_triverts.abs() {
-                                let vertex_header: VertexHeader =
-                                    bincode::deserialize_from(&mut file).unwrap();
-                                let vertex = MdlMeshVertex {
-                                    vertex_index: vertex_header.vertex_index as u32,
-                                    normal_index: vertex_header.normal_index as u32,
-                                    s: vertex_header.s as u32,
-                                    t: vertex_header.t as u32,
+                        let mut num_triverts: i16 = bincode::deserialize_from(&mut file).unwrap();
+                        while num_triverts != 0 {
+                            {
+                                // Positive means triangle strip, negative means triangle fan
+                                let (sequence_ty, num_triverts) = if num_triverts > 0 {
+                                    (MdlMeshSequenceType::TriangleStrip, num_triverts as usize)
+                                } else {
+                                    (MdlMeshSequenceType::TriangleFan, -num_triverts as usize)
                                 };
-                                triverts.push(vertex);
+                                let mut triverts =
+                                    Vec::with_capacity(num_triverts);
+                                for _ in 0..num_triverts {
+                                    let vertex_header: VertexHeader =
+                                        bincode::deserialize_from(&mut file).unwrap();
+                                    let vertex = MdlMeshVertex {
+                                        vertex_index: vertex_header.vertex_index as u32,
+                                        normal_index: vertex_header.normal_index as u32,
+                                        s: vertex_header.s as u32,
+                                        t: vertex_header.t as u32,
+                                    };
+                                    triverts.push(vertex);
+                                }
+                                total_triverts += triverts.len();
+                                sequences.push(MdlMeshSequence {
+                                    ty: sequence_ty,
+                                    triverts,
+                                });
                             }
-                            assert_eq!(triverts.len(), num_triverts.abs() as usize);
-                            sequences.push(MdlMeshSequence {
-                                ty: sequence_ty,
-                                triverts,
-                            });
-                            total_triverts += num_triverts.abs() as usize;
+                            num_triverts = bincode::deserialize_from(&mut file).unwrap();
                         }
+                        // Why don't these match?
+                        //assert_eq!(total_triverts, mesh_header.trivert_count as usize);
 
                         meshes.push(MdlMesh {
                             sequences,
-                            triverts_count: mesh_header.triangle_count,
+                            triverts_count: total_triverts as u32,
                             skin_ref: mesh_header.skin_ref,
                             normal_count: mesh_header.normal_count,
                         });

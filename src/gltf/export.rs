@@ -82,28 +82,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         world_bone_transforms[node_index] = node_world_transform;
     }
-    //let mut inverse_bind_transforms: Vec<_> = world_bone_transforms.iter().map(|x| x.inverse()).collect();
-    //for i in 0..file.bones.len() {
-    //    let node_id = bone_map.get(&i).unwrap();
-    //    let mut transform = Mat4::IDENTITY;
-    //    let ancestors: Vec<_> = bone_tree.ancestor_ids(node_id).unwrap().collect();
-    //    for node in ancestors.iter().rev() {
-    //        let index = *bone_tree.get(*node).unwrap().data();
-    //        transform *= local_bone_transforms[index].inverse();
-    //    }
-    //    transform *= local_bone_transforms[i].inverse();
-    //    inverse_bind_transforms[i] = transform;
-    //}
-    //let mut final_bone_transforms = Vec::with_capacity(file.bones.len());
-    //let inverse_world = Mat4::IDENTITY.inverse();
-    //for (joint_node_index, inverse_bind_transform) in
-    //        (0..file.bones.len()).zip(inverse_bind_transforms)
-    //    {
-    //        let transform = world_bone_transforms[joint_node_index];
-    //        let new_transform = inverse_world * transform * inverse_bind_transform;
-    //        final_bone_transforms.push(new_transform.transpose());
-    //    }
-    //let world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
     let final_bone_transforms = world_bone_transforms;
 
     // Gather mesh data
@@ -123,13 +101,13 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                         let mut triverts = Vec::new();
                         for i in 0..sequence.triverts.len() - 2 {
                             if i % 2 == 0 {
-                                triverts.push(sequence.triverts[i + 2]);
-                                triverts.push(sequence.triverts[i]);
                                 triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[i]);
+                                triverts.push(sequence.triverts[i + 2]);
                             } else {
-                                triverts.push(sequence.triverts[i + 2]);
-                                triverts.push(sequence.triverts[i + 1]);
                                 triverts.push(sequence.triverts[i]);
+                                triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[i + 2]);
                             }
                         }
                         process_indexed_triangles(
@@ -146,9 +124,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
                         for i in 0..sequence.triverts.len() - 2 {
-                            triverts.push(sequence.triverts[0]);
-                            triverts.push(sequence.triverts[i + 1]);
                             triverts.push(sequence.triverts[i + 2]);
+                            triverts.push(sequence.triverts[i + 1]);
+                            triverts.push(sequence.triverts[0]);
                         }
                         process_indexed_triangles(
                             model,
@@ -414,6 +392,15 @@ fn process_indexed_triangles(
             };
 
             let normal = model.normals[trivert.normal_index as usize];
+            let normal = if bone_index < 0 {
+                normal
+            } else {
+                let bone = world_bone_transforms[bone_index as usize];
+                let normal = bone * Vec4::new(normal[0], normal[1], normal[2], 0.0);
+                let normal = normal.to_vec3().normalize().to_array();
+                normal
+            };
+
             let uv = [
                 trivert.s as f32 / texture_width,
                 trivert.t as f32 / texture_height,
@@ -426,13 +413,7 @@ fn process_indexed_triangles(
         indices.push(index as u32);
     };
 
-    // TODO: Winding order?
-    //for trivert in triverts {
-    //    process_trivert(trivert);
-    //}
-    for triverts in triverts.chunks_exact(3) {
-        for trivert in triverts.iter().rev() {
-            process_trivert(trivert);
-        }
+    for trivert in triverts {
+        process_trivert(trivert);
     }
 }
