@@ -43,11 +43,31 @@ enum FileInfo {
 }
 
 fn main() {
+    let cli = Cli::parse();
+
+    if cli.export_file_path.is_none() {
+        show_ui(cli);
+    } else {
+        if let Some(file_path) = cli.file_path {
+            let file_info = load_file(file_path).unwrap();
+            let mdl_file = match file_info {
+                FileInfo::MdlFile(file) => file,
+                _ => panic!(),
+            };
+            let export_file_path = cli.export_file_path.unwrap();
+
+            gltf::export::export(&mdl_file.file, export_file_path).unwrap();
+            println!("Done!");
+        } else {
+            panic!("Expected input path!");
+        }
+    }
+}
+
+fn show_ui(cli: Cli) {
     env_logger::init();
 
     let mut file_info = None;
-
-    let cli = Cli::parse();
 
     if let Some(path) = &cli.file_path {
         file_info = load_file(path);
