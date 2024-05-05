@@ -87,6 +87,28 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         world_bone_transforms[node_index] = node_world_transform;
     }
+    //let mut inverse_bind_transforms: Vec<_> = world_bone_transforms.iter().map(|x| x.inverse()).collect();
+    //for i in 0..file.bones.len() {
+    //    let node_id = bone_map.get(&i).unwrap();
+    //    let mut transform = Mat4::IDENTITY;
+    //    let ancestors: Vec<_> = bone_tree.ancestor_ids(node_id).unwrap().collect();
+    //    for node in ancestors.iter().rev() {
+    //        let index = *bone_tree.get(*node).unwrap().data();
+    //        transform *= local_bone_transforms[index].inverse();
+    //    }
+    //    transform *= local_bone_transforms[i].inverse();
+    //    inverse_bind_transforms[i] = transform;
+    //}
+    //let mut final_bone_transforms = Vec::with_capacity(file.bones.len());
+    //let inverse_world = Mat4::IDENTITY.inverse();
+    //for (joint_node_index, inverse_bind_transform) in
+    //        (0..file.bones.len()).zip(inverse_bind_transforms)
+    //    {
+    //        let transform = world_bone_transforms[joint_node_index];
+    //        let new_transform = inverse_world * transform * inverse_bind_transform;
+    //        final_bone_transforms.push(new_transform.transpose());
+    //    }
+    let final_bone_transforms = world_bone_transforms;
     //let world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
 
     // Gather mesh data
@@ -115,7 +137,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 triverts.push(sequence.triverts[i]);
                             }
                         }
-                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
+                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &final_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
                     }
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
@@ -128,7 +150,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                             triverts.push(*next);
                             last = *next;
                         }
-                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
+                        process_indexed_triangles(model, texture_width, texture_height, &triverts, &final_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
                     },
                 }
             }
