@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Mat4, Vec3, Vec4};
+use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
 use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
@@ -31,13 +31,11 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let model = body_part.models.first().unwrap();
 
     // Compute bone transforms
-    let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
+    let mut local_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
     let mut bone_tree = TreeBuilder::new()
         .with_node_capacity(file.bones.len())
         .build();
     let mut bone_map = HashMap::new();
-    //let mut bone_iter = file.bones.iter().enumerate();
-    //let (root_bone_index, first_bone) = bone_iter.next().unwrap();
     for (i, bone) in file.bones.iter().enumerate() {
         //println!("Bone {} : Parnet {}", i, bone.parent);
         let behavior = if bone.parent < 0 {
@@ -48,25 +46,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
-        //println!("{:?}", bone.value);
         let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
-        let bone_transform = Mat4::from_translation(bone_pos)
-            * Mat4::from_rotation_x(bone.value[3])
-            * Mat4::from_rotation_y(bone.value[4])
-            * Mat4::from_rotation_z(bone.value[5]);
+        let bone_angles = Vec3::new(bone.value[3], bone.value[4], bone.value[5]);
+        let bone_transform = Mat4::from_rotation_translation(Quat::from_euler(
+            EulerRot::XYZ,
+            bone_angles.x,
+            bone_angles.y,
+            bone_angles.z,
+        ), bone_pos);
 
-        //let bone_transform =
-        //    Mat4::from_rotation_z(bone.value[5]) *
-        //    Mat4::from_rotation_y(bone.value[4]) *
-        //    Mat4::from_rotation_x(bone.value[3]) *
-        //    Mat4::from_translation(bone_pos);
-
-        //let bone_transform =
-        //    Mat4::from_rotation_x(bone.value[3]) *
-        //    Mat4::from_rotation_y(bone.value[4]) *
-        //    Mat4::from_rotation_z(bone.value[5]) *
-        //    Mat4::from_translation(bone_pos);
-        local_bone_transforms.push(bone_transform);
+        local_bone_transforms[i] = bone_transform;
     }
     let mut world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
     for node_id in bone_tree
@@ -114,8 +103,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     //        let new_transform = inverse_world * transform * inverse_bind_transform;
     //        final_bone_transforms.push(new_transform.transpose());
     //    }
-    let final_bone_transforms = world_bone_transforms;
     //let world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
+    let final_bone_transforms = world_bone_transforms;
 
     // Gather mesh data
     let meshes = {
@@ -156,14 +145,10 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                     }
                     MdlMeshSequenceType::TriangleFan => {
                         let mut triverts = Vec::new();
-                        let mut iter = sequence.triverts.iter();
-                        let center = *iter.next().unwrap();
-                        let mut last = *iter.next().unwrap();
-                        for next in iter {
-                            triverts.push(center);
-                            triverts.push(last);
-                            triverts.push(*next);
-                            last = *next;
+                        for i in 0..sequence.triverts.len() - 2 {
+                            triverts.push(sequence.triverts[0]);
+                            triverts.push(sequence.triverts[i + 1]);
+                            triverts.push(sequence.triverts[i + 2]);
                         }
                         process_indexed_triangles(
                             model,
@@ -423,7 +408,7 @@ fn process_indexed_triangles(
                 pos
             } else {
                 let bone = world_bone_transforms[bone_index as usize];
-                let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 0.0);
+                let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 1.0);
                 let pos = pos.to_vec3().to_array();
                 pos
             };
