@@ -210,7 +210,7 @@ pub fn get_decoded_data(
     archive: &WadArchive,
     info: &WadFileInfo,
 ) -> (
-    Vec<image::ImageBuffer<image::Bgra<u8>, Vec<u8>>>,
+    Vec<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
     ExtraTextureData,
 ) {
     let mut extra_data = ExtraTextureData::new(info.texture_type);

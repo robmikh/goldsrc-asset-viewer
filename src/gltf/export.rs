@@ -2,7 +2,6 @@ use std::{collections::HashMap, path::{Path, PathBuf}};
 
 use glam::{Mat4, Vec3, Vec4};
 use id_tree::{Node, TreeBuilder, InsertBehavior::{AsRoot, UnderNode}};
-use image::DynamicImage;
 use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
@@ -342,9 +341,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     };
     for texture in &file.textures {
         texture_path.set_file_name(format!("{}.png", texture.name));
-        let image = DynamicImage::ImageBgra8(texture.image_data.clone());
-        let rgba_image = image.to_rgba8();
-        rgba_image.save_with_format(&texture_path, image::ImageFormat::Png).unwrap();
+        texture.image_data.save_with_format(&texture_path, image::ImageFormat::Png).unwrap();
     }
 
     Ok(())

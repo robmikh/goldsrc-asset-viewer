@@ -101,13 +101,13 @@ fn show_ui(cli: Cli) {
 
     let surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: wgpu::TextureFormat::Bgra8Unorm,
+        format: wgpu::TextureFormat::Rgba8Unorm,
         width: size.width as u32,
         height: size.height as u32,
         present_mode: wgpu::PresentMode::Mailbox,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![
-            wgpu::TextureFormat::Bgra8Unorm
+            wgpu::TextureFormat::Rgba8Unorm
         ],
     };
     surface.configure(&device, &surface_config);
@@ -175,13 +175,13 @@ fn show_ui(cli: Cli) {
 
                 let surface_config = wgpu::SurfaceConfiguration {
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    format: wgpu::TextureFormat::Bgra8Unorm,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
                     width: size.width as u32,
                     height: size.height as u32,
                     present_mode: wgpu::PresentMode::Mailbox,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
                     view_formats: vec![
-                        wgpu::TextureFormat::Bgra8Unorm
+                        wgpu::TextureFormat::Rgba8Unorm
                     ],
                 };
                 surface.configure(&device, &surface_config);

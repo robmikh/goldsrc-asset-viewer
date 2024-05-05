@@ -1,4 +1,4 @@
-use image::{Bgra, ImageBuffer};
+use image::{Rgba, ImageBuffer};
 use imgui::*;
 use imgui_wgpu::{Renderer, Texture, TextureConfig};
 use wgpu::SamplerDescriptor;
@@ -29,7 +29,7 @@ pub fn create_imgui_texture(
     device: &mut wgpu::Device,
     queue: &mut wgpu::Queue,
     renderer: &mut imgui_wgpu::Renderer,
-    image: ImageBuffer<Bgra<u8>, Vec<u8>>,
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
 ) -> imgui_wgpu::Texture {
     let (width, height) = image.dimensions();
     let raw_data = image.into_raw();

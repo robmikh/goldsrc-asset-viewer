@@ -35,17 +35,17 @@ pub struct WadArchive {
 pub struct TextureData {
     pub image_width: u32,
     pub image_height: u32,
-    pub image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
+    pub image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
 }
 
 #[derive(Clone)]
 pub struct MipmapedTextureData {
     pub image_width: u32,
     pub image_height: u32,
-    pub image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
-    pub mipmap1: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
-    pub mipmap2: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
-    pub mipmap3: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
+    pub image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    pub mipmap1: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    pub mipmap2: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    pub mipmap3: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
 }
 
 #[derive(Copy, Clone)]
@@ -74,7 +74,7 @@ pub struct FontData {
     pub row_count: u32,
     pub row_height: u32,
     pub font_info: [CharInfo; 256],
-    pub image: image::ImageBuffer<image::Bgra<u8>, Vec<u8>>,
+    pub image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
 }
 
 #[derive(Copy, Clone, Deserialize)]
@@ -370,8 +370,8 @@ fn create_image(
     palette_data: &[u8],
     texture_width: u32,
     texture_height: u32,
-) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
-    let mut image_bgra_data = Vec::<u8>::new();
+) -> image::ImageBuffer<image::Rgba<u8>, Vec<u8>> {
+    let mut image_rgba_data = Vec::<u8>::new();
     for palette_index in image_data {
         let index = (*palette_index as usize) * 3;
         let r_color = palette_data[index + 0];
@@ -379,22 +379,22 @@ fn create_image(
         let b_color = palette_data[index + 2];
 
         if r_color == 0 && g_color == 0 && b_color == 255 {
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
         } else {
-            image_bgra_data.push(b_color);
-            image_bgra_data.push(g_color);
-            image_bgra_data.push(r_color);
-            image_bgra_data.push(255);
+            image_rgba_data.push(r_color);
+            image_rgba_data.push(g_color);
+            image_rgba_data.push(b_color);
+            image_rgba_data.push(255);
         }
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+    image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_vec(
         texture_width,
         texture_height,
-        image_bgra_data,
+        image_rgba_data,
     )
     .unwrap()
 }
@@ -405,8 +405,8 @@ fn create_image_with_alpha_key(
     texture_width: u32,
     texture_height: u32,
     alpha_key: u8,
-) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
-    let mut image_bgra_data = Vec::<u8>::new();
+) -> image::ImageBuffer<image::Rgba<u8>, Vec<u8>> {
+    let mut image_rgba_data = Vec::<u8>::new();
     for palette_index in image_data {
         let index = (*palette_index as usize) * 3;
         let r_color = palette_data[index + 0];
@@ -414,22 +414,22 @@ fn create_image_with_alpha_key(
         let b_color = palette_data[index + 2];
 
         if (r_color == 0 && g_color == 0 && b_color == 255) || *palette_index == alpha_key {
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
-            image_bgra_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
+            image_rgba_data.push(0);
         } else {
-            image_bgra_data.push(b_color);
-            image_bgra_data.push(g_color);
-            image_bgra_data.push(r_color);
-            image_bgra_data.push(255);
+            image_rgba_data.push(b_color);
+            image_rgba_data.push(g_color);
+            image_rgba_data.push(r_color);
+            image_rgba_data.push(255);
         }
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+    image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_vec(
         texture_width,
         texture_height,
-        image_bgra_data,
+        image_rgba_data,
     )
     .unwrap()
 }
@@ -438,19 +438,19 @@ fn create_image_greyscale(
     image_data: &[u8],
     texture_width: u32,
     texture_height: u32,
-) -> image::ImageBuffer<image::Bgra<u8>, Vec<u8>> {
-    let mut image_bgra_data = Vec::<u8>::new();
+) -> image::ImageBuffer<image::Rgba<u8>, Vec<u8>> {
+    let mut image_rgba_data = Vec::<u8>::new();
     for value in image_data {
-        image_bgra_data.push(*value);
-        image_bgra_data.push(*value);
-        image_bgra_data.push(*value);
-        image_bgra_data.push(255);
+        image_rgba_data.push(*value);
+        image_rgba_data.push(*value);
+        image_rgba_data.push(*value);
+        image_rgba_data.push(255);
     }
 
-    image::ImageBuffer::<image::Bgra<u8>, Vec<u8>>::from_vec(
+    image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_vec(
         texture_width,
         texture_height,
-        image_bgra_data,
+        image_rgba_data,
     )
     .unwrap()
 }
