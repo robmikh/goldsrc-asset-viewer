@@ -40,7 +40,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             UnderNode(parent_node)
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
-        bone_map.insert(i, bone_id);
+        bone_map.insert(i, bone_id);    
+        //println!("{:?}", bone.value);
         let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
         let bone_transform = 
             Mat4::from_translation(bone_pos) * 
@@ -52,6 +53,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         //    Mat4::from_rotation_z(bone.value[5]) * 
         //    Mat4::from_rotation_y(bone.value[4]) *
         //    Mat4::from_rotation_x(bone.value[3]) *
+        //    Mat4::from_translation(bone_pos);
+
+        //let bone_transform = 
+        //    Mat4::from_rotation_x(bone.value[3]) *
+        //    Mat4::from_rotation_y(bone.value[4]) *
+        //    Mat4::from_rotation_z(bone.value[5]) * 
         //    Mat4::from_translation(bone_pos);
         local_bone_transforms.push(bone_transform);
     }
@@ -97,15 +104,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 match sequence.ty {
                     MdlMeshSequenceType::TriangleStrip => {
                         let mut triverts = Vec::new();
-                        let mut iter = sequence.triverts.iter();
-                        let mut last_0 = *iter.next().unwrap();
-                        let mut last_1 = *iter.next().unwrap();
-                        for next in iter {
-                            triverts.push(last_0);
-                            triverts.push(last_1);
-                            triverts.push(*next);
-                            last_0 = last_1;
-                            last_1 = *next;
+                        for i in 0..sequence.triverts.len()-2 {
+                            if i % 2 == 0 {
+                                triverts.push(sequence.triverts[i + 2]);
+                                triverts.push(sequence.triverts[i]);
+                                triverts.push(sequence.triverts[i + 1]);
+                            } else {
+                                triverts.push(sequence.triverts[i + 2]);
+                                triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[i]);
+                            }
                         }
                         process_indexed_triangles(model, texture_width, texture_height, &triverts, &world_bone_transforms, &mut indices, &mut vertices, &mut vertex_map);
                     }
@@ -133,7 +141,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         }
         meshes
     };
-    println!("Num meshes: {}", meshes.len());
+    //println!("Num meshes: {}", meshes.len());
 
     // Write our vertex and index data
     // TODO: Don't use seperate buffers for each mesh
@@ -174,7 +182,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         slices.push(Box::new(uvs_slice));
 
         // DEBUG: Remove later
-        break;
+        //break;
     }
 
     // Create primitives
@@ -234,13 +242,10 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         "scene" : 0,
         "scenes" : [
             {{
-                "nodes" : [ 0, 1]
+                "nodes" : [ 0 ]
             }}
         ],
         "nodes" : [
-            {{
-                "mesh" : 0
-            }},
             {{
                 "mesh" : 0,
                 "translation" : [ 1.0, 0.0, 0.0 ]
