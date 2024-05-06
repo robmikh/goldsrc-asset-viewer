@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
+    collections::HashMap, ops::Range, path::{Path, PathBuf}
 };
 
 use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
@@ -8,6 +7,7 @@ use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
 };
+use image::buffer;
 use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
@@ -22,8 +22,13 @@ struct Vertex {
 
 struct Mesh {
     texture_index: usize,
+    indices_range: Range<usize>,
+}
+
+struct Model {
     indices: Vec<u32>,
     vertices: Vec<Vertex>,
+    meshes: Vec<Mesh>,
 }
 
 pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result<()> {
@@ -85,119 +90,129 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
     let final_bone_transforms = world_bone_transforms;
 
-    // Gather mesh data
-    let meshes = {
-        let mut meshes = Vec::with_capacity(model.meshes.len());
-        for mdl_mesh in &model.meshes {
-            let texture = &file.textures[mdl_mesh.skin_ref as usize];
-            let texture_width = texture.width as f32;
-            let texture_height = texture.height as f32;
-
+    let converted_model = {
+        // Gather mesh data
+        let (meshes, indices, vertices) = {
+            let mut meshes = Vec::with_capacity(model.meshes.len());
             let mut indices = Vec::new();
             let mut vertices = Vec::new();
-            let mut vertex_map = HashMap::new();
-            for sequence in &mdl_mesh.sequences {
-                match sequence.ty {
-                    MdlMeshSequenceType::TriangleStrip => {
-                        let mut triverts = Vec::new();
-                        for i in 0..sequence.triverts.len() - 2 {
-                            if i % 2 == 0 {
-                                triverts.push(sequence.triverts[i + 1]);
-                                triverts.push(sequence.triverts[i]);
-                                triverts.push(sequence.triverts[i + 2]);
-                            } else {
-                                triverts.push(sequence.triverts[i]);
-                                triverts.push(sequence.triverts[i + 1]);
-                                triverts.push(sequence.triverts[i + 2]);
+            for mdl_mesh in &model.meshes {
+                let texture = &file.textures[mdl_mesh.skin_ref as usize];
+                let texture_width = texture.width as f32;
+                let texture_height = texture.height as f32;
+
+                let index_start = indices.len();
+                let mut vertex_map = HashMap::new();
+                for sequence in &mdl_mesh.sequences {
+                    match sequence.ty {
+                        MdlMeshSequenceType::TriangleStrip => {
+                            let mut triverts = Vec::new();
+                            for i in 0..sequence.triverts.len() - 2 {
+                                if i % 2 == 0 {
+                                    triverts.push(sequence.triverts[i + 1]);
+                                    triverts.push(sequence.triverts[i]);
+                                    triverts.push(sequence.triverts[i + 2]);
+                                } else {
+                                    triverts.push(sequence.triverts[i]);
+                                    triverts.push(sequence.triverts[i + 1]);
+                                    triverts.push(sequence.triverts[i + 2]);
+                                }
                             }
+                            process_indexed_triangles(
+                                model,
+                                texture_width,
+                                texture_height,
+                                &triverts,
+                                &final_bone_transforms,
+                                &mut indices,
+                                &mut vertices,
+                                &mut vertex_map,
+                            );
                         }
-                        process_indexed_triangles(
-                            model,
-                            texture_width,
-                            texture_height,
-                            &triverts,
-                            &final_bone_transforms,
-                            &mut indices,
-                            &mut vertices,
-                            &mut vertex_map,
-                        );
-                    }
-                    MdlMeshSequenceType::TriangleFan => {
-                        let mut triverts = Vec::new();
-                        for i in 0..sequence.triverts.len() - 2 {
-                            triverts.push(sequence.triverts[i + 2]);
-                            triverts.push(sequence.triverts[i + 1]);
-                            triverts.push(sequence.triverts[0]);
+                        MdlMeshSequenceType::TriangleFan => {
+                            let mut triverts = Vec::new();
+                            for i in 0..sequence.triverts.len() - 2 {
+                                triverts.push(sequence.triverts[i + 2]);
+                                triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[0]);
+                            }
+                            process_indexed_triangles(
+                                model,
+                                texture_width,
+                                texture_height,
+                                &triverts,
+                                &final_bone_transforms,
+                                &mut indices,
+                                &mut vertices,
+                                &mut vertex_map,
+                            );
                         }
-                        process_indexed_triangles(
-                            model,
-                            texture_width,
-                            texture_height,
-                            &triverts,
-                            &final_bone_transforms,
-                            &mut indices,
-                            &mut vertices,
-                            &mut vertex_map,
-                        );
                     }
                 }
-            }
+                let index_end = indices.len();
 
-            meshes.push(Mesh {
-                indices,
-                vertices,
-                texture_index: mdl_mesh.skin_ref as usize,
-            })
+                meshes.push(Mesh {
+                    texture_index: mdl_mesh.skin_ref as usize,
+                    indices_range: index_start..index_end,
+                })
+            }
+            (meshes, indices, vertices)
+        };
+        Model {
+            indices,
+            vertices,
+            meshes,
         }
-        meshes
     };
+    
     //println!("Num meshes: {}", meshes.len());
 
     // Write our vertex and index data
-    // TODO: Don't use seperate buffers for each mesh
     let mut data = Vec::new();
     let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
-    let mut mesh_slices = Vec::new();
-    for mesh in &meshes {
-        //println!("Indices {}       Vertices: {}       {}", mesh.indices.len(), mesh.vertices.len(), mesh.indices.len() % 3);
-
+    {
         // Split out the vertex data
-        let mut positions = Vec::with_capacity(mesh.vertices.len());
-        let mut normals = Vec::with_capacity(mesh.vertices.len());
-        let mut uvs = Vec::with_capacity(mesh.vertices.len());
-        for vertex in &mesh.vertices {
+        let mut positions = Vec::with_capacity(converted_model.vertices.len());
+        let mut normals = Vec::with_capacity(converted_model.vertices.len());
+        let mut uvs = Vec::with_capacity(converted_model.vertices.len());
+        for vertex in &converted_model.vertices {
             positions.push(vertex.pos);
             normals.push(vertex.normal);
             uvs.push(vertex.uv);
         }
 
-        // Write data
-        let indices_slice = BufferSlice::record(&mut data, &mesh.indices, ELEMENT_ARRAY_BUFFER);
+        let indices_slice = BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
         let vertex_positions_slice = BufferSlice::record(&mut data, &positions, ARRAY_BUFFER);
         let vertex_normals_slice = BufferSlice::record(&mut data, &normals, ARRAY_BUFFER);
-        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);
-
-        // Record indices
-        let base_index = slices.len();
-        mesh_slices.push((
-            base_index,
-            base_index + 1,
-            base_index + 2,
-            base_index + 3,
-            mesh.texture_index,
-        ));
+        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);    
+    
         slices.push(Box::new(indices_slice));
         slices.push(Box::new(vertex_positions_slice));
         slices.push(Box::new(vertex_normals_slice));
         slices.push(Box::new(uvs_slice));
+    }
+    let indices_slice_index = 0;
+    let vertex_positions_slice_index = 1;
+    let vertex_normals_slice_index = 2;
+    let uvs_slice_index = 3;
 
-        // DEBUG: Remove later
-        //break;
+    // Record accessors for vertex and index data
+    let mut accessors = Vec::new();
+
+    // Vertex data
+    let vertex_positions_accessor = add_accessor(&mut accessors, vertex_positions_slice_index, 0, converted_model.vertices.len());
+    let vertex_normals_accessor = add_accessor(&mut accessors, vertex_normals_slice_index, 0, converted_model.vertices.len());
+    let uvs_accessor = add_accessor(&mut accessors, uvs_slice_index, 0, converted_model.vertices.len());
+
+    let mut mesh_accessors = Vec::new();
+    for mesh in &converted_model.meshes {
+        let indices_accessor = add_accessor(&mut accessors, indices_slice_index, mesh.indices_range.start * std::mem::size_of::<u32>(), mesh.indices_range.end - mesh.indices_range.start);
+        mesh_accessors.push((indices_accessor, vertex_positions_accessor, vertex_normals_accessor, uvs_accessor, mesh.texture_index));
     }
 
     // Create primitives
-    let mut primitives = Vec::with_capacity(meshes.len());
-    for (indices, positions, normals, uvs, material) in mesh_slices {
+    let mut primitives = Vec::with_capacity(converted_model.meshes.len());
+    for (indices, positions, normals, uvs, material) in mesh_accessors {
         primitives.push(format!(
             r#"         {{
             "attributes" : {{
@@ -252,13 +267,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
     // Create buffer views and accessors
     let mut buffer_views = Vec::with_capacity(slices.len());
-    let mut accessors = Vec::with_capacity(slices.len());
-    for (i, slice) in slices.iter().enumerate() {
+    let mut gltf_accessors = Vec::with_capacity(slices.len());
+    for slice in &slices {
         buffer_views.push(slice.write_buffer_view());
-        accessors.push(slice.write_accessor(i));
+    }
+    for (buffer_view_index, byte_offset, count) in accessors {
+        let slice = &slices[buffer_view_index];
+        gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count));
     }
     let buffer_views = buffer_views.join(",\n");
-    let accessors = accessors.join(",\n");
+    let accessors = gltf_accessors.join(",\n");
 
     let gltf_text = format!(
         r#"{{
@@ -426,4 +444,10 @@ fn process_indexed_triangles(
     for trivert in triverts {
         process_trivert(trivert);
     }
+}
+
+fn add_accessor(accessors: &mut Vec<(usize, usize, usize)>, buffer_view_index: usize, byte_offset: usize, len: usize) -> usize {
+    let index = accessors.len();
+    accessors.push((buffer_view_index, byte_offset, len));
+    index
 }

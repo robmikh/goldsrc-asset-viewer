@@ -50,7 +50,7 @@ impl<T: BufferType> BufferSlice<T> {
 
 pub trait BufferViewAndAccessorSource {
     fn write_buffer_view(&self) -> String;
-    fn write_accessor(&self, view_index: usize) -> String;
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String;
 }
 
 impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
@@ -79,7 +79,7 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
         }
     }
 
-    fn write_accessor(&self, view_index: usize) -> String {
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String {
         format!(
             r#"   {{
             "bufferView" : {},
@@ -91,9 +91,9 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
             "min" : {}
         }}"#,
             view_index,
-            0,
+            byte_offset,
             T::COMPONENT_TY,
-            self.len,
+            count,
             T::TY,
             self.max.write_value(),
             self.min.write_value()
