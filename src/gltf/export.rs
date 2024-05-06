@@ -41,6 +41,54 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
+    println!("Animation Sequence Groups:");
+    for group in &file.animation_sequence_groups {
+        let name = std::str::from_utf8(group.name()).unwrap();
+        let end = name.find('\0').unwrap_or(name.len());
+        let name = &name[..end];
+
+        let label = std::str::from_utf8(&group.label).unwrap();
+        let end = label.find('\0').unwrap_or(label.len());
+        let label = &label[..end];
+
+        println!("  {} - {}", label, name);
+    }
+
+    println!("Animation Sequences:");
+    for animated_sequence in &file.animation_sequences {
+        let name = std::str::from_utf8(&animated_sequence.name).unwrap();
+        let end = name.find('\0').unwrap_or(name.len());
+        let name = &name[..end];
+        println!("  {} - {}", name, animated_sequence.sequence_group);
+
+        // TODO: Load other files
+        if animated_sequence.sequence_group == 0 {
+            let sequence_group = &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
+            let animation_offset = sequence_group.unused_2 as usize + animated_sequence.animation_offset as usize;
+            let animation_data = &file.raw_data()[animation_offset..];
+
+            for i in 0..file.bones.len() {
+                println!("    Bone {}:", i);
+                let offset = i * 12;
+                let mut offsets = [0u16; 6];
+                for j in 0..offsets.len() {
+                    let frame_offset = j * 2;
+                    let data = [animation_data[offset + frame_offset], animation_data[offset + frame_offset + 1]];
+                    offsets[j] = u16::from_le_bytes(data);
+                }
+                
+                for (j, offset) in offsets.iter().enumerate() {
+                    if *offset != 0 {
+                        let anim_value = &animation_data[*offset as usize..];
+                        let data = [anim_value[0], anim_value[1]];
+                        let value = u16::from_le_bytes(data);
+                        println!("      {} - [ {}, {} ] - {}", value, anim_value[0], anim_value[1], value as f32 * file.bones[i].scale[j]);
+                    }
+                }
+            }
+        }
+    }
+
     // Compute bone transforms
     let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
     let mut local_bone_component_transforms = Vec::with_capacity(file.bones.len());

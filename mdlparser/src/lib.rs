@@ -11,6 +11,54 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
+#[allow(dead_code)]
+#[derive(Copy, Clone, Deserialize, Debug)]
+pub struct AnimationSequenceGroup {
+    pub label: [u8; 32],
+    pub name: [[u8; 8]; 8],
+    pub unused_1: i32,
+    pub unused_2: i32,
+}
+
+impl AnimationSequenceGroup {
+    pub fn name(&self) -> &[u8; 64] {
+        unsafe { std::mem::transmute(&self.name) }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Copy, Clone, Deserialize, Debug)]
+pub struct AnimationSequence {
+    pub name: [u8; 32],
+    pub fps: f32,
+    pub flags: i32,
+    pub activity: i32,
+    pub activity_weight: i32,
+    pub num_events: u32,
+    pub event_offset: u32,
+    pub num_frames: u32,
+    pub num_pivots: u32,
+    pub pivot_offset: u32,
+    pub motion_type: i32,
+    pub motion_bone: u32,
+    pub linear_movement: [f32; 3],
+    pub auto_move_pos_offset: u32,
+    pub auto_move_angle_offset: u32,
+    pub bounds_min: [f32; 3],
+    pub bounds_max: [f32; 3],
+    pub num_blends: u32,
+    pub animation_offset: u32,
+    pub blend_type: [i32; 2],
+    pub blend_start: [f32; 2],
+    pub blend_end: [f32; 2],
+    pub blend_parent: i32,
+    pub sequence_group: i32,
+    pub entry_node: i32,
+    pub exit_node: i32,
+    pub node_flags: i32,
+    pub next_sequence: i32,
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MdlMeshVertex {
     pub vertex_index: u32,
@@ -69,6 +117,8 @@ pub struct MdlFile {
     pub textures: Vec<MdlTexture>,
     pub body_parts: Vec<MdlBodyPart>,
     pub bones: Vec<BoneHeader>, // TODO: Change
+    pub animation_sequences: Vec<AnimationSequence>,
+    pub animation_sequence_groups: Vec<AnimationSequenceGroup>,
     header: MdlHeader,
     raw_data: Vec<u8>,
 }
@@ -429,6 +479,32 @@ impl MdlFile {
             bones
         };
 
+        // Animation sequences
+        let sequences = {
+            let mut sequences = Vec::new();
+
+            file.seek(SeekFrom::Start(header.anim_seq_offset as u64)).unwrap();
+            for _ in 0..header.anim_seq_count {
+                let sequence: AnimationSequence = bincode::deserialize_from(&mut file).unwrap();
+                sequences.push(sequence);
+            }
+
+            sequences
+        };
+
+        // Animation sequence groups
+        let sequence_groups = {
+            let mut sequence_groups = Vec::new();
+
+            file.seek(SeekFrom::Start(header.seq_group_offset as u64)).unwrap();
+            for _ in 0..header.seq_group_count {
+                let group: AnimationSequenceGroup = bincode::deserialize_from(&mut file).unwrap();
+                sequence_groups.push(group);
+            }
+
+            sequence_groups
+        };
+
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut file_data = vec![0u8; file_size as usize];
         file.read(&mut file_data).unwrap();
@@ -438,9 +514,16 @@ impl MdlFile {
             textures: textures,
             body_parts: body_parts,
             bones,
+            animation_sequences: sequences,
+            animation_sequence_groups: sequence_groups,
             header: header,
             raw_data: file_data,
         }
+    }
+
+    // TODO: Remove
+    pub fn raw_data(&self) -> &[u8] {
+        &self.raw_data
     }
 }
 
