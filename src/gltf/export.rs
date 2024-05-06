@@ -398,19 +398,13 @@ fn process_indexed_triangles(
             let normal = convert_coordinates(model.normals[trivert.normal_index as usize]);
 
             let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
-            //println!("{}", bone_index);
-            let pos = if bone_index < 0 {
-                pos
-            } else {
+            let pos = {
                 let bone = world_bone_transforms[bone_index as usize];
                 let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 1.0);
                 let pos = pos.to_vec3().to_array();
                 pos
             };
-
-            let normal = if bone_index < 0 {
-                normal
-            } else {
+            let normal = {
                 let bone = world_bone_transforms[bone_index as usize];
                 let normal = bone * Vec4::new(normal[0], normal[1], normal[2], 0.0);
                 let normal = normal.to_vec3().normalize().to_array();
