@@ -46,8 +46,11 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
-        let bone_pos = Vec3::new(bone.value[1], bone.value[2], bone.value[0]);
-        let bone_angles = Vec3::new(bone.value[4], bone.value[5], bone.value[3]);
+        let bone_pos = Vec3::from_array(convert_coordinates([bone.value[0], bone.value[1], bone.value[2]]));
+        let bone_angles = Vec3::from_array(convert_coordinates([bone.value[3], bone.value[4], bone.value[5]]));
+        
+        // NOTE: These values have already been converted to GLTF's coordinate system
+        //       Y is yaw, X is pitch, Z is roll
         let bone_transform = Mat4::from_rotation_translation(
             Quat::from_euler(EulerRot::YXZ, bone_angles.y, bone_angles.x, bone_angles.z).normalize(),
             bone_pos,
@@ -357,6 +360,20 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     Ok(())
 }
 
+// Half-Life's coordinate system uses:
+//    X is forward
+//    Y is left
+//    Z is up
+//    (https://github.com/malortie/assimp/wiki/MDL:-Half-Life-1-file-format#notes)
+// GLTF's coordinate system uses:
+//    X is left (-X is right)
+//    Y is up
+//    Z is forward
+//    (https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units)
+fn convert_coordinates(half_life_xyz: [f32; 3]) -> [f32; 3] {
+    [half_life_xyz[1], half_life_xyz[2], half_life_xyz[0]]
+}
+
 fn process_indexed_triangles(
     model: &MdlModel,
     texture_width: f32,
@@ -377,11 +394,8 @@ fn process_indexed_triangles(
         let index = if let Some(index) = vertex_map.get(trivert) {
             *index
         } else {
-            let pos = model.vertices[trivert.vertex_index as usize];
-            let pos = [pos[1], pos[2], pos[0]];
-            let normal = model.normals[trivert.normal_index as usize];
-            let normal = [normal[1], normal[2], normal[0]];
-
+            let pos = convert_coordinates(model.vertices[trivert.vertex_index as usize]);
+            let normal = convert_coordinates(model.normals[trivert.normal_index as usize]);
 
             let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
             //println!("{}", bone_index);
