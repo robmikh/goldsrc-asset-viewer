@@ -46,10 +46,10 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
-        let bone_pos = Vec3::new(bone.value[0], bone.value[1], bone.value[2]);
-        let bone_angles = Vec3::new(bone.value[3], bone.value[4], bone.value[5]);
+        let bone_pos = Vec3::new(bone.value[1], bone.value[2], bone.value[0]);
+        let bone_angles = Vec3::new(bone.value[4], bone.value[5], bone.value[3]);
         let bone_transform = Mat4::from_rotation_translation(
-            Quat::from_euler(EulerRot::ZYX, bone_angles.x, bone_angles.y, bone_angles.z),
+            Quat::from_euler(EulerRot::YXZ, bone_angles.y, bone_angles.x, bone_angles.z).normalize(),
             bone_pos,
         );
 
@@ -378,6 +378,11 @@ fn process_indexed_triangles(
             *index
         } else {
             let pos = model.vertices[trivert.vertex_index as usize];
+            let pos = [pos[1], pos[2], pos[0]];
+            let normal = model.normals[trivert.normal_index as usize];
+            let normal = [normal[1], normal[2], normal[0]];
+
+
             let bone_index = model.vertex_bone_indices[trivert.vertex_index as usize];
             //println!("{}", bone_index);
             let pos = if bone_index < 0 {
@@ -389,7 +394,6 @@ fn process_indexed_triangles(
                 pos
             };
 
-            let normal = model.normals[trivert.normal_index as usize];
             let normal = if bone_index < 0 {
                 normal
             } else {
