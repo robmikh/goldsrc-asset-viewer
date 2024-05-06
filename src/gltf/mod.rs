@@ -27,7 +27,7 @@ trait BufferTypeEx: Sized {
 
 struct MinMax<T> {
     min: T,
-    max: T
+    max: T,
 }
 
 struct BufferSlice<T> {
@@ -99,12 +99,7 @@ impl<T: BufferTypeMinMax + Copy> BufferSlice<T> {
 
 pub trait BufferViewAndAccessorSource {
     fn write_buffer_view(&self) -> String;
-    fn write_accessor(
-        &self,
-        view_index: usize,
-        byte_offset: usize,
-        count: usize,
-    ) -> String;
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String;
     fn write_accessor_with_min_max(
         &self,
         view_index: usize,
@@ -142,12 +137,7 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
         )
     }
 
-    fn write_accessor(
-        &self,
-        view_index: usize,
-        byte_offset: usize,
-        count: usize,
-    ) -> String {
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String {
         format!(
             r#"   {{
             "bufferView" : {},

@@ -14,7 +14,8 @@ use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 use crate::numerics::ToVec3;
 
 use super::{
-    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
+    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
+    BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER,
 };
 
 struct Vertex {
@@ -104,15 +105,19 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let final_bone_transforms = world_bone_transforms;
 
     // Compute the inverse bind matrices
-    let inverse_bind_transforms: Vec<_> = final_bone_transforms.iter().map(|x| x.inverse()).collect();
+    let inverse_bind_transforms: Vec<_> =
+        final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
     // Build nodes
     let mut nodes = Vec::with_capacity(file.bones.len() + 1);
     let mut bone_to_node: HashMap<usize, usize> = HashMap::new();
-    nodes.push(r#"          {
+    nodes.push(
+        r#"          {
                 "mesh" : 0,
                 "skin" : 0
-            }"#.to_owned());
+            }"#
+        .to_owned(),
+    );
     for node_id in bone_tree
         .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
         .unwrap()
@@ -133,19 +138,32 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             let children = children.join(", ");
             format!("\"children\" : [ {} ],\n           ", children)
         };
-        
+
         let gltf_node_index = nodes.len();
-        nodes.push(format!(r#"          {{
+        nodes.push(format!(
+            r#"          {{
             {}"translation" : [ {}, {}, {} ],
             "rotation" : [ {}, {}, {}, {} ]
         }}"#,
             children,
-            component_transform.translation.x, component_transform.translation.y, component_transform.translation.z,
-            rotation.x, rotation.y, rotation.z, rotation.w
+            component_transform.translation.x,
+            component_transform.translation.y,
+            component_transform.translation.z,
+            rotation.x,
+            rotation.y,
+            rotation.z,
+            rotation.w
         ));
         bone_to_node.insert(bone_index, gltf_node_index);
     }
-    let skin_root = *bone_to_node.get(bone_tree.get(bone_tree.root_node_id().unwrap()).unwrap().data()).unwrap();
+    let skin_root = *bone_to_node
+        .get(
+            bone_tree
+                .get(bone_tree.root_node_id().unwrap())
+                .unwrap()
+                .data(),
+        )
+        .unwrap();
     let nodes = nodes.join(",\n");
 
     let converted_model = {
@@ -185,8 +203,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
-                                &bone_to_node
-
+                                &bone_to_node,
                             );
                         }
                         MdlMeshSequenceType::TriangleFan => {
@@ -205,7 +222,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
-                                &bone_to_node
+                                &bone_to_node,
                             );
                         }
                     }
@@ -230,7 +247,14 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
     // Write our vertex and index data
     let mut data = Vec::new();
-    let (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max, joints_min_max, weights_min_max) = {
+    let (
+        slices,
+        vertex_positions_min_max,
+        vertex_normals_min_max,
+        uvs_min_max,
+        joints_min_max,
+        weights_min_max,
+    ) = {
         let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
 
         // Split out the vertex data
@@ -249,12 +273,15 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         let indices_slice =
             BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
-        let vertex_positions_slice = BufferSlice::record_with_min_max(&mut data, &positions, ARRAY_BUFFER);
-        let vertex_normals_slice = BufferSlice::record_with_min_max(&mut data, &normals, ARRAY_BUFFER);
+        let vertex_positions_slice =
+            BufferSlice::record_with_min_max(&mut data, &positions, ARRAY_BUFFER);
+        let vertex_normals_slice =
+            BufferSlice::record_with_min_max(&mut data, &normals, ARRAY_BUFFER);
         let uvs_slice = BufferSlice::record_with_min_max(&mut data, &uvs, ARRAY_BUFFER);
         let joints_slice = BufferSlice::record_with_min_max(&mut data, &joints, ARRAY_BUFFER);
         let weights_slice = BufferSlice::record_with_min_max(&mut data, &weights, ARRAY_BUFFER);
-        let inverse_bind_matrices_slice = BufferSlice::record_without_target(&mut data, &inverse_bind_transforms);
+        let inverse_bind_matrices_slice =
+            BufferSlice::record_without_target(&mut data, &inverse_bind_transforms);
 
         let vertex_positions_min_max = vertex_positions_slice.get_min_max_values().unwrap();
         let vertex_normals_min_max = vertex_normals_slice.get_min_max_values().unwrap();
@@ -436,13 +463,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 &max,
             ));
         } else {
-            gltf_accessors.push(slice.write_accessor(
-                buffer_view_index,
-                byte_offset,
-                count,
-            ));
+            gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count));
         }
-        
     }
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
@@ -454,12 +476,15 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         joints.push(format!("               {}", node));
     }
     let joints = joints.join(",\n");
-    let skin = format!(r#"          {{
+    let skin = format!(
+        r#"          {{
                 "inverseBindMatrices" : {},
                 "joints" : [
 {}
                 ]
-            }}"#, inverse_bind_matrices_accessor, joints);
+            }}"#,
+        inverse_bind_matrices_accessor, joints
+    );
 
     let gltf_text = format!(
         r#"{{
@@ -621,11 +646,22 @@ fn process_indexed_triangles(
                 trivert.s as f32 / texture_width,
                 trivert.t as f32 / texture_height,
             ];
-            let joints = [*bone_to_node.get(&(bone_index as usize)).unwrap() as u8, 0, 0, 0];
+            let joints = [
+                *bone_to_node.get(&(bone_index as usize)).unwrap() as u8,
+                0,
+                0,
+                0,
+            ];
             let weights = [1.0, 0.0, 0.0, 0.0];
 
             let index = vertices.len();
-            vertices.push(Vertex { pos, normal, uv, joints, weights });
+            vertices.push(Vertex {
+                pos,
+                normal,
+                uv,
+                joints,
+                weights,
+            });
             vertex_map.insert(*trivert, index);
             index
         };
@@ -644,12 +680,7 @@ fn add_accessor<T: BufferType>(
     len: usize,
 ) -> usize {
     let index = accessors.len();
-    accessors.push((
-        buffer_view_index,
-        byte_offset,
-        len,
-        None
-    ));
+    accessors.push((buffer_view_index, byte_offset, len, None));
     index
 }
 
@@ -666,8 +697,7 @@ fn add_accessor_with_min_max<T: BufferTypeMinMax>(
         buffer_view_index,
         byte_offset,
         len,
-        Some((min.write_value(),
-        max.write_value()))
+        Some((min.write_value(), max.write_value())),
     ));
     index
 }
