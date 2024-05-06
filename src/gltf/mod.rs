@@ -22,7 +22,6 @@ trait BufferTypeEx: Sized {
 struct BufferSlice<T> {
     offset: usize,
     byte_len: usize,
-    len: usize,
     min: T,
     max: T,
     target: usize,
@@ -31,7 +30,6 @@ struct BufferSlice<T> {
 impl<T: BufferType + Copy> BufferSlice<T> {
     pub fn record(buffer: &mut Vec<u8>, data: &[T], target: usize) -> Self {
         let offset = buffer.len();
-        let len = data.len();
         let mut max = T::MIN;
         let mut min = T::MAX;
         for face in data {
@@ -44,7 +42,6 @@ impl<T: BufferType + Copy> BufferSlice<T> {
         Self {
             offset,
             byte_len,
-            len,
             min,
             max,
             target,
@@ -58,7 +55,14 @@ impl<T: BufferType + Copy> BufferSlice<T> {
 
 pub trait BufferViewAndAccessorSource {
     fn write_buffer_view(&self) -> String;
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize, min: &str, max: &str) -> String;
+    fn write_accessor(
+        &self,
+        view_index: usize,
+        byte_offset: usize,
+        count: usize,
+        min: &str,
+        max: &str,
+    ) -> String;
 }
 
 impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
@@ -87,7 +91,14 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
         }
     }
 
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize, min: &str, max: &str) -> String {
+    fn write_accessor(
+        &self,
+        view_index: usize,
+        byte_offset: usize,
+        count: usize,
+        min: &str,
+        max: &str,
+    ) -> String {
         format!(
             r#"   {{
             "bufferView" : {},
@@ -103,8 +114,8 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
             T::COMPONENT_TY,
             count,
             T::TY,
-            max, //self.max.write_value(),
-            min //self.min.write_value()
+            max,
+            min
         )
     }
 }

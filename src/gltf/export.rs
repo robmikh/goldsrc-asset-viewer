@@ -1,5 +1,7 @@
 use std::{
-    collections::HashMap, ops::Range, path::{Path, PathBuf}
+    collections::HashMap,
+    ops::Range,
+    path::{Path, PathBuf},
 };
 
 use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
@@ -11,7 +13,10 @@ use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
 
-use super::{BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER};
+use super::{
+    BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER,
+    ELEMENT_ARRAY_BUFFER,
+};
 
 struct Vertex {
     pos: [f32; 3],
@@ -50,13 +55,22 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         };
         let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
-        let bone_pos = Vec3::from_array(convert_coordinates([bone.value[0], bone.value[1], bone.value[2]]));
-        let bone_angles = Vec3::from_array(convert_coordinates([bone.value[3], bone.value[4], bone.value[5]]));
-        
+        let bone_pos = Vec3::from_array(convert_coordinates([
+            bone.value[0],
+            bone.value[1],
+            bone.value[2],
+        ]));
+        let bone_angles = Vec3::from_array(convert_coordinates([
+            bone.value[3],
+            bone.value[4],
+            bone.value[5],
+        ]));
+
         // NOTE: These values have already been converted to GLTF's coordinate system
         //       Y is yaw, X is pitch, Z is roll
         let bone_transform = Mat4::from_rotation_translation(
-            Quat::from_euler(EulerRot::YXZ, bone_angles.y, bone_angles.x, bone_angles.z).normalize(),
+            Quat::from_euler(EulerRot::YXZ, bone_angles.y, bone_angles.x, bone_angles.z)
+                .normalize(),
             bone_pos,
         );
 
@@ -163,7 +177,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             meshes,
         }
     };
-    
+
     //println!("Num meshes: {}", meshes.len());
 
     // Write our vertex and index data
@@ -181,11 +195,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             uvs.push(vertex.uv);
         }
 
-        let indices_slice = BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
+        let indices_slice =
+            BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
         let vertex_positions_slice = BufferSlice::record(&mut data, &positions, ARRAY_BUFFER);
         let vertex_normals_slice = BufferSlice::record(&mut data, &normals, ARRAY_BUFFER);
-        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);    
-    
+        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);
+
         let vertex_positions_min_max = vertex_positions_slice.get_min_max_values();
         let vertex_normals_min_max = vertex_normals_slice.get_min_max_values();
         let uvs_min_max = uvs_slice.get_min_max_values();
@@ -195,7 +210,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         slices.push(Box::new(vertex_normals_slice));
         slices.push(Box::new(uvs_slice));
 
-        (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max)
+        (
+            slices,
+            vertex_positions_min_max,
+            vertex_normals_min_max,
+            uvs_min_max,
+        )
     };
     let indices_slice_index = 0;
     let vertex_positions_slice_index = 1;
@@ -206,15 +226,51 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut accessors = Vec::new();
 
     // Vertex data
-    let vertex_positions_accessor = add_accessor(&mut accessors, vertex_positions_slice_index, 0, converted_model.vertices.len(), vertex_positions_min_max.0, vertex_positions_min_max.1);
-    let vertex_normals_accessor = add_accessor(&mut accessors, vertex_normals_slice_index, 0, converted_model.vertices.len(), vertex_normals_min_max.0, vertex_normals_min_max.1);
-    let uvs_accessor = add_accessor(&mut accessors, uvs_slice_index, 0, converted_model.vertices.len(), uvs_min_max.0, uvs_min_max.1);
+    let vertex_positions_accessor = add_accessor(
+        &mut accessors,
+        vertex_positions_slice_index,
+        0,
+        converted_model.vertices.len(),
+        vertex_positions_min_max.0,
+        vertex_positions_min_max.1,
+    );
+    let vertex_normals_accessor = add_accessor(
+        &mut accessors,
+        vertex_normals_slice_index,
+        0,
+        converted_model.vertices.len(),
+        vertex_normals_min_max.0,
+        vertex_normals_min_max.1,
+    );
+    let uvs_accessor = add_accessor(
+        &mut accessors,
+        uvs_slice_index,
+        0,
+        converted_model.vertices.len(),
+        uvs_min_max.0,
+        uvs_min_max.1,
+    );
 
     let mut mesh_accessors = Vec::new();
     for mesh in &converted_model.meshes {
-        let (min, max) = u32::find_min_max(&converted_model.indices[mesh.indices_range.start..mesh.indices_range.end]);
-        let indices_accessor = add_accessor(&mut accessors, indices_slice_index, mesh.indices_range.start * std::mem::size_of::<u32>(), mesh.indices_range.end - mesh.indices_range.start, min, max);
-        mesh_accessors.push((indices_accessor, vertex_positions_accessor, vertex_normals_accessor, uvs_accessor, mesh.texture_index));
+        let (min, max) = u32::find_min_max(
+            &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end],
+        );
+        let indices_accessor = add_accessor(
+            &mut accessors,
+            indices_slice_index,
+            mesh.indices_range.start * std::mem::size_of::<u32>(),
+            mesh.indices_range.end - mesh.indices_range.start,
+            min,
+            max,
+        );
+        mesh_accessors.push((
+            indices_accessor,
+            vertex_positions_accessor,
+            vertex_normals_accessor,
+            uvs_accessor,
+            mesh.texture_index,
+        ));
     }
 
     // Create primitives
@@ -280,7 +336,13 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
     for (buffer_view_index, byte_offset, count, min, max) in accessors {
         let slice = &slices[buffer_view_index];
-        gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count, &min, &max));
+        gltf_accessors.push(slice.write_accessor(
+            buffer_view_index,
+            byte_offset,
+            count,
+            &min,
+            &max,
+        ));
     }
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
@@ -453,8 +515,21 @@ fn process_indexed_triangles(
     }
 }
 
-fn add_accessor<T: BufferType>(accessors: &mut Vec<(usize, usize, usize, String, String)>, buffer_view_index: usize, byte_offset: usize, len: usize, min: T, max: T) -> usize {
+fn add_accessor<T: BufferType>(
+    accessors: &mut Vec<(usize, usize, usize, String, String)>,
+    buffer_view_index: usize,
+    byte_offset: usize,
+    len: usize,
+    min: T,
+    max: T,
+) -> usize {
     let index = accessors.len();
-    accessors.push((buffer_view_index, byte_offset, len, min.write_value(), max.write_value()));
+    accessors.push((
+        buffer_view_index,
+        byte_offset,
+        len,
+        min.write_value(),
+        max.write_value(),
+    ));
     index
 }
