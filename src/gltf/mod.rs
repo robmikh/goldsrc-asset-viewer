@@ -15,6 +15,10 @@ trait BufferType: Sized {
     fn write_value(&self) -> String;
 }
 
+trait BufferTypeEx: Sized {
+    fn find_min_max(data: &[Self]) -> (Self, Self);
+}
+
 struct BufferSlice<T> {
     offset: usize,
     byte_len: usize,
@@ -24,7 +28,7 @@ struct BufferSlice<T> {
     target: usize,
 }
 
-impl<T: BufferType> BufferSlice<T> {
+impl<T: BufferType + Copy> BufferSlice<T> {
     pub fn record(buffer: &mut Vec<u8>, data: &[T], target: usize) -> Self {
         let offset = buffer.len();
         let len = data.len();
@@ -46,11 +50,15 @@ impl<T: BufferType> BufferSlice<T> {
             target,
         }
     }
+
+    pub fn get_min_max_values(&self) -> (T, T) {
+        (self.min, self.max)
+    }
 }
 
 pub trait BufferViewAndAccessorSource {
     fn write_buffer_view(&self) -> String;
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String;
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize, min: &str, max: &str) -> String;
 }
 
 impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
@@ -79,7 +87,7 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
         }
     }
 
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String {
+    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize, min: &str, max: &str) -> String {
         format!(
             r#"   {{
             "bufferView" : {},
@@ -95,9 +103,21 @@ impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
             T::COMPONENT_TY,
             count,
             T::TY,
-            self.max.write_value(),
-            self.min.write_value()
+            max, //self.max.write_value(),
+            min //self.min.write_value()
         )
+    }
+}
+
+impl<T: BufferType> BufferTypeEx for T {
+    fn find_min_max(data: &[Self]) -> (Self, Self) {
+        let mut max = T::MIN;
+        let mut min = T::MAX;
+        for face in data {
+            max = face.data_max(&max);
+            min = face.data_min(&min);
+        }
+        (min, max)
     }
 }
 

@@ -7,12 +7,11 @@ use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
 };
-use image::buffer;
 use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
 
-use super::{BufferSlice, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER};
+use super::{BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER};
 
 struct Vertex {
     pos: [f32; 3],
@@ -169,8 +168,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
     // Write our vertex and index data
     let mut data = Vec::new();
-    let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
-    {
+    let (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max) = {
+        let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
+
         // Split out the vertex data
         let mut positions = Vec::with_capacity(converted_model.vertices.len());
         let mut normals = Vec::with_capacity(converted_model.vertices.len());
@@ -186,11 +186,17 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         let vertex_normals_slice = BufferSlice::record(&mut data, &normals, ARRAY_BUFFER);
         let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);    
     
+        let vertex_positions_min_max = vertex_positions_slice.get_min_max_values();
+        let vertex_normals_min_max = vertex_normals_slice.get_min_max_values();
+        let uvs_min_max = uvs_slice.get_min_max_values();
+
         slices.push(Box::new(indices_slice));
         slices.push(Box::new(vertex_positions_slice));
         slices.push(Box::new(vertex_normals_slice));
         slices.push(Box::new(uvs_slice));
-    }
+
+        (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max)
+    };
     let indices_slice_index = 0;
     let vertex_positions_slice_index = 1;
     let vertex_normals_slice_index = 2;
@@ -200,13 +206,14 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let mut accessors = Vec::new();
 
     // Vertex data
-    let vertex_positions_accessor = add_accessor(&mut accessors, vertex_positions_slice_index, 0, converted_model.vertices.len());
-    let vertex_normals_accessor = add_accessor(&mut accessors, vertex_normals_slice_index, 0, converted_model.vertices.len());
-    let uvs_accessor = add_accessor(&mut accessors, uvs_slice_index, 0, converted_model.vertices.len());
+    let vertex_positions_accessor = add_accessor(&mut accessors, vertex_positions_slice_index, 0, converted_model.vertices.len(), vertex_positions_min_max.0, vertex_positions_min_max.1);
+    let vertex_normals_accessor = add_accessor(&mut accessors, vertex_normals_slice_index, 0, converted_model.vertices.len(), vertex_normals_min_max.0, vertex_normals_min_max.1);
+    let uvs_accessor = add_accessor(&mut accessors, uvs_slice_index, 0, converted_model.vertices.len(), uvs_min_max.0, uvs_min_max.1);
 
     let mut mesh_accessors = Vec::new();
     for mesh in &converted_model.meshes {
-        let indices_accessor = add_accessor(&mut accessors, indices_slice_index, mesh.indices_range.start * std::mem::size_of::<u32>(), mesh.indices_range.end - mesh.indices_range.start);
+        let (min, max) = u32::find_min_max(&converted_model.indices[mesh.indices_range.start..mesh.indices_range.end]);
+        let indices_accessor = add_accessor(&mut accessors, indices_slice_index, mesh.indices_range.start * std::mem::size_of::<u32>(), mesh.indices_range.end - mesh.indices_range.start, min, max);
         mesh_accessors.push((indices_accessor, vertex_positions_accessor, vertex_normals_accessor, uvs_accessor, mesh.texture_index));
     }
 
@@ -271,9 +278,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     for slice in &slices {
         buffer_views.push(slice.write_buffer_view());
     }
-    for (buffer_view_index, byte_offset, count) in accessors {
+    for (buffer_view_index, byte_offset, count, min, max) in accessors {
         let slice = &slices[buffer_view_index];
-        gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count));
+        gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count, &min, &max));
     }
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
@@ -446,8 +453,8 @@ fn process_indexed_triangles(
     }
 }
 
-fn add_accessor(accessors: &mut Vec<(usize, usize, usize)>, buffer_view_index: usize, byte_offset: usize, len: usize) -> usize {
+fn add_accessor<T: BufferType>(accessors: &mut Vec<(usize, usize, usize, String, String)>, buffer_view_index: usize, byte_offset: usize, len: usize, min: T, max: T) -> usize {
     let index = accessors.len();
-    accessors.push((buffer_view_index, byte_offset, len));
+    accessors.push((buffer_view_index, byte_offset, len, min.write_value(), max.write_value()));
     index
 }
