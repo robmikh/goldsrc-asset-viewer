@@ -14,13 +14,15 @@ use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 use crate::numerics::ToVec3;
 
 use super::{
-    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
+    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
 };
 
 struct Vertex {
     pos: [f32; 3],
     normal: [f32; 3],
     uv: [f32; 2],
+    joints: [u8; 4],
+    weights: [f32; 4],
 }
 
 struct Mesh {
@@ -101,7 +103,50 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
     let final_bone_transforms = world_bone_transforms;
 
-    // TODO: Compute the inverse bind matrices
+    // Compute the inverse bind matrices
+    let inverse_bind_transforms: Vec<_> = final_bone_transforms.iter().map(|x| x.inverse()).collect();
+
+    // Build nodes
+    let mut nodes = Vec::with_capacity(file.bones.len() + 1);
+    let mut bone_to_node: HashMap<usize, usize> = HashMap::new();
+    nodes.push(r#"          {
+                "mesh" : 0,
+                "skin" : 0
+            }"#.to_owned());
+    for node_id in bone_tree
+        .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
+        .unwrap()
+    {
+        let bone_index = *bone_tree.get(&node_id).unwrap().data();
+        let component_transform = local_bone_component_transforms.get(bone_index).unwrap();
+        let rotation = component_transform.get_rotation_quat();
+
+        let mut children = Vec::new();
+        for child in bone_tree.children(&node_id).unwrap() {
+            let child = child.data();
+            let bone_index = bone_to_node.get(child).unwrap();
+            children.push(bone_index.to_string());
+        }
+        let children = if children.is_empty() {
+            "".to_owned()
+        } else {
+            let children = children.join(", ");
+            format!("\"children\" : [ {} ],\n           ", children)
+        };
+        
+        let gltf_node_index = nodes.len();
+        nodes.push(format!(r#"          {{
+            {}"translation" : [ {}, {}, {} ],
+            "rotation" : [ {}, {}, {}, {} ]
+        }}"#,
+            children,
+            component_transform.translation.x, component_transform.translation.y, component_transform.translation.z,
+            rotation.x, rotation.y, rotation.z, rotation.w
+        ));
+        bone_to_node.insert(bone_index, gltf_node_index);
+    }
+    let skin_root = *bone_to_node.get(bone_tree.get(bone_tree.root_node_id().unwrap()).unwrap().data()).unwrap();
+    let nodes = nodes.join(",\n");
 
     let converted_model = {
         // Gather mesh data
@@ -140,6 +185,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
+                                &bone_to_node
+
                             );
                         }
                         MdlMeshSequenceType::TriangleFan => {
@@ -158,6 +205,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
+                                &bone_to_node
                             );
                         }
                     }
@@ -182,51 +230,68 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
     // Write our vertex and index data
     let mut data = Vec::new();
-    let (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max) = {
+    let (slices, vertex_positions_min_max, vertex_normals_min_max, uvs_min_max, joints_min_max, weights_min_max) = {
         let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
 
         // Split out the vertex data
         let mut positions = Vec::with_capacity(converted_model.vertices.len());
         let mut normals = Vec::with_capacity(converted_model.vertices.len());
         let mut uvs = Vec::with_capacity(converted_model.vertices.len());
+        let mut joints = Vec::with_capacity(converted_model.vertices.len());
+        let mut weights = Vec::with_capacity(converted_model.vertices.len());
         for vertex in &converted_model.vertices {
             positions.push(vertex.pos);
             normals.push(vertex.normal);
             uvs.push(vertex.uv);
+            joints.push(vertex.joints);
+            weights.push(vertex.weights);
         }
 
         let indices_slice =
             BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
-        let vertex_positions_slice = BufferSlice::record(&mut data, &positions, ARRAY_BUFFER);
-        let vertex_normals_slice = BufferSlice::record(&mut data, &normals, ARRAY_BUFFER);
-        let uvs_slice = BufferSlice::record(&mut data, &uvs, ARRAY_BUFFER);
+        let vertex_positions_slice = BufferSlice::record_with_min_max(&mut data, &positions, ARRAY_BUFFER);
+        let vertex_normals_slice = BufferSlice::record_with_min_max(&mut data, &normals, ARRAY_BUFFER);
+        let uvs_slice = BufferSlice::record_with_min_max(&mut data, &uvs, ARRAY_BUFFER);
+        let joints_slice = BufferSlice::record_with_min_max(&mut data, &joints, ARRAY_BUFFER);
+        let weights_slice = BufferSlice::record_with_min_max(&mut data, &weights, ARRAY_BUFFER);
+        let inverse_bind_matrices_slice = BufferSlice::record_without_target(&mut data, &inverse_bind_transforms);
 
-        let vertex_positions_min_max = vertex_positions_slice.get_min_max_values();
-        let vertex_normals_min_max = vertex_normals_slice.get_min_max_values();
-        let uvs_min_max = uvs_slice.get_min_max_values();
+        let vertex_positions_min_max = vertex_positions_slice.get_min_max_values().unwrap();
+        let vertex_normals_min_max = vertex_normals_slice.get_min_max_values().unwrap();
+        let uvs_min_max = uvs_slice.get_min_max_values().unwrap();
+        let joints_min_max = joints_slice.get_min_max_values().unwrap();
+        let weights_min_max = weights_slice.get_min_max_values().unwrap();
 
         slices.push(Box::new(indices_slice));
         slices.push(Box::new(vertex_positions_slice));
         slices.push(Box::new(vertex_normals_slice));
         slices.push(Box::new(uvs_slice));
+        slices.push(Box::new(joints_slice));
+        slices.push(Box::new(weights_slice));
+        slices.push(Box::new(inverse_bind_matrices_slice));
 
         (
             slices,
             vertex_positions_min_max,
             vertex_normals_min_max,
             uvs_min_max,
+            joints_min_max,
+            weights_min_max,
         )
     };
     let indices_slice_index = 0;
     let vertex_positions_slice_index = 1;
     let vertex_normals_slice_index = 2;
     let uvs_slice_index = 3;
+    let joints_slice_index = 4;
+    let weights_slice_index = 5;
+    let inverse_bind_matrices_slice_index = 6;
 
     // Record accessors for vertex and index data
     let mut accessors = Vec::new();
 
     // Vertex data
-    let vertex_positions_accessor = add_accessor(
+    let vertex_positions_accessor = add_accessor_with_min_max(
         &mut accessors,
         vertex_positions_slice_index,
         0,
@@ -234,7 +299,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         vertex_positions_min_max.0,
         vertex_positions_min_max.1,
     );
-    let vertex_normals_accessor = add_accessor(
+    let vertex_normals_accessor = add_accessor_with_min_max(
         &mut accessors,
         vertex_normals_slice_index,
         0,
@@ -242,7 +307,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         vertex_normals_min_max.0,
         vertex_normals_min_max.1,
     );
-    let uvs_accessor = add_accessor(
+    let uvs_accessor = add_accessor_with_min_max(
         &mut accessors,
         uvs_slice_index,
         0,
@@ -250,13 +315,35 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         uvs_min_max.0,
         uvs_min_max.1,
     );
+    let joints_accessor = add_accessor_with_min_max(
+        &mut accessors,
+        joints_slice_index,
+        0,
+        converted_model.vertices.len(),
+        joints_min_max.0,
+        joints_min_max.1,
+    );
+    let weights_accessor = add_accessor_with_min_max(
+        &mut accessors,
+        weights_slice_index,
+        0,
+        converted_model.vertices.len(),
+        weights_min_max.0,
+        weights_min_max.1,
+    );
+    let inverse_bind_matrices_accessor = add_accessor::<Mat4>(
+        &mut accessors,
+        inverse_bind_matrices_slice_index,
+        0,
+        inverse_bind_transforms.len(),
+    );
 
     let mut mesh_accessors = Vec::new();
     for mesh in &converted_model.meshes {
         let (min, max) = u32::find_min_max(
             &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end],
         );
-        let indices_accessor = add_accessor(
+        let indices_accessor = add_accessor_with_min_max(
             &mut accessors,
             indices_slice_index,
             mesh.indices_range.start * std::mem::size_of::<u32>(),
@@ -269,24 +356,28 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             vertex_positions_accessor,
             vertex_normals_accessor,
             uvs_accessor,
+            joints_accessor,
+            weights_accessor,
             mesh.texture_index,
         ));
     }
 
     // Create primitives
     let mut primitives = Vec::with_capacity(converted_model.meshes.len());
-    for (indices, positions, normals, uvs, material) in mesh_accessors {
+    for (indices, positions, normals, uvs, joints, weights, material) in mesh_accessors {
         primitives.push(format!(
             r#"         {{
             "attributes" : {{
             "POSITION" : {},
             "NORMAL" : {},
-            "TEXCOORD_0" : {}
+            "TEXCOORD_0" : {},
+            "JOINTS_0" : {},
+            "WEIGHTS_0" : {}
             }},
             "indices" : {},
             "material" : {}
         }}"#,
-            positions, normals, uvs, indices, material
+            positions, normals, uvs, joints, weights, indices, material
         ));
     }
     let primitives = primitives.join(",\n");
@@ -334,73 +425,41 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     for slice in &slices {
         buffer_views.push(slice.write_buffer_view());
     }
-    for (buffer_view_index, byte_offset, count, min, max) in accessors {
+    for (buffer_view_index, byte_offset, count, min_max) in accessors {
         let slice = &slices[buffer_view_index];
-        gltf_accessors.push(slice.write_accessor(
-            buffer_view_index,
-            byte_offset,
-            count,
-            &min,
-            &max,
-        ));
+        if let Some((min, max)) = min_max {
+            gltf_accessors.push(slice.write_accessor_with_min_max(
+                buffer_view_index,
+                byte_offset,
+                count,
+                &min,
+                &max,
+            ));
+        } else {
+            gltf_accessors.push(slice.write_accessor(
+                buffer_view_index,
+                byte_offset,
+                count,
+            ));
+        }
+        
     }
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
 
-    // Build nodes
-    let mut nodes = Vec::with_capacity(file.bones.len() + 1);
-    let mut node_to_bone: HashMap<usize, usize> = HashMap::new();
-    nodes.push(r#"          {
-                "mesh" : 0,
-                "skin" : 0
-            }"#.to_owned());
-    for node_id in bone_tree
-        .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
-        .unwrap()
-    {
-        let node_index = *bone_tree.get(&node_id).unwrap().data();
-        let component_transform = local_bone_component_transforms.get(node_index).unwrap();
-        let rotation = component_transform.get_rotation_quat();
-
-        let mut children = Vec::new();
-        for child in bone_tree.children(&node_id).unwrap() {
-            let child = child.data();
-            let bone_index = node_to_bone.get(child).unwrap();
-            children.push(bone_index.to_string());
-        }
-        let children = if children.is_empty() {
-            "".to_owned()
-        } else {
-            let children = children.join(", ");
-            format!("\"children\" : [ {} ],\n           ", children)
-        };
-        
-        let gltf_node_index = nodes.len();
-        nodes.push(format!(r#"          {{
-            {}"translation" : [ {}, {}, {} ],
-            "rotation" : [ {}, {}, {}, {} ]
-        }}"#,
-            children,
-            component_transform.translation.x, component_transform.translation.y, component_transform.translation.z,
-            rotation.x, rotation.y, rotation.z, rotation.w
-        ));
-        node_to_bone.insert(node_index, gltf_node_index);
-    }
-    let skin_root = *node_to_bone.get(bone_tree.get(bone_tree.root_node_id().unwrap()).unwrap().data()).unwrap();
-    let nodes = nodes.join(",\n");
-
     // Build skin
     let mut joints = Vec::with_capacity(file.bones.len());
     for i in 0..file.bones.len() {
-        let node = *node_to_bone.get(&i).unwrap();
+        let node = *bone_to_node.get(&i).unwrap();
         joints.push(format!("               {}", node));
     }
     let joints = joints.join(",\n");
     let skin = format!(r#"          {{
+                "inverseBindMatrices" : {},
                 "joints" : [
 {}
                 ]
-            }}"#, joints);
+            }}"#, inverse_bind_matrices_accessor, joints);
 
     let gltf_text = format!(
         r#"{{
@@ -529,6 +588,7 @@ fn process_indexed_triangles(
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
     vertex_map: &mut HashMap<MdlMeshVertex, usize>,
+    bone_to_node: &HashMap<usize, usize>,
 ) {
     assert!(
         triverts.len() % 3 == 0,
@@ -561,8 +621,11 @@ fn process_indexed_triangles(
                 trivert.s as f32 / texture_width,
                 trivert.t as f32 / texture_height,
             ];
+            let joints = [*bone_to_node.get(&(bone_index as usize)).unwrap() as u8, 0, 0, 0];
+            let weights = [1.0, 0.0, 0.0, 0.0];
+
             let index = vertices.len();
-            vertices.push(Vertex { pos, normal, uv });
+            vertices.push(Vertex { pos, normal, uv, joints, weights });
             vertex_map.insert(*trivert, index);
             index
         };
@@ -575,7 +638,23 @@ fn process_indexed_triangles(
 }
 
 fn add_accessor<T: BufferType>(
-    accessors: &mut Vec<(usize, usize, usize, String, String)>,
+    accessors: &mut Vec<(usize, usize, usize, Option<(String, String)>)>,
+    buffer_view_index: usize,
+    byte_offset: usize,
+    len: usize,
+) -> usize {
+    let index = accessors.len();
+    accessors.push((
+        buffer_view_index,
+        byte_offset,
+        len,
+        None
+    ));
+    index
+}
+
+fn add_accessor_with_min_max<T: BufferTypeMinMax>(
+    accessors: &mut Vec<(usize, usize, usize, Option<(String, String)>)>,
     buffer_view_index: usize,
     byte_offset: usize,
     len: usize,
@@ -587,8 +666,8 @@ fn add_accessor<T: BufferType>(
         buffer_view_index,
         byte_offset,
         len,
-        min.write_value(),
-        max.write_value(),
+        Some((min.write_value(),
+        max.write_value()))
     ));
     index
 }
