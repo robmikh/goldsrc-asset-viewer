@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{EulerRot, Mat4, Quat, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
@@ -14,8 +14,7 @@ use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 use crate::numerics::ToVec3;
 
 use super::{
-    BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER,
-    ELEMENT_ARRAY_BUFFER,
+    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER
 };
 
 struct Vertex {
@@ -40,7 +39,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let model = body_part.models.first().unwrap();
 
     // Compute bone transforms
-    let mut local_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
+    let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
+    let mut local_bone_component_transforms = Vec::with_capacity(file.bones.len());
     let mut bone_tree = TreeBuilder::new()
         .with_node_capacity(file.bones.len())
         .build();
@@ -68,13 +68,11 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         // NOTE: These values have already been converted to GLTF's coordinate system
         //       Y is yaw, X is pitch, Z is roll
-        let bone_transform = Mat4::from_rotation_translation(
-            Quat::from_euler(EulerRot::YXZ, bone_angles.y, bone_angles.x, bone_angles.z)
-                .normalize(),
-            bone_pos,
-        );
+        let bone_component_transform = ComponentTransform::new(bone_pos, bone_angles);
+        let bone_transform = bone_component_transform.to_mat4();
 
-        local_bone_transforms[i] = bone_transform;
+        local_bone_transforms.push(bone_transform);
+        local_bone_component_transforms.push(bone_component_transform);
     }
     let mut world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
     for node_id in bone_tree
@@ -102,6 +100,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         world_bone_transforms[node_index] = node_world_transform;
     }
     let final_bone_transforms = world_bone_transforms;
+
+    // TODO: Compute the inverse bind matrices
 
     let converted_model = {
         // Gather mesh data
@@ -347,19 +347,75 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
 
+    // Build nodes
+    let mut nodes = Vec::with_capacity(file.bones.len() + 1);
+    let mut node_to_bone: HashMap<usize, usize> = HashMap::new();
+    nodes.push(r#"          {
+                "mesh" : 0,
+                "skin" : 0
+            }"#.to_owned());
+    for node_id in bone_tree
+        .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
+        .unwrap()
+    {
+        let node_index = *bone_tree.get(&node_id).unwrap().data();
+        let component_transform = local_bone_component_transforms.get(node_index).unwrap();
+        let rotation = component_transform.get_rotation_quat();
+
+        let mut children = Vec::new();
+        for child in bone_tree.children(&node_id).unwrap() {
+            let child = child.data();
+            let bone_index = node_to_bone.get(child).unwrap();
+            children.push(bone_index.to_string());
+        }
+        let children = if children.is_empty() {
+            "".to_owned()
+        } else {
+            let children = children.join(", ");
+            format!("\"children\" : [ {} ],\n           ", children)
+        };
+        
+        let gltf_node_index = nodes.len();
+        nodes.push(format!(r#"          {{
+            {}"translation" : [ {}, {}, {} ],
+            "rotation" : [ {}, {}, {}, {} ]
+        }}"#,
+            children,
+            component_transform.translation.x, component_transform.translation.y, component_transform.translation.z,
+            rotation.x, rotation.y, rotation.z, rotation.w
+        ));
+        node_to_bone.insert(node_index, gltf_node_index);
+    }
+    let skin_root = *node_to_bone.get(bone_tree.get(bone_tree.root_node_id().unwrap()).unwrap().data()).unwrap();
+    let nodes = nodes.join(",\n");
+
+    // Build skin
+    let mut joints = Vec::with_capacity(file.bones.len());
+    for i in 0..file.bones.len() {
+        let node = *node_to_bone.get(&i).unwrap();
+        joints.push(format!("               {}", node));
+    }
+    let joints = joints.join(",\n");
+    let skin = format!(r#"          {{
+                "joints" : [
+{}
+                ]
+            }}"#, joints);
+
     let gltf_text = format!(
         r#"{{
         "scene" : 0,
         "scenes" : [
             {{
-                "nodes" : [ 0 ]
+                "nodes" : [ 0, {} ]
             }}
         ],
         "nodes" : [
-            {{
-                "mesh" : 0,
-                "translation" : [ 1.0, 0.0, 0.0 ]
-            }}
+{}
+        ],
+
+        "skins" : [
+{}
         ],
         
         "meshes" : [
@@ -407,6 +463,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             }}
         }}
     "#,
+        skin_root,
+        nodes,
+        skin,
         primitives,
         materials,
         textures,
