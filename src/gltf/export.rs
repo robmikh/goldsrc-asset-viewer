@@ -37,6 +37,55 @@ struct Model {
     meshes: Vec<Mesh>,
 }
 
+struct Animation {
+    name: String,
+    bone_animations: Vec<BoneAnimation>,
+}
+
+struct BoneAnimation {
+    target: usize,
+    channels: Vec<BoneChannelAnimation>,
+}
+
+struct BoneChannelAnimation {
+    target: ComponentTransformTarget,
+    keyframes: Vec<f32>,
+}
+
+enum ComponentTransformTarget {
+    Translation(VectorChannel),
+    Rotation(VectorChannel),
+}
+
+enum VectorChannel {
+    X,
+    Y,
+    Z
+}
+
+impl ComponentTransformTarget {
+    fn from_index(index: usize) -> Self {
+        if index < 3 {
+            ComponentTransformTarget::Translation(VectorChannel::from_index(index))
+        } else if index <= 5 {
+            ComponentTransformTarget::Rotation(VectorChannel::from_index(index))
+        } else {
+            panic!()
+        }
+    }
+}
+
+impl VectorChannel {
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 | 3 => VectorChannel::X,
+            1 | 4 => VectorChannel::Y,
+            2 | 5 => VectorChannel::Z,
+            _ => panic!(),
+        }
+    }
+}
+
 pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result<()> {
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
@@ -56,21 +105,23 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
 
     // DEBUG: Move to mdlparser
-    println!("Animation Sequences:");
+    let mut animations = Vec::new();
     for animated_sequence in &file.animation_sequences {
         let name = std::str::from_utf8(&animated_sequence.name).unwrap();
         let end = name.find('\0').unwrap_or(name.len());
         let name = &name[..end];
-        println!("  {} - {}", name, animated_sequence.sequence_group);
 
         // TODO: Load other files
         if animated_sequence.sequence_group == 0 {
+            //println!("  {}", name);
+
             let sequence_group = &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
             let animation_offset = sequence_group.unused_2 as usize + animated_sequence.animation_offset as usize;
             let animation_data = &file.raw_data()[animation_offset..];
 
+            let mut bone_animations = Vec::new();
             for i in 0..file.bones.len() {
-                println!("    Bone {}:", i);
+                //println!("    Bone {}:", i);
                 let offset = i * 12;
                 let mut offsets = [0u16; 6];
                 for j in 0..offsets.len() {
@@ -79,20 +130,57 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                     offsets[j] = u16::from_le_bytes(data);
                 }
                 
+                let mut channels = Vec::new();
                 for (j, offset) in offsets.iter().enumerate() {
                     if *offset != 0 {
                         let anim_value = &animation_data[*offset as usize..];
                         let anim_value_ptr = anim_value.as_ptr() as *const AnimationValue;
                         let scale = file.bones[i].scale[j];
                     
-                        print!("      ");
+                        //print!("      ");
+                        let mut keyframes = Vec::new();
+                        let target = ComponentTransformTarget::from_index(j);
                         for frame in 0..animated_sequence.num_frames as i32 {
                             let value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
-                            print!("{}:{}, ", frame, value);
+                            //print!("{}:{}, ", frame, value);
+                            keyframes.push(value);
                         }
-                        println!();
+                        //println!();
+
+                        channels.push(BoneChannelAnimation {
+                            target,
+                            keyframes,
+                        })
                     }
                 }
+
+                if !channels.is_empty() {
+                    bone_animations.push(BoneAnimation {
+                        target: i,
+                        channels,
+                    })
+                }
+            }
+
+            animations.push(Animation {
+                name: name.to_owned(),
+                bone_animations,
+            })
+        }
+    }
+
+    // DEBUG
+    println!("Animation Sequences:");
+    for animation in &animations {
+        println!("  {}", &animation.name);
+        for animation in &animation.bone_animations {
+            println!("    Bone {}:", animation.target);
+            for channel in &animation.channels {
+                print!("      ");
+                for (i, keyframe) in channel.keyframes.iter().enumerate() {
+                    print!("{}:{}, ", i, keyframe);
+                }
+                println!();
             }
         }
     }
