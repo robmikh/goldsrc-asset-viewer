@@ -86,6 +86,13 @@ impl VectorChannel {
     }
 }
 
+fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
+    let name = std::str::from_utf8(bytes).unwrap();
+    let end = name.find('\0').unwrap_or(name.len());
+    let name = &name[..end];
+    name
+}
+
 pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result<()> {
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
@@ -93,13 +100,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     // DEBUG: Move to mdlparser
     println!("Animation Sequence Groups:");
     for group in &file.animation_sequence_groups {
-        let name = std::str::from_utf8(group.name()).unwrap();
-        let end = name.find('\0').unwrap_or(name.len());
-        let name = &name[..end];
-
-        let label = std::str::from_utf8(&group.label).unwrap();
-        let end = label.find('\0').unwrap_or(label.len());
-        let label = &label[..end];
+        let name = null_terminated_bytes_to_str(group.name());
+        let label = null_terminated_bytes_to_str(&group.label);
 
         println!("  {} - {}", label, name);
     }
@@ -107,9 +109,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     // DEBUG: Move to mdlparser
     let mut animations = Vec::new();
     for animated_sequence in &file.animation_sequences {
-        let name = std::str::from_utf8(&animated_sequence.name).unwrap();
-        let end = name.find('\0').unwrap_or(name.len());
-        let name = &name[..end];
+        let name = null_terminated_bytes_to_str(&animated_sequence.name);
 
         // TODO: Load other files
         if animated_sequence.sequence_group == 0 {
@@ -174,18 +174,19 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     for animation in &animations {
         println!("  {}", &animation.name);
         for animation in &animation.bone_animations {
-            println!("    Bone {}:", animation.target);
+            //println!("    Bone {}:", animation.target);
             for channel in &animation.channels {
-                print!("      ");
+                //print!("      ");
                 for (i, keyframe) in channel.keyframes.iter().enumerate() {
-                    print!("{}:{}, ", i, keyframe);
+                    //print!("{}:{}, ", i, keyframe);
                 }
-                println!();
+                //println!();
             }
         }
     }
 
     // Compute bone transforms
+    let mut bone_names = Vec::with_capacity(file.bones.len());
     let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
     let mut local_bone_component_transforms = Vec::with_capacity(file.bones.len());
     let mut bone_tree = TreeBuilder::new()
@@ -218,6 +219,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         let bone_component_transform = ComponentTransform::new(bone_pos, bone_angles);
         let bone_transform = bone_component_transform.to_mat4();
 
+        bone_names.push(null_terminated_bytes_to_str(&bone.name).to_owned());
         local_bone_transforms.push(bone_transform);
         local_bone_component_transforms.push(bone_component_transform);
     }
@@ -286,10 +288,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         let gltf_node_index = nodes.len();
         nodes.push(format!(
             r#"          {{
-            {}"translation" : [ {}, {}, {} ],
+            {}"name" : "{}",
+            "translation" : [ {}, {}, {} ],
             "rotation" : [ {}, {}, {}, {} ]
         }}"#,
             children,
+            &bone_names[bone_index],
             component_transform.translation.x,
             component_transform.translation.y,
             component_transform.translation.z,
