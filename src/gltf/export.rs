@@ -11,7 +11,7 @@ use id_tree::{
 };
 use mdlparser::{AnimationValue, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
-use crate::numerics::ToVec3;
+use crate::numerics::{ToVec3, ToVec4};
 
 use super::{
     transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
@@ -52,11 +52,13 @@ struct BoneChannelAnimation {
     keyframes: Vec<f32>,
 }
 
+#[derive(Copy, Clone, Debug)]
 enum ComponentTransformTarget {
     Translation(VectorChannel),
     Rotation(VectorChannel),
 }
 
+#[derive(Copy, Clone, Debug)]
 enum VectorChannel {
     X,
     Y,
@@ -84,6 +86,31 @@ impl VectorChannel {
             _ => panic!(),
         }
     }
+}
+
+enum GltfTargetPath {
+    Translation,
+    Rotation,
+}
+
+impl GltfTargetPath {
+    fn get_gltf_str(&self) -> &str {
+        match self {
+            GltfTargetPath::Translation => "translation",
+            GltfTargetPath::Rotation => "rotation",
+        }
+    }
+}
+
+struct GltfAnimation {
+    channels: Vec<GltfChannelAnimation>,
+    name: String,
+}
+
+struct GltfChannelAnimation {
+    node_index: usize,
+    target: GltfTargetPath,
+    values: Vec<Vec3>,
 }
 
 fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
@@ -173,16 +200,15 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     println!("Animation Sequences:");
     for animation in &animations {
         println!("  {}", &animation.name);
-        for animation in &animation.bone_animations {
-            //println!("    Bone {}:", animation.target);
-            for channel in &animation.channels {
-                //print!("      ");
-                for (i, keyframe) in channel.keyframes.iter().enumerate() {
-                    //print!("{}:{}, ", i, keyframe);
-                }
-                //println!();
-            }
-        }
+        //for animation in &animation.bone_animations {
+        //    for channel in &animation.channels {
+        //        print!("      ");
+        //        for (i, keyframe) in channel.keyframes.iter().enumerate() {
+        //            print!("{}:{}, ", i, keyframe);
+        //        }
+        //        println!();
+        //    }
+        //}
     }
 
     // Compute bone transforms
@@ -314,6 +340,82 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         .unwrap();
     let nodes = nodes.join(",\n");
 
+    // Build animations
+    let mut gltf_animations = Vec::with_capacity(animations.len());
+    for animation in &animations {
+        let mut animation_data = Vec::new();
+        for bone_animation in &animation.bone_animations {
+            let target_bone = bone_animation.target;
+
+            // We need to collapse animations that target the same component
+            // E.g. Translate(X) and Translate(Y) becomes Translate(XY)
+            let mut translate_animations = Vec::new();
+            let mut rotation_animations = Vec::new();
+            for (channel_index, channel) in bone_animation.channels.iter().enumerate() {
+                match channel.target {
+                    ComponentTransformTarget::Translation(vec_channel) => {
+                        translate_animations.push((vec_channel, channel_index));
+                    },
+                    ComponentTransformTarget::Rotation(vec_channel) => {
+                        rotation_animations.push((vec_channel, channel_index));
+                    },
+                }
+            }
+
+            // Use the default pose as a baseline
+            let component_transform = &local_bone_component_transforms[bone_animation.target];
+            let mut translation = component_transform.translation;
+            let mut rotation = component_transform.rotation;
+            // NOTE: We are converting from Half-Life coordinates to GLTF
+            //       See convert_coordinates for more details.
+            let write_channel = |base: &mut Vec3, vec_channel: VectorChannel, value: f32| match vec_channel {
+                // HL X => GLTF Z
+                VectorChannel::X => base.z = value,
+                // HL Y => GLTF X
+                VectorChannel::Y => base.x = value,
+                // HL Z => GLTF Y
+                VectorChannel::Z => base.y = value,
+            };
+
+            let process_animation = |base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], bone_to_node: &HashMap<usize, usize>| -> Option<GltfChannelAnimation> {
+                if !animations.is_empty() {
+                    let animation_length = channels[animations.first().unwrap().1].keyframes.len();
+                    assert!(animations.iter().all(|(_, index)| channels[*index].keyframes.len() == animation_length));
+                
+                    let mut new_keyframes = Vec::with_capacity(animation_length);
+                    for i in 0..animation_length {
+                        for (vec_channel, channel_index) in animations {
+                            let channel = &channels[*channel_index];
+                            let value = channel.keyframes[i];
+                            write_channel(base, *vec_channel, value);
+                        }
+                        new_keyframes.push(*base);
+                    }
+    
+                    Some(GltfChannelAnimation {
+                        node_index: *bone_to_node.get(&target_bone).unwrap(),
+                        target,
+                        values: new_keyframes,
+                    })
+                } else {
+                    None
+                }
+            };
+
+            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, &bone_to_node) {
+                animation_data.push(animation);
+            }
+            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, &bone_to_node) {
+                animation_data.push(animation);
+            }
+        }
+
+        gltf_animations.push(GltfAnimation {
+            channels: animation_data,
+            name: animation.name.clone(),
+        });
+    }
+
     let converted_model = {
         // Gather mesh data
         let (meshes, indices, vertices) = {
@@ -396,7 +498,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     // Write our vertex and index data
     let mut data = Vec::new();
     let (
-        slices,
+        mut slices,
         vertex_positions_min_max,
         vertex_normals_min_max,
         uvs_min_max,
@@ -594,6 +696,56 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let textures = textures.join(",\n");
     let images = images.join(",\n");
 
+    // Create animation data slices
+    let mut gltf_animation_strs = Vec::with_capacity(gltf_animations.len());
+    for animation in gltf_animations {
+        let mut channels = Vec::with_capacity(animation.channels.len());
+        let mut samplers = Vec::with_capacity(animation.channels.len());
+        for (i, animation_data) in animation.channels.iter().enumerate() {
+            channels.push(format!(r#"           {{
+                "sampler" : {},
+                "target" : {{
+                    "node" : {},
+                    "path" : "{}"
+                }}
+            }}"#, i, animation_data.node_index, animation_data.target.get_gltf_str()));
+            // TODO: Determine timestamps for keyframes
+            let input_accessor_index = 9001;
+
+            let output_accessor_index = match animation_data.target {
+                GltfTargetPath::Translation => {
+                    let buffer_view = add_and_get_index(&mut slices, Box::new(BufferSlice::record_without_target(&mut data, &animation_data.values)));
+                    add_accessor::<Vec3>(&mut accessors, buffer_view, 0, animation_data.values.len())
+                },
+                GltfTargetPath::Rotation => {
+                    let quats: Vec<_> = animation_data.values.iter().map(|x| ComponentTransform::new(Vec3::ZERO, *x).get_rotation_quat().to_vec4()).collect();
+                    let buffer_view = add_and_get_index(&mut slices, Box::new(BufferSlice::record_without_target(&mut data, &quats)));
+                    add_accessor::<Vec4>(&mut accessors, buffer_view, 0, quats.len())
+                },
+            };
+
+            samplers.push(format!(r#"           {{
+                "input" : {},
+                "interpolation" : "LINEAR",
+                "output" : {}
+            }}"#, input_accessor_index, output_accessor_index));
+        }
+        let channels = channels.join(",\n");
+        let samplers = samplers.join(",\n");
+
+        gltf_animation_strs.push(format!(r#"        {{
+            "channels" : [
+{}
+            ],
+            "name" : "{}",
+            "samplers" : [
+{}
+            ]
+        }}"#, channels, &animation.name, samplers));
+        
+    }
+    let gltf_animations = gltf_animation_strs.join(",\n");
+
     // Create buffer views and accessors
     let mut buffer_views = Vec::with_capacity(slices.len());
     let mut gltf_accessors = Vec::with_capacity(slices.len());
@@ -690,6 +842,10 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 {}
             ],
 
+            "animations" : [
+{}
+            ],
+
             "asset" : {{
                 "version" : "2.0"
             }}
@@ -704,7 +860,8 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         images,
         data.len(),
         buffer_views,
-        accessors
+        accessors,
+        gltf_animations
     );
 
     let path = output_path.as_ref();
@@ -864,4 +1021,10 @@ unsafe fn decode_animation_frame(mut anim_value_ptr: *const AnimationValue, fram
     } else {
         (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value as f32 * scale
     }
+}
+
+fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
+    let index = vec.len();
+    vec.push(value);
+    index
 }

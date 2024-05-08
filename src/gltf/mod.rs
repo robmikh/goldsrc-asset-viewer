@@ -1,4 +1,4 @@
-use glam::Mat4;
+use glam::{Mat4, Vec3, Vec4};
 
 pub mod export;
 mod transform;
@@ -489,6 +489,44 @@ impl BufferType for Mat4 {
 
     fn to_bytes(&self) -> Vec<u8> {
         let array = self.to_cols_array();
+        let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
+        for value in array {
+            let mut data = value.to_le_bytes().to_vec();
+            bytes.append(&mut data);
+        }
+        bytes
+    }
+
+    fn stride() -> Option<usize> {
+        None
+    }
+}
+
+impl BufferType for Vec3 {
+    const COMPONENT_TY: usize = 5126;
+    const TY: &'static str = "VEC3";
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let array = self.to_array();
+        let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
+        for value in array {
+            let mut data = value.to_le_bytes().to_vec();
+            bytes.append(&mut data);
+        }
+        bytes
+    }
+
+    fn stride() -> Option<usize> {
+        None
+    }
+}
+
+impl BufferType for Vec4 {
+    const COMPONENT_TY: usize = 5126;
+    const TY: &'static str = "VEC4";
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let array = self.to_array();
         let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
         for value in array {
             let mut data = value.to_le_bytes().to_vec();
