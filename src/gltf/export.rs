@@ -9,7 +9,7 @@ use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
 };
-use mdlparser::{MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
+use mdlparser::{AnimationValue, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
 use crate::numerics::ToVec3;
 
@@ -41,6 +41,13 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
+    // DEBUG
+    let raw_data = file.raw_data();
+    let raw_data_ptr = raw_data.as_ptr() as usize;
+    let raw_data_end = raw_data_ptr + raw_data.len();
+    println!("Raw data: 0x{:X} - 0x{:X} (len: {})", raw_data_ptr, raw_data_end, raw_data.len());
+
+    // DEBUG: Move to mdlparser
     println!("Animation Sequence Groups:");
     for group in &file.animation_sequence_groups {
         let name = std::str::from_utf8(group.name()).unwrap();
@@ -54,6 +61,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         println!("  {} - {}", label, name);
     }
 
+    // DEBUG: Move to mdlparser
     println!("Animation Sequences:");
     for animated_sequence in &file.animation_sequences {
         let name = std::str::from_utf8(&animated_sequence.name).unwrap();
@@ -80,9 +88,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 for (j, offset) in offsets.iter().enumerate() {
                     if *offset != 0 {
                         let anim_value = &animation_data[*offset as usize..];
-                        let data = [anim_value[0], anim_value[1]];
-                        let value = u16::from_le_bytes(data);
-                        println!("      {} - [ {}, {} ] - {}", value, anim_value[0], anim_value[1], value as f32 * file.bones[i].scale[j]);
+                        let anim_value_ptr = anim_value.as_ptr() as *const AnimationValue;
+                        let scale = file.bones[i].scale[j];
+                    
+                        println!("      (0x{:X})", anim_value_ptr as usize);
+                        print!("      ");
+                        for frame in 0..animated_sequence.num_frames as i32 {
+                            let value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
+                            print!("{}:{}, ", frame, value);
+                        }
+                        println!();
                     }
                 }
             }
@@ -748,4 +763,20 @@ fn add_accessor_with_min_max<T: BufferTypeMinMax>(
         Some((min.write_value(), max.write_value())),
     ));
     index
+}
+
+// TODO: This code is bananas, write a safer version 
+unsafe fn decode_animation_frame(mut anim_value_ptr: *const AnimationValue, frame: i32, scale: f32) -> f32 {
+    let mut k = frame;
+
+    while (*anim_value_ptr).encoded_value.total as i32 <= k {
+        k -= (*anim_value_ptr).encoded_value.total as i32;
+        anim_value_ptr = anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize + 1);
+    }
+
+    if (*anim_value_ptr).encoded_value.valid as i32 > k {
+        (*anim_value_ptr.add(k as usize + 1)).value as f32 * scale
+    } else {
+        (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value as f32 * scale
+    }
 }

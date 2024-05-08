@@ -11,6 +11,20 @@ use std::str;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde::Deserialize;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct EncodedAnimationValue {
+    pub valid: u8,
+    pub total: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union AnimationValue {
+    pub encoded_value: EncodedAnimationValue,
+    pub value: u16,
+}
+
 #[allow(dead_code)]
 #[derive(Copy, Clone, Deserialize, Debug)]
 pub struct AnimationSequenceGroup {
