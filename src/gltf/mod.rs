@@ -95,6 +95,24 @@ impl<T: BufferTypeMinMax + Copy> BufferSlice<T> {
             target: Some(target),
         }
     }
+    pub fn record_with_min_max_without_target(buffer: &mut Vec<u8>, data: &[T]) -> Self {
+        let offset = buffer.len();
+        let mut max = T::MIN;
+        let mut min = T::MAX;
+        for face in data {
+            max = face.data_max(&max);
+            min = face.data_min(&min);
+            let mut face_bytes = face.to_bytes();
+            buffer.append(&mut face_bytes);
+        }
+        let byte_len = buffer.len() - offset;
+        Self {
+            offset,
+            byte_len,
+            min_max: Some(MinMax { min, max }),
+            target: None,
+        }
+    }
 }
 
 pub trait BufferViewAndAccessorSource {

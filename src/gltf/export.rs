@@ -39,6 +39,7 @@ struct Model {
 
 struct Animation {
     name: String,
+    fps: f32,
     bone_animations: Vec<BoneAnimation>,
 }
 
@@ -111,6 +112,7 @@ struct GltfChannelAnimation {
     node_index: usize,
     target: GltfTargetPath,
     values: Vec<Vec3>,
+    timestamps: Vec<f32>,
 }
 
 fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
@@ -191,6 +193,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
             animations.push(Animation {
                 name: name.to_owned(),
+                fps: animated_sequence.fps,
                 bone_animations,
             })
         }
@@ -377,7 +380,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 VectorChannel::Z => base.y = value,
             };
 
-            let process_animation = |base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], bone_to_node: &HashMap<usize, usize>| -> Option<GltfChannelAnimation> {
+            let process_animation = |base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], bone_to_node: &HashMap<usize, usize>, fps: f32| -> Option<GltfChannelAnimation> {
                 if !animations.is_empty() {
                     let animation_length = channels[animations.first().unwrap().1].keyframes.len();
                     assert!(animations.iter().all(|(_, index)| channels[*index].keyframes.len() == animation_length));
@@ -391,21 +394,28 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                         }
                         new_keyframes.push(*base);
                     }
+
+                    let mut timestamps = Vec::with_capacity(animation_length);
+                    let seconds_per_frame = 1.0 / fps;
+                    for i in 0..animation_length {
+                        timestamps.push(i as f32 * seconds_per_frame);
+                    }
     
                     Some(GltfChannelAnimation {
                         node_index: *bone_to_node.get(&target_bone).unwrap(),
                         target,
                         values: new_keyframes,
+                        timestamps,
                     })
                 } else {
                     None
                 }
             };
 
-            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, &bone_to_node) {
+            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, &bone_to_node, animation.fps) {
                 animation_data.push(animation);
             }
-            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, &bone_to_node) {
+            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, &bone_to_node, animation.fps) {
                 animation_data.push(animation);
             }
         }
@@ -709,8 +719,13 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                     "path" : "{}"
                 }}
             }}"#, i, animation_data.node_index, animation_data.target.get_gltf_str()));
-            // TODO: Determine timestamps for keyframes
-            let input_accessor_index = 9001;
+            // TODO: Consolodate timestamps
+            let input_accessor_index = {
+                let slice = BufferSlice::record_with_min_max_without_target(&mut data, &animation_data.timestamps);
+                let (min, max)= slice.get_min_max_values().unwrap();
+                let buffer_view = add_and_get_index(&mut slices, Box::new(slice));
+                add_accessor_with_min_max(&mut accessors, buffer_view, 0, animation_data.timestamps.len(), min, max)
+            };
 
             let output_accessor_index = match animation_data.target {
                 GltfTargetPath::Translation => {
