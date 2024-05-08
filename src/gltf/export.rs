@@ -41,12 +41,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
-    // DEBUG
-    let raw_data = file.raw_data();
-    let raw_data_ptr = raw_data.as_ptr() as usize;
-    let raw_data_end = raw_data_ptr + raw_data.len();
-    println!("Raw data: 0x{:X} - 0x{:X} (len: {})", raw_data_ptr, raw_data_end, raw_data.len());
-
     // DEBUG: Move to mdlparser
     println!("Animation Sequence Groups:");
     for group in &file.animation_sequence_groups {
@@ -91,7 +85,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                         let anim_value_ptr = anim_value.as_ptr() as *const AnimationValue;
                         let scale = file.bones[i].scale[j];
                     
-                        println!("      (0x{:X})", anim_value_ptr as usize);
                         print!("      ");
                         for frame in 0..animated_sequence.num_frames as i32 {
                             let value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
