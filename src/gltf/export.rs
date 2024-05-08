@@ -369,53 +369,12 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
             let component_transform = &local_bone_component_transforms[bone_animation.target];
             let mut translation = component_transform.translation;
             let mut rotation = component_transform.rotation;
-            // NOTE: We are converting from Half-Life coordinates to GLTF
-            //       See convert_coordinates for more details.
-            let write_channel = |base: &mut Vec3, vec_channel: VectorChannel, value: f32| match vec_channel {
-                // HL X => GLTF Z
-                VectorChannel::X => base.z = value,
-                // HL Y => GLTF X
-                VectorChannel::Y => base.x = value,
-                // HL Z => GLTF Y
-                VectorChannel::Z => base.y = value,
-            };
-
-            let process_animation = |base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], bone_to_node: &HashMap<usize, usize>, fps: f32| -> Option<GltfChannelAnimation> {
-                if !animations.is_empty() {
-                    let animation_length = channels[animations.first().unwrap().1].keyframes.len();
-                    assert!(animations.iter().all(|(_, index)| channels[*index].keyframes.len() == animation_length));
-                
-                    let mut new_keyframes = Vec::with_capacity(animation_length);
-                    for i in 0..animation_length {
-                        for (vec_channel, channel_index) in animations {
-                            let channel = &channels[*channel_index];
-                            let value = channel.keyframes[i];
-                            write_channel(base, *vec_channel, value);
-                        }
-                        new_keyframes.push(*base);
-                    }
-
-                    let mut timestamps = Vec::with_capacity(animation_length);
-                    let seconds_per_frame = 1.0 / fps;
-                    for i in 0..animation_length {
-                        timestamps.push(i as f32 * seconds_per_frame);
-                    }
-    
-                    Some(GltfChannelAnimation {
-                        node_index: *bone_to_node.get(&target_bone).unwrap(),
-                        target,
-                        values: new_keyframes,
-                        timestamps,
-                    })
-                } else {
-                    None
-                }
-            };
-
-            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, &bone_to_node, animation.fps) {
+            
+            let target_node = *bone_to_node.get(&target_bone).unwrap();
+            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, target_node, animation.fps) {
                 animation_data.push(animation);
             }
-            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, &bone_to_node, animation.fps) {
+            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, target_node, animation.fps) {
                 animation_data.push(animation);
             }
         }
@@ -924,6 +883,17 @@ fn convert_coordinates(half_life_xyz: [f32; 3]) -> [f32; 3] {
     [half_life_xyz[1], half_life_xyz[2], half_life_xyz[0]]
 }
 
+fn write_and_convert_channel(base: &mut Vec3, channel: VectorChannel, value: f32) {
+    match  channel {
+        // HL X => GLTF Z
+        VectorChannel::X => base.z = value,
+        // HL Y => GLTF X
+        VectorChannel::Y => base.x = value,
+        // HL Z => GLTF Y
+        VectorChannel::Z => base.y = value,
+    }
+}
+
 fn process_indexed_triangles(
     model: &MdlModel,
     texture_width: f32,
@@ -1042,4 +1012,39 @@ fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     let index = vec.len();
     vec.push(value);
     index
+}
+
+fn process_animation(base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], target_node: usize, fps: f32) -> Option<GltfChannelAnimation> {
+    if !animations.is_empty() {
+        let animation_length = channels[animations.first().unwrap().1].keyframes.len();
+        assert!(animations.iter().all(|(_, index)| channels[*index].keyframes.len() == animation_length));
+    
+        let mut new_keyframes = Vec::with_capacity(animation_length);
+        for i in 0..animation_length {
+            for (vec_channel, channel_index) in animations {
+                let channel = &channels[*channel_index];
+                let value = channel.keyframes[i];
+                // NOTE: We are converting from Half-Life coordinates to GLTF
+                //       See convert_coordinates for more details.
+                write_and_convert_channel(base, *vec_channel, value);
+            }
+            new_keyframes.push(*base);
+        }
+
+        let mut timestamps = Vec::with_capacity(animation_length);
+        let seconds_per_frame = 1.0 / fps;
+        let seconds_per_frame = seconds_per_frame * 4.0;
+        for i in 0..animation_length {
+            timestamps.push(i as f32 * seconds_per_frame);
+        }
+
+        Some(GltfChannelAnimation {
+            node_index: target_node,
+            target,
+            values: new_keyframes,
+            timestamps,
+        })
+    } else {
+        None
+    }
 }
