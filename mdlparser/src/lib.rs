@@ -22,7 +22,7 @@ pub struct EncodedAnimationValue {
 #[derive(Copy, Clone)]
 pub union AnimationValue {
     pub encoded_value: EncodedAnimationValue,
-    pub value: u16,
+    pub value: i16,
 }
 
 #[allow(dead_code)]
