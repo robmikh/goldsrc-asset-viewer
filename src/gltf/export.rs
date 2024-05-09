@@ -89,6 +89,7 @@ impl VectorChannel {
     }
 }
 
+#[derive(Debug)]
 enum GltfTargetPath {
     Translation,
     Rotation,
@@ -142,16 +143,16 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
 
         // TODO: Load other files
         if animated_sequence.sequence_group == 0 {
-            //println!("  {}", name);
+            println!("  {}", name);
 
             let sequence_group = &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
-            let animation_offset = sequence_group.unused_2 as usize + animated_sequence.animation_offset as usize;
+            let animation_offset = /*sequence_group.unused_2 as usize +*/ animated_sequence.animation_offset as usize;
             let animation_data = &file.raw_data()[animation_offset..];
 
             let mut bone_animations = Vec::new();
             for i in 0..file.bones.len() {
-                //println!("    Bone {}:", i);
-                let offset = i * 12;
+                println!("    Bone {}:", i);
+                let offset = i * std::mem::size_of::<[u16; 6]>();
                 let mut offsets = [0u16; 6];
                 for j in 0..offsets.len() {
                     let frame_offset = j * 2;
@@ -166,15 +167,17 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                         let anim_value_ptr = anim_value.as_ptr() as *const AnimationValue;
                         let scale = file.bones[i].scale[j];
                     
-                        //print!("      ");
+                        println!("      ({})", scale);
+                        print!("      ");
                         let mut keyframes = Vec::new();
                         let target = ComponentTransformTarget::from_index(j);
                         for frame in 0..animated_sequence.num_frames as i32 {
-                            let value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
-                            //print!("{}:{}, ", frame, value);
+                            let mut value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
+                            value += file.bones[i].value[j];
+                            print!("{}:{}, ", frame, value);
                             keyframes.push(value);
                         }
-                        //println!();
+                        println!();
 
                         channels.push(BoneChannelAnimation {
                             target,
@@ -204,7 +207,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     for animation in &animations {
         println!("  {}", &animation.name);
         //for animation in &animation.bone_animations {
+        //    println!("    Bone {}:", animation.target);
         //    for channel in &animation.channels {
+        //        println!("      ({:?})", channel.target);
         //        print!("      ");
         //        for (i, keyframe) in channel.keyframes.iter().enumerate() {
         //            print!("{}:{}, ", i, keyframe);
@@ -665,6 +670,36 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let textures = textures.join(",\n");
     let images = images.join(",\n");
 
+    // DEBUG
+    //println!("Bones to Nodes");
+    //for bone in 0..file.bones.len() {
+    //    println!("  {} -> {}", bone, *bone_to_node.get(&bone).unwrap());
+    //}
+
+    // DEBUG
+    //println!("Bone Transforms");
+    //for bone in 0..file.bones.len() {
+    //    println!("  {}:", bone);
+    //    let transform = &local_bone_component_transforms[bone];
+    //    println!("    Translation:   {}", transform.translation);
+    //    println!("    Rotation:      {}", transform.rotation);
+    //}
+
+    // DEBUG
+    //println!("Animations");
+    //for animation in &gltf_animations {
+    //    println!("  {}", animation.name);
+    //    for channel in &animation.channels {
+    //        println!("    Node {}:", channel.node_index);
+    //        println!("      ({:?})", channel.target);
+    //        print!("      ");
+    //        for data in &channel.values {
+    //            print!("{}, ", data)
+    //        }
+    //        println!();
+    //    }
+    //}
+
     // Create animation data slices
     let mut gltf_animation_strs = Vec::with_capacity(gltf_animations.len());
     for animation in gltf_animations {
@@ -1001,12 +1036,14 @@ unsafe fn decode_animation_frame(mut anim_value_ptr: *const AnimationValue, fram
         anim_value_ptr = anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize + 1);
     }
 
-    if (*anim_value_ptr).encoded_value.valid as i32 > k {
-        (*anim_value_ptr.add(k as usize + 1)).value as f32 * scale
+    let value = if (*anim_value_ptr).encoded_value.valid as i32 > k {
+        (*anim_value_ptr.add(k as usize + 1)).value
     } else {
-        (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value as f32 * scale
-    }
-}
+        (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value
+    };
+    //let value = u16::MAX - value;
+    value as f32 * scale
+}   
 
 fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     let index = vec.len();
