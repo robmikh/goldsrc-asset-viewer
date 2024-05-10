@@ -216,6 +216,15 @@ pub fn export<P: AsRef<Path>>(
                 .data(),
         )
         .unwrap();
+    let scene_root = add_and_get_index(
+        &mut nodes,
+        format!(
+            r#"     {{
+            "children" : [ 0, {} ]
+        }}"#,
+            skin_root
+        ),
+    );
     let nodes = nodes.join(",\n");
 
     // Build animations
@@ -742,7 +751,7 @@ pub fn export<P: AsRef<Path>>(
         "scene" : 0,
         "scenes" : [
             {{
-                "nodes" : [ 0, {} ]
+                "nodes" : [ {} ]
             }}
         ],
         "nodes" : [
@@ -802,7 +811,7 @@ pub fn export<P: AsRef<Path>>(
             }}
         }}
     "#,
-        skin_root,
+        scene_root,
         nodes,
         skin,
         primitives,
