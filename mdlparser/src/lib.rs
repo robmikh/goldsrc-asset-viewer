@@ -13,6 +13,68 @@ use serde::Deserialize;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
+struct AnimationValueOffsets {
+    offsets: [u16; 6],
+}
+
+#[derive(Clone, Debug)]
+pub struct Animation {
+    pub name: String,
+    pub fps: f32,
+    pub bone_animations: Vec<BoneAnimation>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BoneAnimation {
+    pub target: usize,
+    pub channels: Vec<BoneChannelAnimation>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BoneChannelAnimation {
+    pub target: ComponentTransformTarget,
+    pub keyframes: Vec<f32>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum ComponentTransformTarget {
+    Translation(VectorChannel),
+    Rotation(VectorChannel),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum VectorChannel {
+    X,
+    Y,
+    Z,
+}
+
+impl ComponentTransformTarget {
+    fn from_index(index: usize) -> Self {
+        if index < 3 {
+            ComponentTransformTarget::Translation(VectorChannel::from_index(index))
+        } else if index <= 5 {
+            ComponentTransformTarget::Rotation(VectorChannel::from_index(index))
+        } else {
+            panic!()
+        }
+    }
+}
+
+impl VectorChannel {
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 | 3 => VectorChannel::X,
+            1 | 4 => VectorChannel::Y,
+            2 | 5 => VectorChannel::Z,
+            _ => panic!(),
+        }
+    }
+}
+
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
 pub struct EncodedAnimationValue {
     pub valid: u8,
     pub total: u8,
@@ -133,6 +195,7 @@ pub struct MdlFile {
     pub bones: Vec<BoneHeader>, // TODO: Change
     pub animation_sequences: Vec<AnimationSequence>,
     pub animation_sequence_groups: Vec<AnimationSequenceGroup>,
+    pub animations: Vec<Animation>,
     header: MdlHeader,
     raw_data: Vec<u8>,
 }
@@ -521,9 +584,80 @@ impl MdlFile {
             sequence_groups
         };
 
-        file.seek(SeekFrom::Start(0)).unwrap();
-        let mut file_data = vec![0u8; file_size as usize];
-        file.read(&mut file_data).unwrap();
+        // Copy file data
+        let file_data = {
+            file.seek(SeekFrom::Start(0)).unwrap();
+            let mut file_data = vec![0u8; file_size as usize];
+            file.read(&mut file_data).unwrap();
+            file_data
+        };
+
+        // Animations
+        let mut animations = Vec::new();
+        for animated_sequence in &sequences {
+            let name = null_terminated_bytes_to_str(&animated_sequence.name);
+
+            // TODO: Load other files
+            if animated_sequence.sequence_group == 0 {
+                //println!("  {}", name);
+
+                let sequence_group =
+                    &sequence_groups[animated_sequence.sequence_group as usize];
+                assert_eq!(sequence_group.unused_2, 0);
+                let animation_offset = /*sequence_group.unused_2 as usize +*/ animated_sequence.animation_offset as usize;
+                let animation_data = &file_data[animation_offset..];
+                let animation_value_offsets_ptr =
+                    animation_data.as_ptr() as *const AnimationValueOffsets;
+
+                let mut bone_animations = Vec::new();
+                for i in 0..bones.len() {
+                    //println!("    Bone {}:", i);
+
+                    let animation_value_offsets =
+                        unsafe { animation_value_offsets_ptr.add(i).as_ref().unwrap() };
+                    let animation_data =
+                        { animation_value_offsets as *const AnimationValueOffsets as *const u8 };
+
+                    let mut channels = Vec::new();
+                    for (j, offset) in animation_value_offsets.offsets.iter().enumerate() {
+                        if *offset != 0 {
+                            let anim_value_ptr = unsafe {
+                                animation_data.add(*offset as usize) as *const AnimationValue
+                            };
+                            let scale = bones[i].scale[j];
+
+                            //println!("      ({})", scale);
+                            //print!("      ");
+                            let mut keyframes = Vec::new();
+                            let target = ComponentTransformTarget::from_index(j);
+                            for frame in 0..animated_sequence.num_frames as i32 {
+                                let mut value =
+                                    unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
+                                value += bones[i].value[j];
+                                //print!("{}:{}, ", frame, value);
+                                keyframes.push(value);
+                            }
+                            //println!();
+
+                            channels.push(BoneChannelAnimation { target, keyframes })
+                        }
+                    }
+
+                    if !channels.is_empty() {
+                        bone_animations.push(BoneAnimation {
+                            target: i,
+                            channels,
+                        })
+                    }
+                }
+
+                animations.push(Animation {
+                    name: name.to_owned(),
+                    fps: animated_sequence.fps,
+                    bone_animations,
+                })
+            }
+        }
 
         MdlFile {
             name: file_name,
@@ -532,6 +666,7 @@ impl MdlFile {
             bones,
             animation_sequences: sequences,
             animation_sequence_groups: sequence_groups,
+            animations,
             header: header,
             raw_data: file_data,
         }
@@ -618,4 +753,33 @@ fn create_image(
         image_rgba_data,
     )
     .unwrap()
+}
+
+pub fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
+    let name = std::str::from_utf8(bytes).unwrap();
+    let end = name.find('\0').unwrap_or(name.len());
+    let name = &name[..end];
+    name
+}
+
+// TODO: This code is bananas, write a safer version
+unsafe fn decode_animation_frame(
+    mut anim_value_ptr: *const AnimationValue,
+    frame: i32,
+    scale: f32,
+) -> f32 {
+    let mut k = frame;
+
+    while (*anim_value_ptr).encoded_value.total as i32 <= k {
+        k -= (*anim_value_ptr).encoded_value.total as i32;
+        anim_value_ptr = anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize + 1);
+    }
+
+    let value = if (*anim_value_ptr).encoded_value.valid as i32 > k {
+        (*anim_value_ptr.add(k as usize + 1)).value
+    } else {
+        (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value
+    };
+    //let value = u16::MAX - value;
+    value as f32 * scale
 }

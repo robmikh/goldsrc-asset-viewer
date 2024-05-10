@@ -10,7 +10,7 @@ use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
 };
-use mdlparser::{AnimationValue, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
+use mdlparser::{null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel};
 
 use crate::{
     gltf::transform::quat_from_euler,
@@ -21,11 +21,6 @@ use super::{
     transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
     BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER,
 };
-
-#[repr(C)]
-struct AnimationValueOffsets {
-    offsets: [u16; 6],
-}
 
 struct Vertex {
     pos: [f32; 3],
@@ -44,58 +39,6 @@ struct Model {
     indices: Vec<u32>,
     vertices: Vec<Vertex>,
     meshes: Vec<Mesh>,
-}
-
-struct Animation {
-    name: String,
-    fps: f32,
-    bone_animations: Vec<BoneAnimation>,
-}
-
-struct BoneAnimation {
-    target: usize,
-    channels: Vec<BoneChannelAnimation>,
-}
-
-struct BoneChannelAnimation {
-    target: ComponentTransformTarget,
-    keyframes: Vec<f32>,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum ComponentTransformTarget {
-    Translation(VectorChannel),
-    Rotation(VectorChannel),
-}
-
-#[derive(Copy, Clone, Debug)]
-enum VectorChannel {
-    X,
-    Y,
-    Z,
-}
-
-impl ComponentTransformTarget {
-    fn from_index(index: usize) -> Self {
-        if index < 3 {
-            ComponentTransformTarget::Translation(VectorChannel::from_index(index))
-        } else if index <= 5 {
-            ComponentTransformTarget::Rotation(VectorChannel::from_index(index))
-        } else {
-            panic!()
-        }
-    }
-}
-
-impl VectorChannel {
-    fn from_index(index: usize) -> Self {
-        match index {
-            0 | 3 => VectorChannel::X,
-            1 | 4 => VectorChannel::Y,
-            2 | 5 => VectorChannel::Z,
-            _ => panic!(),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -125,13 +68,6 @@ struct GltfChannelAnimation {
     timestamps: Vec<f32>,
 }
 
-fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
-    let name = std::str::from_utf8(bytes).unwrap();
-    let end = name.find('\0').unwrap_or(name.len());
-    let name = &name[..end];
-    name
-}
-
 pub fn export<P: AsRef<Path>>(
     file: &MdlFile,
     output_path: P,
@@ -141,80 +77,12 @@ pub fn export<P: AsRef<Path>>(
     let model = body_part.models.first().unwrap();
 
     if let Some(log) = &mut log {
-        // DEBUG: Move to mdlparser
         writeln!(log, "Animation Sequence Groups:").unwrap();
         for group in &file.animation_sequence_groups {
             let name = null_terminated_bytes_to_str(group.name());
             let label = null_terminated_bytes_to_str(&group.label);
 
             writeln!(log, "  {} - {}", label, name).unwrap();
-        }
-    }
-
-    // DEBUG: Move to mdlparser
-    let mut animations = Vec::new();
-    for animated_sequence in &file.animation_sequences {
-        let name = null_terminated_bytes_to_str(&animated_sequence.name);
-
-        // TODO: Load other files
-        if animated_sequence.sequence_group == 0 {
-            //println!("  {}", name);
-
-            let sequence_group =
-                &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
-            assert_eq!(sequence_group.unused_2, 0);
-            let animation_offset = /*sequence_group.unused_2 as usize +*/ animated_sequence.animation_offset as usize;
-            let animation_data = &file.raw_data()[animation_offset..];
-            let animation_value_offsets_ptr =
-                animation_data.as_ptr() as *const AnimationValueOffsets;
-
-            let mut bone_animations = Vec::new();
-            for i in 0..file.bones.len() {
-                //println!("    Bone {}:", i);
-
-                let animation_value_offsets =
-                    unsafe { animation_value_offsets_ptr.add(i).as_ref().unwrap() };
-                let animation_data =
-                    { animation_value_offsets as *const AnimationValueOffsets as *const u8 };
-
-                let mut channels = Vec::new();
-                for (j, offset) in animation_value_offsets.offsets.iter().enumerate() {
-                    if *offset != 0 {
-                        let anim_value_ptr = unsafe {
-                            animation_data.add(*offset as usize) as *const AnimationValue
-                        };
-                        let scale = file.bones[i].scale[j];
-
-                        //println!("      ({})", scale);
-                        //print!("      ");
-                        let mut keyframes = Vec::new();
-                        let target = ComponentTransformTarget::from_index(j);
-                        for frame in 0..animated_sequence.num_frames as i32 {
-                            let mut value =
-                                unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
-                            value += file.bones[i].value[j];
-                            //print!("{}:{}, ", frame, value);
-                            keyframes.push(value);
-                        }
-                        //println!();
-
-                        channels.push(BoneChannelAnimation { target, keyframes })
-                    }
-                }
-
-                if !channels.is_empty() {
-                    bone_animations.push(BoneAnimation {
-                        target: i,
-                        channels,
-                    })
-                }
-            }
-
-            animations.push(Animation {
-                name: name.to_owned(),
-                fps: animated_sequence.fps,
-                bone_animations,
-            })
         }
     }
 
@@ -348,8 +216,8 @@ pub fn export<P: AsRef<Path>>(
     let nodes = nodes.join(",\n");
 
     // Build animations
-    let mut gltf_animations = Vec::with_capacity(animations.len());
-    for animation in &animations {
+    let mut gltf_animations = Vec::with_capacity(file.animations.len());
+    for animation in &file.animations {
         let mut animation_data = Vec::new();
         for bone_animation in &animation.bone_animations {
             let target_bone = bone_animation.target;
@@ -1094,28 +962,6 @@ fn add_accessor_with_min_max<T: BufferTypeMinMax>(
         Some((min.write_value(), max.write_value())),
     ));
     index
-}
-
-// TODO: This code is bananas, write a safer version
-unsafe fn decode_animation_frame(
-    mut anim_value_ptr: *const AnimationValue,
-    frame: i32,
-    scale: f32,
-) -> f32 {
-    let mut k = frame;
-
-    while (*anim_value_ptr).encoded_value.total as i32 <= k {
-        k -= (*anim_value_ptr).encoded_value.total as i32;
-        anim_value_ptr = anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize + 1);
-    }
-
-    let value = if (*anim_value_ptr).encoded_value.valid as i32 > k {
-        (*anim_value_ptr.add(k as usize + 1)).value
-    } else {
-        (*anim_value_ptr.add((*anim_value_ptr).encoded_value.valid as usize)).value
-    };
-    //let value = u16::MAX - value;
-    value as f32 * scale
 }
 
 fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
