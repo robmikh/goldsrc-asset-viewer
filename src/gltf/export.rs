@@ -10,7 +10,10 @@ use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
 };
-use mdlparser::{null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel};
+use mdlparser::{
+    null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
+    MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
+};
 
 use crate::{
     gltf::transform::quat_from_euler,

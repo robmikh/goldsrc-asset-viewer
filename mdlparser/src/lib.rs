@@ -72,7 +72,6 @@ impl VectorChannel {
     }
 }
 
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct EncodedAnimationValue {
@@ -601,8 +600,7 @@ impl MdlFile {
             if animated_sequence.sequence_group == 0 {
                 //println!("  {}", name);
 
-                let sequence_group =
-                    &sequence_groups[animated_sequence.sequence_group as usize];
+                let sequence_group = &sequence_groups[animated_sequence.sequence_group as usize];
                 assert_eq!(sequence_group.unused_2, 0);
                 let animation_offset = /*sequence_group.unused_2 as usize +*/ animated_sequence.animation_offset as usize;
                 let animation_data = &file_data[animation_offset..];
