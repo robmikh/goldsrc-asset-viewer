@@ -497,7 +497,8 @@ impl MdlFile {
         let sequences = {
             let mut sequences = Vec::new();
 
-            file.seek(SeekFrom::Start(header.anim_seq_offset as u64)).unwrap();
+            file.seek(SeekFrom::Start(header.anim_seq_offset as u64))
+                .unwrap();
             for _ in 0..header.anim_seq_count {
                 let sequence: AnimationSequence = bincode::deserialize_from(&mut file).unwrap();
                 sequences.push(sequence);
@@ -510,7 +511,8 @@ impl MdlFile {
         let sequence_groups = {
             let mut sequence_groups = Vec::new();
 
-            file.seek(SeekFrom::Start(header.seq_group_offset as u64)).unwrap();
+            file.seek(SeekFrom::Start(header.seq_group_offset as u64))
+                .unwrap();
             for _ in 0..header.seq_group_count {
                 let group: AnimationSequenceGroup = bincode::deserialize_from(&mut file).unwrap();
                 sequence_groups.push(group);

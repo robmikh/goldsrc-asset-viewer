@@ -6,7 +6,7 @@ use clap::Parser;
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
     /// Log debug output to log.txt
-    #[clap(long, default_value_t=false)]
+    #[clap(long, default_value_t = false)]
     pub log: bool,
 
     /// Open the specified file

@@ -1,8 +1,8 @@
 use std::{
     collections::HashMap,
+    fmt::Write,
     ops::Range,
     path::{Path, PathBuf},
-    fmt::Write,
 };
 
 use glam::{Mat4, Vec3, Vec4};
@@ -12,7 +12,10 @@ use id_tree::{
 };
 use mdlparser::{AnimationValue, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
-use crate::{gltf::transform::quat_from_euler, numerics::{ToVec3, ToVec4}};
+use crate::{
+    gltf::transform::quat_from_euler,
+    numerics::{ToVec3, ToVec4},
+};
 
 use super::{
     transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
@@ -69,7 +72,7 @@ enum ComponentTransformTarget {
 enum VectorChannel {
     X,
     Y,
-    Z
+    Z,
 }
 
 impl ComponentTransformTarget {
@@ -129,7 +132,11 @@ fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
     name
 }
 
-pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&mut String>) -> std::io::Result<()> {
+pub fn export<P: AsRef<Path>>(
+    file: &MdlFile,
+    output_path: P,
+    mut log: Option<&mut String>,
+) -> std::io::Result<()> {
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
@@ -139,7 +146,7 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
         for group in &file.animation_sequence_groups {
             let name = null_terminated_bytes_to_str(group.name());
             let label = null_terminated_bytes_to_str(&group.label);
-        
+
             writeln!(log, "  {} - {}", label, name).unwrap();
         }
     }
@@ -153,43 +160,45 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
         if animated_sequence.sequence_group == 0 {
             //println!("  {}", name);
 
-            let sequence_group = &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
+            let sequence_group =
+                &file.animation_sequence_groups[animated_sequence.sequence_group as usize];
             assert_eq!(sequence_group.unused_2, 0);
             let animation_offset = /*sequence_group.unused_2 as usize +*/ animated_sequence.animation_offset as usize;
             let animation_data = &file.raw_data()[animation_offset..];
-            let animation_value_offsets_ptr = animation_data.as_ptr() as *const AnimationValueOffsets;
+            let animation_value_offsets_ptr =
+                animation_data.as_ptr() as *const AnimationValueOffsets;
 
             let mut bone_animations = Vec::new();
             for i in 0..file.bones.len() {
                 //println!("    Bone {}:", i);
 
-                let animation_value_offsets = unsafe { animation_value_offsets_ptr.add(i).as_ref().unwrap() };
-                let animation_data = {
-                    animation_value_offsets as *const AnimationValueOffsets as *const u8
-                };
+                let animation_value_offsets =
+                    unsafe { animation_value_offsets_ptr.add(i).as_ref().unwrap() };
+                let animation_data =
+                    { animation_value_offsets as *const AnimationValueOffsets as *const u8 };
 
                 let mut channels = Vec::new();
                 for (j, offset) in animation_value_offsets.offsets.iter().enumerate() {
                     if *offset != 0 {
-                        let anim_value_ptr = unsafe { animation_data.add(*offset as usize) as *const AnimationValue};
+                        let anim_value_ptr = unsafe {
+                            animation_data.add(*offset as usize) as *const AnimationValue
+                        };
                         let scale = file.bones[i].scale[j];
-                    
+
                         //println!("      ({})", scale);
                         //print!("      ");
                         let mut keyframes = Vec::new();
                         let target = ComponentTransformTarget::from_index(j);
                         for frame in 0..animated_sequence.num_frames as i32 {
-                            let mut value = unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
+                            let mut value =
+                                unsafe { decode_animation_frame(anim_value_ptr, frame, scale) };
                             value += file.bones[i].value[j];
                             //print!("{}:{}, ", frame, value);
                             keyframes.push(value);
                         }
                         //println!();
 
-                        channels.push(BoneChannelAnimation {
-                            target,
-                            keyframes,
-                        })
+                        channels.push(BoneChannelAnimation { target, keyframes })
                     }
                 }
 
@@ -353,10 +362,10 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
                 match channel.target {
                     ComponentTransformTarget::Translation(vec_channel) => {
                         translate_animations.push((vec_channel, channel_index));
-                    },
+                    }
                     ComponentTransformTarget::Rotation(vec_channel) => {
                         rotation_animations.push((vec_channel, channel_index));
-                    },
+                    }
                 }
             }
 
@@ -364,12 +373,26 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
             let component_transform = &local_bone_component_transforms[bone_animation.target];
             let mut translation = component_transform.translation;
             let mut rotation = component_transform.rotation;
-            
+
             let target_node = *bone_to_node.get(&target_bone).unwrap();
-            if let Some(animation) = process_animation(&mut translation, GltfTargetPath::Translation, &translate_animations, &bone_animation.channels, target_node, animation.fps) {
+            if let Some(animation) = process_animation(
+                &mut translation,
+                GltfTargetPath::Translation,
+                &translate_animations,
+                &bone_animation.channels,
+                target_node,
+                animation.fps,
+            ) {
                 animation_data.push(animation);
             }
-            if let Some(animation) = process_animation(&mut rotation, GltfTargetPath::Rotation, &rotation_animations, &bone_animation.channels, target_node, animation.fps) {
+            if let Some(animation) = process_animation(
+                &mut rotation,
+                GltfTargetPath::Rotation,
+                &rotation_animations,
+                &bone_animation.channels,
+                target_node,
+                animation.fps,
+            ) {
                 animation_data.push(animation);
             }
         }
@@ -692,18 +715,19 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
                 write!(log, "      ").unwrap();
                 for data in &channel.values {
                     match channel.target {
-                        GltfTargetPath::Translation => {write!(log, "{}, ", data).unwrap();},
+                        GltfTargetPath::Translation => {
+                            write!(log, "{}, ", data).unwrap();
+                        }
                         GltfTargetPath::Rotation => {
                             let data = quat_from_euler(*data);
                             write!(log, "{}, ", data).unwrap();
-                        },
+                        }
                     }
                 }
                 writeln!(log).unwrap();
             }
         }
     }
-    
 
     // Create animation data slices
     let mut gltf_animation_strs = Vec::with_capacity(gltf_animations.len());
@@ -711,43 +735,84 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
         let mut channels = Vec::with_capacity(animation.channels.len());
         let mut samplers = Vec::with_capacity(animation.channels.len());
         for (i, animation_data) in animation.channels.iter().enumerate() {
-            channels.push(format!(r#"           {{
+            channels.push(format!(
+                r#"           {{
                 "sampler" : {},
                 "target" : {{
                     "node" : {},
                     "path" : "{}"
                 }}
-            }}"#, i, animation_data.node_index, animation_data.target.get_gltf_str()));
+            }}"#,
+                i,
+                animation_data.node_index,
+                animation_data.target.get_gltf_str()
+            ));
             // TODO: Consolodate timestamps
             let input_accessor_index = {
-                let slice = BufferSlice::record_with_min_max_without_target(&mut data, &animation_data.timestamps);
-                let (min, max)= slice.get_min_max_values().unwrap();
+                let slice = BufferSlice::record_with_min_max_without_target(
+                    &mut data,
+                    &animation_data.timestamps,
+                );
+                let (min, max) = slice.get_min_max_values().unwrap();
                 let buffer_view = add_and_get_index(&mut slices, Box::new(slice));
-                add_accessor_with_min_max(&mut accessors, buffer_view, 0, animation_data.timestamps.len(), min, max)
+                add_accessor_with_min_max(
+                    &mut accessors,
+                    buffer_view,
+                    0,
+                    animation_data.timestamps.len(),
+                    min,
+                    max,
+                )
             };
 
             let output_accessor_index = match animation_data.target {
                 GltfTargetPath::Translation => {
-                    let buffer_view = add_and_get_index(&mut slices, Box::new(BufferSlice::record_without_target(&mut data, &animation_data.values)));
-                    add_accessor::<Vec3>(&mut accessors, buffer_view, 0, animation_data.values.len())
-                },
+                    let buffer_view = add_and_get_index(
+                        &mut slices,
+                        Box::new(BufferSlice::record_without_target(
+                            &mut data,
+                            &animation_data.values,
+                        )),
+                    );
+                    add_accessor::<Vec3>(
+                        &mut accessors,
+                        buffer_view,
+                        0,
+                        animation_data.values.len(),
+                    )
+                }
                 GltfTargetPath::Rotation => {
-                    let quats: Vec<_> = animation_data.values.iter().map(|x| ComponentTransform::new(Vec3::ZERO, *x).get_rotation_quat().to_vec4()).collect();
-                    let buffer_view = add_and_get_index(&mut slices, Box::new(BufferSlice::record_without_target(&mut data, &quats)));
+                    let quats: Vec<_> = animation_data
+                        .values
+                        .iter()
+                        .map(|x| {
+                            ComponentTransform::new(Vec3::ZERO, *x)
+                                .get_rotation_quat()
+                                .to_vec4()
+                        })
+                        .collect();
+                    let buffer_view = add_and_get_index(
+                        &mut slices,
+                        Box::new(BufferSlice::record_without_target(&mut data, &quats)),
+                    );
                     add_accessor::<Vec4>(&mut accessors, buffer_view, 0, quats.len())
-                },
+                }
             };
 
-            samplers.push(format!(r#"           {{
+            samplers.push(format!(
+                r#"           {{
                 "input" : {},
                 "interpolation" : "LINEAR",
                 "output" : {}
-            }}"#, input_accessor_index, output_accessor_index));
+            }}"#,
+                input_accessor_index, output_accessor_index
+            ));
         }
         let channels = channels.join(",\n");
         let samplers = samplers.join(",\n");
 
-        gltf_animation_strs.push(format!(r#"        {{
+        gltf_animation_strs.push(format!(
+            r#"        {{
             "channels" : [
 {}
             ],
@@ -755,8 +820,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&m
             "samplers" : [
 {}
             ]
-        }}"#, channels, &animation.name, samplers));
-        
+        }}"#,
+            channels, &animation.name, samplers
+        ));
     }
     let gltf_animations = gltf_animation_strs.join(",\n");
 
@@ -924,7 +990,7 @@ fn convert_coordinates(half_life_xyz: [f32; 3]) -> [f32; 3] {
 }
 
 fn write_and_convert_channel(base: &mut Vec3, channel: VectorChannel, value: f32) {
-    match  channel {
+    match channel {
         // HL X => GLTF Z
         VectorChannel::X => base.z = value,
         // HL Y => GLTF X
@@ -978,10 +1044,7 @@ fn process_indexed_triangles(
             let joints = [
                 // We don't use bone_to_node because we need the joint index.
                 // Because of how we encode the joints, they match the bone index.
-                bone_index,
-                0,
-                0,
-                0,
+                bone_index, 0, 0, 0,
             ];
             let weights = [1.0, 0.0, 0.0, 0.0];
 
@@ -1033,8 +1096,12 @@ fn add_accessor_with_min_max<T: BufferTypeMinMax>(
     index
 }
 
-// TODO: This code is bananas, write a safer version 
-unsafe fn decode_animation_frame(mut anim_value_ptr: *const AnimationValue, frame: i32, scale: f32) -> f32 {
+// TODO: This code is bananas, write a safer version
+unsafe fn decode_animation_frame(
+    mut anim_value_ptr: *const AnimationValue,
+    frame: i32,
+    scale: f32,
+) -> f32 {
     let mut k = frame;
 
     while (*anim_value_ptr).encoded_value.total as i32 <= k {
@@ -1049,7 +1116,7 @@ unsafe fn decode_animation_frame(mut anim_value_ptr: *const AnimationValue, fram
     };
     //let value = u16::MAX - value;
     value as f32 * scale
-}   
+}
 
 fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     let index = vec.len();
@@ -1057,11 +1124,20 @@ fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     index
 }
 
-fn process_animation(base: &mut Vec3, target: GltfTargetPath, animations: &[(VectorChannel, usize)], channels: &[BoneChannelAnimation], target_node: usize, fps: f32) -> Option<GltfChannelAnimation> {
+fn process_animation(
+    base: &mut Vec3,
+    target: GltfTargetPath,
+    animations: &[(VectorChannel, usize)],
+    channels: &[BoneChannelAnimation],
+    target_node: usize,
+    fps: f32,
+) -> Option<GltfChannelAnimation> {
     if !animations.is_empty() {
         let animation_length = channels[animations.first().unwrap().1].keyframes.len();
-        assert!(animations.iter().all(|(_, index)| channels[*index].keyframes.len() == animation_length));
-    
+        assert!(animations
+            .iter()
+            .all(|(_, index)| channels[*index].keyframes.len() == animation_length));
+
         let mut new_keyframes = Vec::with_capacity(animation_length);
         for i in 0..animation_length {
             for (vec_channel, channel_index) in animations {

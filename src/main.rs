@@ -56,11 +56,7 @@ fn main() {
             };
             let export_file_path = cli.export_file_path.unwrap();
 
-            let mut log = if cli.log {
-                Some(String::new())
-            } else {
-                None
-            };
+            let mut log = if cli.log { Some(String::new()) } else { None };
             gltf::export::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
             if let Some(log) = log {
                 std::fs::write("log.txt", log).unwrap();
@@ -265,12 +261,9 @@ fn show_ui(cli: Cli) {
                                     } else {
                                         panic!()
                                     };
-                                    let mut log = if cli.log {
-                                        Some(String::new())
-                                    } else {
-                                        None
-                                    };
-                                    gltf::export::export(&mdl_file.file, new_path, log.as_mut()).unwrap();
+                                    let mut log = if cli.log { Some(String::new()) } else { None };
+                                    gltf::export::export(&mdl_file.file, new_path, log.as_mut())
+                                        .unwrap();
                                     if let Some(log) = log {
                                         std::fs::write("log.txt", log).unwrap();
                                     }
