@@ -11,7 +11,7 @@ use id_tree::{
 };
 use mdlparser::{AnimationValue, MdlFile, MdlMeshSequenceType, MdlMeshVertex, MdlModel};
 
-use crate::numerics::{ToVec3, ToVec4};
+use crate::{gltf::transform::quat_from_euler, numerics::{ToVec3, ToVec4}};
 
 use super::{
     transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
@@ -394,6 +394,41 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         });
     }
 
+    // DEBUG: Add a static animation
+    {
+        let animation_length = 40;
+        let fps = 20.0;
+
+        let mut channels = Vec::new();
+        for bone in 0..file.bones.len() {
+            let component_transform = &local_bone_component_transforms[bone];
+            let translation = component_transform.translation;
+
+            let new_keyframes = vec![translation; animation_length];
+
+            let mut timestamps = Vec::with_capacity(animation_length);
+            let seconds_per_frame = 1.0 / fps;
+            let seconds_per_frame = seconds_per_frame * 4.0;
+            for i in 0..animation_length {
+                timestamps.push(i as f32 * seconds_per_frame);
+            }
+
+            let target_node = *bone_to_node.get(&bone).unwrap();
+            
+            channels.push(GltfChannelAnimation {
+                node_index: target_node,
+                target: GltfTargetPath::Translation,
+                values: new_keyframes,
+                timestamps,
+            });
+        }
+
+        gltf_animations.push(GltfAnimation {
+            channels,
+            name: "DEBUG".to_owned(),
+        });
+    }
+
     let converted_model = {
         // Gather mesh data
         let (meshes, indices, vertices) = {
@@ -694,11 +729,25 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     for animation in &gltf_animations {
         println!("  {}", animation.name);
         for channel in &animation.channels {
-            println!("    Node {}:", channel.node_index);
+            let mut name = None;
+            for (bone, node) in &bone_to_node {
+                if *node == channel.node_index {
+                    name = Some(&bone_names[*bone]);
+                }
+            }
+            let name = name.unwrap();
+            //println!("    Node {}:", channel.node_index);
+            println!("    Node {}  ({}):", name, channel.node_index);
             println!("      ({:?})", channel.target);
             print!("      ");
             for data in &channel.values {
-                print!("{}, ", data)
+                match channel.target {
+                    GltfTargetPath::Translation => print!("{}, ", data),
+                    GltfTargetPath::Rotation => {
+                        let data = quat_from_euler(*data);
+                        print!("{}, ", data)
+                    },
+                }
             }
             println!();
         }

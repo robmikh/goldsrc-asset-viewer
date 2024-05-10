@@ -14,16 +14,20 @@ impl ComponentTransform {
     }
 
     pub fn get_rotation_quat(&self) -> Quat {
-        Quat::from_euler(
-            EulerRot::YXZ,
-            self.rotation.y,
-            self.rotation.x,
-            self.rotation.z,
-        )
-        .normalize()
+        quat_from_euler(self.rotation)
     }
 
     pub fn to_mat4(&self) -> Mat4 {
         Mat4::from_rotation_translation(self.get_rotation_quat(), self.translation)
     }
+}
+
+pub fn quat_from_euler(euler: Vec3) -> Quat {
+    Quat::from_euler(
+        EulerRot::YXZ,
+        euler.y,
+        euler.x,
+        euler.z,
+    )
+    .normalize()
 }
