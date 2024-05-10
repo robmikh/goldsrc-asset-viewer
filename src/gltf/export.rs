@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
+    fmt::Write,
 };
 
 use glam::{Mat4, Vec3, Vec4};
@@ -128,17 +129,19 @@ fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
     name
 }
 
-pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result<()> {
+pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P, mut log: Option<&mut String>) -> std::io::Result<()> {
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
-    // DEBUG: Move to mdlparser
-    println!("Animation Sequence Groups:");
-    for group in &file.animation_sequence_groups {
-        let name = null_terminated_bytes_to_str(group.name());
-        let label = null_terminated_bytes_to_str(&group.label);
-
-        println!("  {} - {}", label, name);
+    if let Some(log) = &mut log {
+        // DEBUG: Move to mdlparser
+        writeln!(log, "Animation Sequence Groups:").unwrap();
+        for group in &file.animation_sequence_groups {
+            let name = null_terminated_bytes_to_str(group.name());
+            let label = null_terminated_bytes_to_str(&group.label);
+        
+            writeln!(log, "  {} - {}", label, name).unwrap();
+        }
     }
 
     // DEBUG: Move to mdlparser
@@ -204,23 +207,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                 bone_animations,
             })
         }
-    }
-
-    // DEBUG
-    println!("Animation Sequences:");
-    for animation in &animations {
-        println!("  {}", &animation.name);
-        //for animation in &animation.bone_animations {
-        //    println!("    Bone {}:", animation.target);
-        //    for channel in &animation.channels {
-        //        println!("      ({:?})", channel.target);
-        //        print!("      ");
-        //        for (i, keyframe) in channel.keyframes.iter().enumerate() {
-        //            print!("{}:{}, ", i, keyframe);
-        //        }
-        //        println!();
-        //    }
-        //}
     }
 
     // Compute bone transforms
@@ -394,41 +380,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         });
     }
 
-    // DEBUG: Add a static animation
-    //{
-    //    let animation_length = 40;
-    //    let fps = 20.0;
-    //
-    //    let mut channels = Vec::new();
-    //    for bone in 0..file.bones.len() {
-    //        let component_transform = &local_bone_component_transforms[bone];
-    //        let translation = component_transform.translation;
-    //
-    //        let new_keyframes = vec![translation; animation_length];
-    //
-    //        let mut timestamps = Vec::with_capacity(animation_length);
-    //        let seconds_per_frame = 1.0 / fps;
-    //        let seconds_per_frame = seconds_per_frame * 4.0;
-    //        for i in 0..animation_length {
-    //            timestamps.push(i as f32 * seconds_per_frame);
-    //        }
-    //
-    //        let target_node = *bone_to_node.get(&bone).unwrap();
-    //        
-    //        channels.push(GltfChannelAnimation {
-    //            node_index: target_node,
-    //            target: GltfTargetPath::Translation,
-    //            values: new_keyframes,
-    //            timestamps,
-    //        });
-    //    }
-    //
-    //    gltf_animations.push(GltfAnimation {
-    //        channels,
-    //        name: "DEBUG".to_owned(),
-    //    });
-    //}
-
     let converted_model = {
         // Gather mesh data
         let (meshes, indices, vertices) = {
@@ -466,7 +417,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
-                                &bone_to_node,
                             );
                         }
                         MdlMeshSequenceType::TriangleFan => {
@@ -485,7 +435,6 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
                                 &mut indices,
                                 &mut vertices,
                                 &mut vertex_map,
-                                &bone_to_node,
                             );
                         }
                     }
@@ -506,7 +455,9 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
         }
     };
 
-    //println!("Num meshes: {}", meshes.len());
+    if let Some(log) = &mut log {
+        writeln!(log, "Num meshes: {}", model.meshes.len()).unwrap();
+    }
 
     // Write our vertex and index data
     let mut data = Vec::new();
@@ -710,48 +661,49 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     let images = images.join(",\n");
 
     // DEBUG
-    //println!("Bones to Nodes");
-    //for bone in 0..file.bones.len() {
-    //    println!("  {} -> {}", bone, *bone_to_node.get(&bone).unwrap());
-    //}
+    if let Some(log) = &mut log {
+        writeln!(log, "Bones to Nodes").unwrap();
+        for bone in 0..file.bones.len() {
+            writeln!(log, "  {} -> {}", bone, *bone_to_node.get(&bone).unwrap()).unwrap();
+        }
 
-    // DEBUG
-    //println!("Bone Transforms");
-    //for bone in 0..file.bones.len() {
-    //    println!("  {}:", bone);
-    //    let transform = &local_bone_component_transforms[bone];
-    //    println!("    Translation:   {}", transform.translation);
-    //    println!("    Rotation:      {}", transform.rotation);
-    //}
+        writeln!(log, "Bone Transforms").unwrap();
+        for bone in 0..file.bones.len() {
+            writeln!(log, "  {}:", bone).unwrap();
+            let transform = &local_bone_component_transforms[bone];
+            writeln!(log, "    Translation:   {}", transform.translation).unwrap();
+            writeln!(log, "    Rotation:      {}", transform.rotation).unwrap();
+        }
 
-    // DEBUG
-    println!("Animations");
-    for animation in &gltf_animations {
-        println!("  {}", animation.name);
-        for channel in &animation.channels {
-            let mut name = None;
-            for (bone, node) in &bone_to_node {
-                if *node == channel.node_index {
-                    name = Some(&bone_names[*bone]);
+        writeln!(log, "Animations").unwrap();
+        for animation in &gltf_animations {
+            writeln!(log, "  {}", animation.name).unwrap();
+            for channel in &animation.channels {
+                let mut name = None;
+                for (bone, node) in &bone_to_node {
+                    if *node == channel.node_index {
+                        name = Some(&bone_names[*bone]);
+                    }
                 }
-            }
-            let name = name.unwrap();
-            //println!("    Node {}:", channel.node_index);
-            println!("    Node {}  ({}):", name, channel.node_index);
-            println!("      ({:?})", channel.target);
-            print!("      ");
-            for data in &channel.values {
-                match channel.target {
-                    GltfTargetPath::Translation => print!("{}, ", data),
-                    GltfTargetPath::Rotation => {
-                        let data = quat_from_euler(*data);
-                        print!("{}, ", data)
-                    },
+                let name = name.unwrap();
+                //writeln!(log, "    Node {}:", channel.node_index);
+                writeln!(log, "    Node {}  ({}):", name, channel.node_index).unwrap();
+                writeln!(log, "      ({:?})", channel.target).unwrap();
+                write!(log, "      ").unwrap();
+                for data in &channel.values {
+                    match channel.target {
+                        GltfTargetPath::Translation => {write!(log, "{}, ", data).unwrap();},
+                        GltfTargetPath::Rotation => {
+                            let data = quat_from_euler(*data);
+                            write!(log, "{}, ", data).unwrap();
+                        },
+                    }
                 }
+                writeln!(log).unwrap();
             }
-            println!();
         }
     }
+    
 
     // Create animation data slices
     let mut gltf_animation_strs = Vec::with_capacity(gltf_animations.len());
@@ -991,7 +943,6 @@ fn process_indexed_triangles(
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
     vertex_map: &mut HashMap<MdlMeshVertex, usize>,
-    bone_to_node: &HashMap<usize, usize>,
 ) {
     assert!(
         triverts.len() % 3 == 0,

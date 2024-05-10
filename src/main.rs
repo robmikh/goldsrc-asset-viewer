@@ -56,7 +56,15 @@ fn main() {
             };
             let export_file_path = cli.export_file_path.unwrap();
 
-            gltf::export::export(&mdl_file.file, export_file_path).unwrap();
+            let mut log = if cli.log {
+                Some(String::new())
+            } else {
+                None
+            };
+            gltf::export::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
+            if let Some(log) = log {
+                std::fs::write("log.txt", log).unwrap();
+            }
             println!("Done!");
         } else {
             panic!("Expected input path!");
@@ -257,7 +265,15 @@ fn show_ui(cli: Cli) {
                                     } else {
                                         panic!()
                                     };
-                                    gltf::export::export(&mdl_file.file, new_path).unwrap();
+                                    let mut log = if cli.log {
+                                        Some(String::new())
+                                    } else {
+                                        None
+                                    };
+                                    gltf::export::export(&mdl_file.file, new_path, log.as_mut()).unwrap();
+                                    if let Some(log) = log {
+                                        std::fs::write("log.txt", log).unwrap();
+                                    }
                                 }
                             }
                             if ui.menu_item("Exit") {
