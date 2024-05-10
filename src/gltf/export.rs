@@ -395,39 +395,39 @@ pub fn export<P: AsRef<Path>>(file: &MdlFile, output_path: P) -> std::io::Result
     }
 
     // DEBUG: Add a static animation
-    {
-        let animation_length = 40;
-        let fps = 20.0;
-
-        let mut channels = Vec::new();
-        for bone in 0..file.bones.len() {
-            let component_transform = &local_bone_component_transforms[bone];
-            let translation = component_transform.translation;
-
-            let new_keyframes = vec![translation; animation_length];
-
-            let mut timestamps = Vec::with_capacity(animation_length);
-            let seconds_per_frame = 1.0 / fps;
-            let seconds_per_frame = seconds_per_frame * 4.0;
-            for i in 0..animation_length {
-                timestamps.push(i as f32 * seconds_per_frame);
-            }
-
-            let target_node = *bone_to_node.get(&bone).unwrap();
-            
-            channels.push(GltfChannelAnimation {
-                node_index: target_node,
-                target: GltfTargetPath::Translation,
-                values: new_keyframes,
-                timestamps,
-            });
-        }
-
-        gltf_animations.push(GltfAnimation {
-            channels,
-            name: "DEBUG".to_owned(),
-        });
-    }
+    //{
+    //    let animation_length = 40;
+    //    let fps = 20.0;
+    //
+    //    let mut channels = Vec::new();
+    //    for bone in 0..file.bones.len() {
+    //        let component_transform = &local_bone_component_transforms[bone];
+    //        let translation = component_transform.translation;
+    //
+    //        let new_keyframes = vec![translation; animation_length];
+    //
+    //        let mut timestamps = Vec::with_capacity(animation_length);
+    //        let seconds_per_frame = 1.0 / fps;
+    //        let seconds_per_frame = seconds_per_frame * 4.0;
+    //        for i in 0..animation_length {
+    //            timestamps.push(i as f32 * seconds_per_frame);
+    //        }
+    //
+    //        let target_node = *bone_to_node.get(&bone).unwrap();
+    //        
+    //        channels.push(GltfChannelAnimation {
+    //            node_index: target_node,
+    //            target: GltfTargetPath::Translation,
+    //            values: new_keyframes,
+    //            timestamps,
+    //        });
+    //    }
+    //
+    //    gltf_animations.push(GltfAnimation {
+    //        channels,
+    //        name: "DEBUG".to_owned(),
+    //    });
+    //}
 
     let converted_model = {
         // Gather mesh data
@@ -1025,7 +1025,9 @@ fn process_indexed_triangles(
                 trivert.t as f32 / texture_height,
             ];
             let joints = [
-                *bone_to_node.get(&(bone_index as usize)).unwrap() as u8,
+                // We don't use bone_to_node because we need the joint index.
+                // Because of how we encode the joints, they match the bone index.
+                bone_index,
                 0,
                 0,
                 0,
@@ -1123,7 +1125,7 @@ fn process_animation(base: &mut Vec3, target: GltfTargetPath, animations: &[(Vec
 
         let mut timestamps = Vec::with_capacity(animation_length);
         let seconds_per_frame = 1.0 / fps;
-        let seconds_per_frame = seconds_per_frame * 4.0;
+        //let seconds_per_frame = seconds_per_frame * 4.0;
         for i in 0..animation_length {
             timestamps.push(i as f32 * seconds_per_frame);
         }
