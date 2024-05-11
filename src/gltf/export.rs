@@ -21,11 +21,10 @@ use crate::{
 };
 
 use super::{
-    transform::ComponentTransform, BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax,
-    BufferViewAndAccessorSource, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER,
+    add_and_get_index, buffer::{BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax, BufferViewAndAccessorSource, MinMax, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER}, transform::ComponentTransform, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
 };
 
-struct Vertex {
+struct SkinnedVertex {
     pos: [f32; 3],
     normal: [f32; 3],
     uv: [f32; 2],
@@ -33,42 +32,56 @@ struct Vertex {
     weights: [f32; 4],
 }
 
-struct Mesh {
-    texture_index: usize,
-    indices_range: Range<usize>,
-}
-
-struct Model {
-    indices: Vec<u32>,
-    vertices: Vec<Vertex>,
-    meshes: Vec<Mesh>,
-}
-
-#[derive(Debug)]
-enum GltfTargetPath {
-    Translation,
-    Rotation,
-}
-
-impl GltfTargetPath {
-    fn get_gltf_str(&self) -> &str {
-        match self {
-            GltfTargetPath::Translation => "translation",
-            GltfTargetPath::Rotation => "rotation",
+impl Vertex for SkinnedVertex {
+    fn write_slices(writer: &mut BufferWriter, vertices: &[Self]) -> Box<dyn VertexAttributesSource> {
+        // Split out the vertex data
+        let mut positions = Vec::with_capacity(vertices.len());
+        let mut normals = Vec::with_capacity(vertices.len());
+        let mut uvs = Vec::with_capacity(vertices.len());
+        let mut joints = Vec::with_capacity(vertices.len());
+        let mut weights = Vec::with_capacity(vertices.len());
+        for vertex in vertices {
+            positions.push(vertex.pos);
+            normals.push(vertex.normal);
+            uvs.push(vertex.uv);
+            joints.push(vertex.joints);
+            weights.push(vertex.weights);
         }
+
+        let vertex_positions_pair = writer.create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_normals_pair = writer.create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_uvs_pair = writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_joints_pair = writer.create_view_and_accessor_with_min_max(&joints, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_weights_pair = writer.create_view_and_accessor_with_min_max(&weights, Some(BufferViewTarget::ArrayBuffer));
+
+        Box::new(SkinnedVertexAttributes {
+            positions: vertex_positions_pair,
+            normals: vertex_normals_pair,
+            uvs: vertex_uvs_pair,
+            joints: vertex_joints_pair,
+            weights: vertex_weights_pair,
+        })
     }
 }
 
-struct GltfAnimation {
-    channels: Vec<GltfChannelAnimation>,
-    name: String,
+struct SkinnedVertexAttributes {
+    positions: BufferViewAndAccessorPair,
+    normals: BufferViewAndAccessorPair,
+    uvs: BufferViewAndAccessorPair,
+    joints: BufferViewAndAccessorPair,
+    weights: BufferViewAndAccessorPair,
 }
 
-struct GltfChannelAnimation {
-    node_index: usize,
-    target: GltfTargetPath,
-    values: Vec<Vec3>,
-    timestamps: Vec<f32>,
+impl VertexAttributesSource for SkinnedVertexAttributes {
+    fn attribute_pairs(&self) -> Vec<(&'static str, usize)> {
+        vec![
+            ("POSITION", self.positions.accessor.0),
+            ("NORMAL", self.normals.accessor.0),
+            ("TEXCOORD_0", self.uvs.accessor.0),
+            ("JOINTS_0", self.joints.accessor.0),
+            ("WEIGHTS_0", self.weights.accessor.0),
+        ]
+    }
 }
 
 pub fn export<P: AsRef<Path>>(
@@ -363,165 +376,50 @@ pub fn export<P: AsRef<Path>>(
     }
 
     // Write our vertex and index data
-    let mut data = Vec::new();
-    let (
-        mut slices,
-        vertex_positions_min_max,
-        vertex_normals_min_max,
-        uvs_min_max,
-        joints_min_max,
-        weights_min_max,
-    ) = {
-        let mut slices = Vec::<Box<dyn BufferViewAndAccessorSource>>::new();
+    let mut buffer_writer = BufferWriter::new();
+    let indices_view = buffer_writer.create_view(&converted_model.indices, Some(BufferViewTarget::ElementArrayBuffer));
+    let vertex_attributes = SkinnedVertex::write_slices(&mut buffer_writer, &converted_model.vertices);
+    let inverse_bind_matrices_pair = buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
-        // Split out the vertex data
-        let mut positions = Vec::with_capacity(converted_model.vertices.len());
-        let mut normals = Vec::with_capacity(converted_model.vertices.len());
-        let mut uvs = Vec::with_capacity(converted_model.vertices.len());
-        let mut joints = Vec::with_capacity(converted_model.vertices.len());
-        let mut weights = Vec::with_capacity(converted_model.vertices.len());
-        for vertex in &converted_model.vertices {
-            positions.push(vertex.pos);
-            normals.push(vertex.normal);
-            uvs.push(vertex.uv);
-            joints.push(vertex.joints);
-            weights.push(vertex.weights);
-        }
-
-        let indices_slice =
-            BufferSlice::record(&mut data, &converted_model.indices, ELEMENT_ARRAY_BUFFER);
-        let vertex_positions_slice =
-            BufferSlice::record_with_min_max(&mut data, &positions, ARRAY_BUFFER);
-        let vertex_normals_slice =
-            BufferSlice::record_with_min_max(&mut data, &normals, ARRAY_BUFFER);
-        let uvs_slice = BufferSlice::record_with_min_max(&mut data, &uvs, ARRAY_BUFFER);
-        let joints_slice = BufferSlice::record_with_min_max(&mut data, &joints, ARRAY_BUFFER);
-        let weights_slice = BufferSlice::record_with_min_max(&mut data, &weights, ARRAY_BUFFER);
-        let inverse_bind_matrices_slice =
-            BufferSlice::record_without_target(&mut data, &inverse_bind_transforms);
-
-        let vertex_positions_min_max = vertex_positions_slice.get_min_max_values().unwrap();
-        let vertex_normals_min_max = vertex_normals_slice.get_min_max_values().unwrap();
-        let uvs_min_max = uvs_slice.get_min_max_values().unwrap();
-        let joints_min_max = joints_slice.get_min_max_values().unwrap();
-        let weights_min_max = weights_slice.get_min_max_values().unwrap();
-
-        slices.push(Box::new(indices_slice));
-        slices.push(Box::new(vertex_positions_slice));
-        slices.push(Box::new(vertex_normals_slice));
-        slices.push(Box::new(uvs_slice));
-        slices.push(Box::new(joints_slice));
-        slices.push(Box::new(weights_slice));
-        slices.push(Box::new(inverse_bind_matrices_slice));
-
-        (
-            slices,
-            vertex_positions_min_max,
-            vertex_normals_min_max,
-            uvs_min_max,
-            joints_min_max,
-            weights_min_max,
-        )
-    };
-    let indices_slice_index = 0;
-    let vertex_positions_slice_index = 1;
-    let vertex_normals_slice_index = 2;
-    let uvs_slice_index = 3;
-    let joints_slice_index = 4;
-    let weights_slice_index = 5;
-    let inverse_bind_matrices_slice_index = 6;
-
-    // Record accessors for vertex and index data
-    let mut accessors = Vec::new();
-
-    // Vertex data
-    let vertex_positions_accessor = add_accessor_with_min_max(
-        &mut accessors,
-        vertex_positions_slice_index,
-        0,
-        converted_model.vertices.len(),
-        vertex_positions_min_max.0,
-        vertex_positions_min_max.1,
-    );
-    let vertex_normals_accessor = add_accessor_with_min_max(
-        &mut accessors,
-        vertex_normals_slice_index,
-        0,
-        converted_model.vertices.len(),
-        vertex_normals_min_max.0,
-        vertex_normals_min_max.1,
-    );
-    let uvs_accessor = add_accessor_with_min_max(
-        &mut accessors,
-        uvs_slice_index,
-        0,
-        converted_model.vertices.len(),
-        uvs_min_max.0,
-        uvs_min_max.1,
-    );
-    let joints_accessor = add_accessor_with_min_max(
-        &mut accessors,
-        joints_slice_index,
-        0,
-        converted_model.vertices.len(),
-        joints_min_max.0,
-        joints_min_max.1,
-    );
-    let weights_accessor = add_accessor_with_min_max(
-        &mut accessors,
-        weights_slice_index,
-        0,
-        converted_model.vertices.len(),
-        weights_min_max.0,
-        weights_min_max.1,
-    );
-    let inverse_bind_matrices_accessor = add_accessor::<Mat4>(
-        &mut accessors,
-        inverse_bind_matrices_slice_index,
-        0,
-        inverse_bind_transforms.len(),
-    );
-
-    let mut mesh_accessors = Vec::new();
+    let mut mesh_primitives = Vec::new();
     for mesh in &converted_model.meshes {
+        let indices = &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end];
         let (min, max) = u32::find_min_max(
-            &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end],
+            indices
         );
-        let indices_accessor = add_accessor_with_min_max(
-            &mut accessors,
-            indices_slice_index,
+        let indices_accessor = buffer_writer.create_accessor_with_min_max(
+            indices_view,
             mesh.indices_range.start * std::mem::size_of::<u32>(),
             mesh.indices_range.end - mesh.indices_range.start,
-            min,
-            max,
+            MinMax { min, max }
         );
-        mesh_accessors.push((
+        mesh_primitives.push((
             indices_accessor,
-            vertex_positions_accessor,
-            vertex_normals_accessor,
-            uvs_accessor,
-            joints_accessor,
-            weights_accessor,
             mesh.texture_index,
         ));
     }
+    let vertex_attribute_str = {
+        let attribute_pairs = vertex_attributes.attribute_pairs();
+        let mut attributes = Vec::with_capacity(attribute_pairs.len());
+        for (name, accessor) in attribute_pairs {
+            attributes.push(format!(r#"            "{}" : {}"#, name, accessor));
+        }
+        let attributes = attributes.join(",\n");
+        attributes
+    };
 
     // Create primitives
     let mut primitives = Vec::with_capacity(converted_model.meshes.len());
-    for (indices, positions, normals, uvs, joints, weights, material) in mesh_accessors {
+    for (indices, material) in mesh_primitives {
         primitives.push(format!(
             r#"         {{
             "attributes" : {{
-            "POSITION" : {},
-            "NORMAL" : {},
-            "TEXCOORD_0" : {},
-            "JOINTS_0" : {},
-            "WEIGHTS_0" : {}
+{}
             }},
             "indices" : {},
             "material" : {}
         }}"#,
-            positions, normals, uvs, joints, weights, indices, material
+            vertex_attribute_str, indices.0, material
         ));
     }
     let primitives = primitives.join(",\n");
@@ -629,37 +527,14 @@ pub fn export<P: AsRef<Path>>(
             ));
             // TODO: Consolodate timestamps
             let input_accessor_index = {
-                let slice = BufferSlice::record_with_min_max_without_target(
-                    &mut data,
-                    &animation_data.timestamps,
-                );
-                let (min, max) = slice.get_min_max_values().unwrap();
-                let buffer_view = add_and_get_index(&mut slices, Box::new(slice));
-                add_accessor_with_min_max(
-                    &mut accessors,
-                    buffer_view,
-                    0,
-                    animation_data.timestamps.len(),
-                    min,
-                    max,
-                )
+                let pair = buffer_writer.create_view_and_accessor_with_min_max(&animation_data.timestamps, None);
+                pair.accessor.0
             };
 
             let output_accessor_index = match animation_data.target {
                 GltfTargetPath::Translation => {
-                    let buffer_view = add_and_get_index(
-                        &mut slices,
-                        Box::new(BufferSlice::record_without_target(
-                            &mut data,
-                            &animation_data.values,
-                        )),
-                    );
-                    add_accessor::<Vec3>(
-                        &mut accessors,
-                        buffer_view,
-                        0,
-                        animation_data.values.len(),
-                    )
+                    let pair = buffer_writer.create_view_and_accessor(&animation_data.values, None);
+                    pair.accessor.0
                 }
                 GltfTargetPath::Rotation => {
                     let quats: Vec<_> = animation_data
@@ -671,11 +546,8 @@ pub fn export<P: AsRef<Path>>(
                                 .to_vec4()
                         })
                         .collect();
-                    let buffer_view = add_and_get_index(
-                        &mut slices,
-                        Box::new(BufferSlice::record_without_target(&mut data, &quats)),
-                    );
-                    add_accessor::<Vec4>(&mut accessors, buffer_view, 0, quats.len())
+                    let pair = buffer_writer.create_view_and_accessor(&quats, None);
+                    pair.accessor.0
                 }
             };
 
@@ -707,25 +579,8 @@ pub fn export<P: AsRef<Path>>(
     let gltf_animations = gltf_animation_strs.join(",\n");
 
     // Create buffer views and accessors
-    let mut buffer_views = Vec::with_capacity(slices.len());
-    let mut gltf_accessors = Vec::with_capacity(slices.len());
-    for slice in &slices {
-        buffer_views.push(slice.write_buffer_view());
-    }
-    for (buffer_view_index, byte_offset, count, min_max) in accessors {
-        let slice = &slices[buffer_view_index];
-        if let Some((min, max)) = min_max {
-            gltf_accessors.push(slice.write_accessor_with_min_max(
-                buffer_view_index,
-                byte_offset,
-                count,
-                &min,
-                &max,
-            ));
-        } else {
-            gltf_accessors.push(slice.write_accessor(buffer_view_index, byte_offset, count));
-        }
-    }
+    let buffer_views = buffer_writer.write_buffer_views();
+    let gltf_accessors = buffer_writer.write_accessors();
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
 
@@ -743,7 +598,7 @@ pub fn export<P: AsRef<Path>>(
 {}
                 ]
             }}"#,
-        inverse_bind_matrices_accessor, joints
+            inverse_bind_matrices_pair.accessor.0, joints
     );
 
     let gltf_text = format!(
@@ -818,7 +673,7 @@ pub fn export<P: AsRef<Path>>(
         materials,
         textures,
         images,
-        data.len(),
+        buffer_writer.buffer_len(),
         buffer_views,
         accessors,
         gltf_animations
@@ -834,7 +689,7 @@ pub fn export<P: AsRef<Path>>(
     };
 
     std::fs::write(path, gltf_text)?;
-    std::fs::write(data_path, data)?;
+    std::fs::write(data_path, buffer_writer.to_inner())?;
 
     // Write textures
     let mut texture_path = if let Some(parent_path) = path.parent() {
@@ -887,7 +742,7 @@ fn process_indexed_triangles(
     triverts: &[MdlMeshVertex],
     world_bone_transforms: &[Mat4],
     indices: &mut Vec<u32>,
-    vertices: &mut Vec<Vertex>,
+    vertices: &mut Vec<SkinnedVertex>,
     vertex_map: &mut HashMap<MdlMeshVertex, usize>,
 ) {
     assert!(
@@ -929,7 +784,7 @@ fn process_indexed_triangles(
             let weights = [1.0, 0.0, 0.0, 0.0];
 
             let index = vertices.len();
-            vertices.push(Vertex {
+            vertices.push(SkinnedVertex {
                 pos,
                 normal,
                 uv,
@@ -973,12 +828,6 @@ fn add_accessor_with_min_max<T: BufferTypeMinMax>(
         len,
         Some((min.write_value(), max.write_value())),
     ));
-    index
-}
-
-fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
-    let index = vec.len();
-    vec.push(value);
     index
 }
 

@@ -1,559 +1,306 @@
-use glam::{Mat4, Vec3, Vec4};
+use std::ops::Range;
+
+use glam::Vec3;
+
+use self::buffer::{BufferType, BufferTypeMinMax, MinMax};
 
 pub mod export;
 mod transform;
+mod buffer;
+mod mdl;
 
-const ELEMENT_ARRAY_BUFFER: usize = 34963;
-const ARRAY_BUFFER: usize = 34962;
-
-trait BufferType: Sized {
-    const COMPONENT_TY: usize;
-    const TY: &'static str;
-    fn to_bytes(&self) -> Vec<u8>;
-    fn stride() -> Option<usize>;
+trait VertexAttributesSource {
+    fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;
 }
 
-trait BufferTypeMinMax: BufferType {
-    const MIN: Self;
-    const MAX: Self;
-    fn data_max(&self, other: &Self) -> Self;
-    fn data_min(&self, other: &Self) -> Self;
-    fn write_value(&self) -> String;
+trait Vertex: Sized {
+    fn write_slices(
+        writer: &mut BufferWriter,
+        vertices: &[Self]
+    ) -> Box<dyn VertexAttributesSource>;
 }
 
-trait BufferTypeEx: Sized {
-    fn find_min_max(data: &[Self]) -> (Self, Self);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+struct BufferViewIndex(usize);
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+struct AccessorIndex(usize);
+
+#[derive(Copy, Clone, Debug)]
+struct BufferViewAndAccessorPair {
+    pub view: BufferViewIndex,
+    pub accessor: AccessorIndex,
 }
 
-struct MinMax<T> {
-    min: T,
-    max: T,
+impl BufferViewAndAccessorPair {
+    pub fn new(view: BufferViewIndex, accessor: AccessorIndex) -> Self {
+        Self { view, accessor }
+    }
 }
 
-struct BufferSlice<T> {
-    offset: usize,
-    byte_len: usize,
-    min_max: Option<MinMax<T>>,
-    target: Option<usize>,
+struct BufferWriter {
+    buffer: Vec<u8>,
+    views: Vec<BufferView>,
+    accessors: Vec<Accessor>,
 }
 
-impl<T: BufferType + Copy> BufferSlice<T> {
-    pub fn record(buffer: &mut Vec<u8>, data: &[T], target: usize) -> Self {
-        let offset = buffer.len();
-        for face in data {
-            let mut face_bytes = face.to_bytes();
-            buffer.append(&mut face_bytes);
-        }
-        let byte_len = buffer.len() - offset;
+impl BufferWriter {
+    pub fn new() -> Self {
         Self {
-            offset,
-            byte_len,
-            min_max: None,
-            target: Some(target),
-        }
-    }
-    pub fn record_without_target(buffer: &mut Vec<u8>, data: &[T]) -> Self {
-        let offset = buffer.len();
-        for face in data {
-            let mut face_bytes = face.to_bytes();
-            buffer.append(&mut face_bytes);
-        }
-        let byte_len = buffer.len() - offset;
-        Self {
-            offset,
-            byte_len,
-            min_max: None,
-            target: None,
+            buffer: Vec::new(),
+            views: Vec::new(),
+            accessors: Vec::new(),
         }
     }
 
-    pub fn get_min_max_values(&self) -> Option<(T, T)> {
-        if let Some(min_max) = self.min_max.as_ref() {
-            Some((min_max.min, min_max.max))
-        } else {
-            None
+    pub fn create_view<T: BufferType + Copy>(&mut self, data: &[T], target: Option<BufferViewTarget>) -> BufferViewIndex {
+        let offset = self.buffer.len();
+        for item in data {
+            let mut bytes = item.to_bytes();
+            self.buffer.append(&mut bytes);
         }
+        let byte_len = self.buffer.len() - offset;
+        let stride = T::stride();
+        let view_index = add_and_get_index(&mut self.views, BufferView {
+            buffer: 0,
+            byte_offset: offset,
+            byte_len,
+            stride,
+            target,
+        });
+        BufferViewIndex(view_index)
     }
-}
 
-impl<T: BufferTypeMinMax + Copy> BufferSlice<T> {
-    pub fn record_with_min_max(buffer: &mut Vec<u8>, data: &[T], target: usize) -> Self {
-        let offset = buffer.len();
+    pub fn create_accessor<T: BufferType + Copy>(&mut self, view_index: BufferViewIndex, byte_offset: usize, len: usize) -> AccessorIndex {
+        AccessorIndex(add_and_get_index(&mut self.accessors, Accessor {
+            buffer_view: view_index.0,
+            byte_offset,
+            count: len,
+            component_ty: T::COMPONENT_TY,
+            ty: T::TY,
+            min_max: None,
+        }))
+    }
+
+    pub fn create_accessor_with_min_max<T: BufferTypeMinMax + Copy>(&mut self, view_index: BufferViewIndex, byte_offset: usize, len: usize, min_max: MinMax<T>) -> AccessorIndex {
+        AccessorIndex(add_and_get_index(&mut self.accessors, Accessor {
+            buffer_view: view_index.0,
+            byte_offset,
+            count: len,
+            component_ty: T::COMPONENT_TY,
+            ty: T::TY,
+            min_max: Some(MinMax { min: min_max.min.write_value(), max: min_max.max.write_value() }),
+        }))
+    }
+
+    pub fn create_view_and_accessor<T: BufferType + Copy>(&mut self, data: &[T], target: Option<BufferViewTarget>) -> BufferViewAndAccessorPair {
+        let view = self.create_view(data, target);
+        let accessor = self.create_accessor::<T>(view, 0, data.len());
+        BufferViewAndAccessorPair::new(view, accessor)
+    }
+
+    pub fn create_view_and_accessor_with_min_max<T: BufferTypeMinMax + Copy>(&mut self, data: &[T], target: Option<BufferViewTarget>) -> BufferViewAndAccessorPair {
+        let view = self.create_view(data, target);
         let mut max = T::MIN;
         let mut min = T::MAX;
-        for face in data {
-            max = face.data_max(&max);
-            min = face.data_min(&min);
-            let mut face_bytes = face.to_bytes();
-            buffer.append(&mut face_bytes);
+        for item in data {
+            max = item.data_max(&max);
+            min = item.data_min(&min);
         }
-        let byte_len = buffer.len() - offset;
-        Self {
-            offset,
-            byte_len,
-            min_max: Some(MinMax { min, max }),
-            target: Some(target),
-        }
-    }
-    pub fn record_with_min_max_without_target(buffer: &mut Vec<u8>, data: &[T]) -> Self {
-        let offset = buffer.len();
-        let mut max = T::MIN;
-        let mut min = T::MAX;
-        for face in data {
-            max = face.data_max(&max);
-            min = face.data_min(&min);
-            let mut face_bytes = face.to_bytes();
-            buffer.append(&mut face_bytes);
-        }
-        let byte_len = buffer.len() - offset;
-        Self {
-            offset,
-            byte_len,
-            min_max: Some(MinMax { min, max }),
-            target: None,
-        }
-    }
-}
-
-pub trait BufferViewAndAccessorSource {
-    fn write_buffer_view(&self) -> String;
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String;
-    fn write_accessor_with_min_max(
-        &self,
-        view_index: usize,
-        byte_offset: usize,
-        count: usize,
-        min: &str,
-        max: &str,
-    ) -> String;
-}
-
-impl<T: BufferType> BufferViewAndAccessorSource for BufferSlice<T> {
-    fn write_buffer_view(&self) -> String {
-        let extras = {
-            let mut extras = Vec::with_capacity(2);
-            if let Some(stride) = T::stride() {
-                extras.push(format!(r#""byteStride" : {}"#, stride));
-            }
-            if let Some(target) = self.target {
-                extras.push(format!(r#""target" : {}"#, target));
-            }
-            if extras.is_empty() {
-                "".to_owned()
-            } else {
-                let extras = extras.join(",\n");
-                format!(",\n{}", extras)
-            }
+        let min_max = MinMax {
+            min, max
         };
-        format!(
-            r#"   {{
-        "buffer" : {},
-        "byteOffset" : {},
-        "byteLength" : {}{}
-    }}"#,
-            0, self.offset, self.byte_len, extras
-        )
+        let accessor = self.create_accessor_with_min_max(view, 0, data.len(), min_max);
+        BufferViewAndAccessorPair::new(view, accessor)
     }
 
-    fn write_accessor(&self, view_index: usize, byte_offset: usize, count: usize) -> String {
-        format!(
-            r#"   {{
-            "bufferView" : {},
+    pub fn write_buffer_views(&self) -> Vec<String> {
+        let mut views = Vec::with_capacity(self.views.len());
+        for view in &self.views {
+            let extras = {
+                let mut extras = Vec::with_capacity(2);
+                if let Some(stride) = view.stride {
+                    extras.push(format!(r#""byteStride" : {}"#, stride));
+                }
+                if let Some(target) = view.target {
+                    extras.push(format!(r#""target" : {}"#, target as usize));
+                }
+                if extras.is_empty() {
+                    "".to_owned()
+                } else {
+                    let extras = extras.join(",\n");
+                    format!(",\n{}", extras)
+                }
+            };
+            views.push(format!(
+                r#"        {{
+            "buffer" : {},
             "byteOffset" : {},
-            "componentType" : {},
-            "count" : {},
-            "type" : "{}"
+            "byteLength" : {}{}
         }}"#,
-            view_index,
-            byte_offset,
-            T::COMPONENT_TY,
-            count,
-            T::TY,
-        )
-    }
-
-    fn write_accessor_with_min_max(
-        &self,
-        view_index: usize,
-        byte_offset: usize,
-        count: usize,
-        min: &str,
-        max: &str,
-    ) -> String {
-        format!(
-            r#"   {{
-            "bufferView" : {},
-            "byteOffset" : {},
-            "componentType" : {},
-            "count" : {},
-            "type" : "{}",
-            "max" : {},
-            "min" : {}
-        }}"#,
-            view_index,
-            byte_offset,
-            T::COMPONENT_TY,
-            count,
-            T::TY,
-            max,
-            min
-        )
-    }
-}
-
-impl<T: BufferTypeMinMax> BufferTypeEx for T {
-    fn find_min_max(data: &[Self]) -> (Self, Self) {
-        let mut max = T::MIN;
-        let mut min = T::MAX;
-        for face in data {
-            max = face.data_max(&max);
-            min = face.data_min(&min);
+                0, view.byte_offset, view.byte_len, extras
+            ));
         }
-        (min, max)
-    }
-}
-
-impl BufferType for u16 {
-    const COMPONENT_TY: usize = 5123;
-    const TY: &'static str = "SCALAR";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
+        views
     }
 
-    fn stride() -> Option<usize> {
-        None
-    }
-}
+    pub fn write_accessors(&self) -> Vec<String> {
+        let mut accessors = Vec::with_capacity(self.accessors.len());
+        for accessor in &self.accessors {
+            let extras = {
+                let mut extras = Vec::with_capacity(1);
+                if let Some(min_max) = accessor.min_max.as_ref() {
+                    extras.push(format!(r#"                    "max" : {},
+                    "min" : {}"#, min_max.max, min_max.min));
+                }
+                if extras.is_empty() {
+                    "".to_owned()
+                } else {
+                    let extras = extras.join(",\n");
+                    format!(",\n{}", extras)
+                }
+            };
 
-impl BufferTypeMinMax for u16 {
-    const MIN: Self = u16::MIN;
-    const MAX: Self = u16::MAX;
-
-    fn data_max(&self, other: &Self) -> Self {
-        (*self).max(*other)
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        (*self).min(*other)
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {} ]", self)
-    }
-}
-
-impl BufferType for u32 {
-    const COMPONENT_TY: usize = 5125;
-    const TY: &'static str = "SCALAR";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
-}
-
-impl BufferTypeMinMax for u32 {
-    const MIN: Self = u32::MIN;
-    const MAX: Self = u32::MAX;
-
-    fn data_max(&self, other: &Self) -> Self {
-        (*self).max(*other)
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        (*self).min(*other)
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {} ]", self)
-    }
-}
-
-impl BufferType for f32 {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "SCALAR";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
-}
-
-impl BufferTypeMinMax for f32 {
-    const MIN: Self = f32::MIN;
-    const MAX: Self = f32::MAX;
-
-    fn data_max(&self, other: &Self) -> Self {
-        (*self).max(*other)
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        (*self).min(*other)
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {} ]", self)
-    }
-}
-
-impl BufferType for u8 {
-    const COMPONENT_TY: usize = 5121;
-    const TY: &'static str = "SCALAR";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
-}
-
-impl BufferTypeMinMax for u8 {
-    const MIN: Self = u8::MIN;
-    const MAX: Self = u8::MAX;
-
-    fn data_max(&self, other: &Self) -> Self {
-        (*self).max(*other)
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        (*self).min(*other)
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {} ]", self)
-    }
-}
-
-impl BufferType for [f32; 2] {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "VEC2";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(self));
-        for value in self {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
+            accessors.push(
+                format!(
+                    r#"                {{
+                    "bufferView" : {},
+                    "byteOffset" : {},
+                    "componentType" : {},
+                    "count" : {},
+                    "type" : "{}"{}
+                }}"#,
+                    accessor.buffer_view,
+                    accessor.byte_offset,
+                    accessor.component_ty as usize,
+                    accessor.count,
+                    accessor.ty.as_str(),
+                    extras
+                )
+            )
         }
-        bytes
+        accessors
     }
 
-    fn stride() -> Option<usize> {
-        Some(std::mem::size_of::<Self>())
-    }
-}
-
-impl BufferTypeMinMax for [f32; 2] {
-    const MIN: Self = [f32::MIN, f32::MIN];
-    const MAX: Self = [f32::MAX, f32::MAX];
-
-    fn data_max(&self, other: &Self) -> Self {
-        [self[0].data_max(&other[0]), self[1].data_max(&other[1])]
+    pub fn buffer_len(&self) -> usize {
+        self.buffer.len()
     }
 
-    fn data_min(&self, other: &Self) -> Self {
-        [self[0].data_min(&other[0]), self[1].data_min(&other[1])]
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {}, {} ]", self[0], self[1])
+    pub fn to_inner(self) -> Vec<u8> {
+        self.buffer
     }
 }
 
-impl BufferType for [f32; 3] {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "VEC3";
+struct BufferView {
+    buffer: usize,
+    byte_offset: usize,
+    byte_len: usize,
+    stride: Option<usize>,
+    target: Option<BufferViewTarget>,
+}
 
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(self));
-        for value in self {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
+#[derive(Copy, Clone, Debug)]
+enum BufferViewTarget {
+    ArrayBuffer = 34962,
+    ElementArrayBuffer = 34963,
+}
+
+// https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#accessor-data-types
+#[derive(Copy, Clone, Debug)]
+enum AccessorComponentType {
+    SignedByte = 5120,
+    UnsignedByte = 5121,
+    SignedShort = 5122,
+    UnsignedShort = 5123,
+    UnsignedInt = 5125,
+    Float = 5126,
+}
+
+trait AsStr {
+    fn as_str(&self) -> &'static str;
+}
+
+macro_rules! enum_with_str {
+    ($name:ident { $($var_name:ident : $str_value:literal),* $(,)* }) => {
+        #[derive(Copy, Clone, Debug)]
+        enum $name {
+            $(
+                $var_name,
+            )*
         }
-        bytes
-    }
 
-    fn stride() -> Option<usize> {
-        Some(std::mem::size_of::<Self>())
-    }
-}
-
-impl BufferTypeMinMax for [f32; 3] {
-    const MIN: Self = [f32::MIN, f32::MIN, f32::MIN];
-    const MAX: Self = [f32::MAX, f32::MAX, f32::MAX];
-
-    fn data_max(&self, other: &Self) -> Self {
-        [
-            self[0].data_max(&other[0]),
-            self[1].data_max(&other[1]),
-            self[2].data_max(&other[2]),
-        ]
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        [
-            self[0].data_min(&other[0]),
-            self[1].data_min(&other[1]),
-            self[2].data_min(&other[2]),
-        ]
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {}, {}, {} ]", self[0], self[1], self[2])
-    }
-}
-
-impl BufferType for [f32; 4] {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "VEC4";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(self));
-        for value in self {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
+        impl AsStr for $name {
+            fn as_str(&self) -> &'static str {
+                match self {
+                    $(
+                        $name::$var_name => $str_value,
+                    )*
+                }
+            }
         }
-        bytes
-    }
-
-    fn stride() -> Option<usize> {
-        Some(std::mem::size_of::<Self>())
-    }
+    };
 }
 
-impl BufferTypeMinMax for [f32; 4] {
-    const MIN: Self = [f32::MIN, f32::MIN, f32::MIN, f32::MIN];
-    const MAX: Self = [f32::MAX, f32::MAX, f32::MAX, f32::MAX];
+enum_with_str!(AccessorDataType {
+    Scalar: "SCALAR",
+    Vec2: "VEC2",
+    Vec3: "VEC3",
+    Vec4: "VEC4",
+    Mat2: "MAT2",
+    Mat3: "MAT3",
+    Mat4: "MAT4",
+});
 
-    fn data_max(&self, other: &Self) -> Self {
-        [
-            self[0].data_max(&other[0]),
-            self[1].data_max(&other[1]),
-            self[2].data_max(&other[2]),
-            self[3].data_max(&other[3]),
-        ]
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        [
-            self[0].data_min(&other[0]),
-            self[1].data_min(&other[1]),
-            self[2].data_min(&other[2]),
-            self[3].data_min(&other[3]),
-        ]
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {}, {}, {}, {} ]", self[0], self[1], self[2], self[3])
-    }
+struct Accessor {
+    buffer_view: usize,
+    byte_offset: usize,
+    count: usize,
+    component_ty: AccessorComponentType,
+    ty: AccessorDataType,
+    min_max: Option<MinMax<String>>,
 }
 
-impl BufferType for [u8; 4] {
-    const COMPONENT_TY: usize = 5121;
-    const TY: &'static str = "VEC4";
+struct Mesh {
+    texture_index: usize,
+    indices_range: Range<usize>,
+}
 
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(self));
-        for value in self {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
+struct Model<V: Vertex> {
+    indices: Vec<u32>,
+    vertices: Vec<V>,
+    meshes: Vec<Mesh>,
+}
+
+#[derive(Debug)]
+enum GltfTargetPath {
+    Translation,
+    Rotation,
+}
+
+impl GltfTargetPath {
+    fn get_gltf_str(&self) -> &str {
+        match self {
+            GltfTargetPath::Translation => "translation",
+            GltfTargetPath::Rotation => "rotation",
         }
-        bytes
-    }
-
-    fn stride() -> Option<usize> {
-        Some(std::mem::size_of::<Self>())
     }
 }
 
-impl BufferTypeMinMax for [u8; 4] {
-    const MIN: Self = [u8::MIN, u8::MIN, u8::MIN, u8::MIN];
-    const MAX: Self = [u8::MAX, u8::MAX, u8::MAX, u8::MAX];
-
-    fn data_max(&self, other: &Self) -> Self {
-        [
-            self[0].data_max(&other[0]),
-            self[1].data_max(&other[1]),
-            self[2].data_max(&other[2]),
-            self[3].data_max(&other[3]),
-        ]
-    }
-
-    fn data_min(&self, other: &Self) -> Self {
-        [
-            self[0].data_min(&other[0]),
-            self[1].data_min(&other[1]),
-            self[2].data_min(&other[2]),
-            self[3].data_min(&other[3]),
-        ]
-    }
-
-    fn write_value(&self) -> String {
-        format!(" [ {}, {}, {}, {} ]", self[0], self[1], self[2], self[3])
-    }
+struct GltfAnimation {
+    channels: Vec<GltfChannelAnimation>,
+    name: String,
 }
 
-impl BufferType for Mat4 {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "MAT4";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let array = self.to_cols_array();
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
-        for value in array {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
-        }
-        bytes
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
+struct GltfChannelAnimation {
+    node_index: usize,
+    target: GltfTargetPath,
+    values: Vec<Vec3>,
+    timestamps: Vec<f32>,
 }
 
-impl BufferType for Vec3 {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "VEC3";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let array = self.to_array();
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
-        for value in array {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
-        }
-        bytes
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
-}
-
-impl BufferType for Vec4 {
-    const COMPONENT_TY: usize = 5126;
-    const TY: &'static str = "VEC4";
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let array = self.to_array();
-        let mut bytes = Vec::with_capacity(std::mem::size_of_val(&array));
-        for value in array {
-            let mut data = value.to_le_bytes().to_vec();
-            bytes.append(&mut data);
-        }
-        bytes
-    }
-
-    fn stride() -> Option<usize> {
-        None
-    }
+fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
+    let index = vec.len();
+    vec.push(value);
+    index
 }
