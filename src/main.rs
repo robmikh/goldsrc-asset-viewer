@@ -4,11 +4,13 @@ mod graphics;
 mod mdl_viewer;
 mod numerics;
 mod wad_viewer;
+mod bsp;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use clap::*;
 use cli::Cli;
+use gsparser::bsp::BspReader;
 use gsparser::wad3::{WadArchive, WadFileInfo};
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
@@ -37,9 +39,15 @@ pub struct WadFile {
     pub file_names: Vec<ImString>,
 }
 
+pub struct BspFile {
+    pub path: String,
+    pub reader: BspReader,
+}
+
 enum FileInfo {
     WadFile(WadFile),
     MdlFile(MdlFile),
+    BspFile(BspFile),
 }
 
 fn main() {
@@ -49,22 +57,33 @@ fn main() {
         show_ui(cli);
     } else {
         if let Some(file_path) = cli.file_path {
-            let file_info = load_file(file_path).unwrap();
-            let mdl_file = match file_info {
-                FileInfo::MdlFile(file) => file,
-                _ => panic!(),
-            };
             let export_file_path = cli.export_file_path.unwrap();
-
-            let mut log = if cli.log { Some(String::new()) } else { None };
-            gltf::export::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
-            if let Some(log) = log {
-                std::fs::write("log.txt", log).unwrap();
+            let file_info = load_file(file_path).unwrap();
+            match file_info {
+                FileInfo::MdlFile(file) => export_mdl(&file, &export_file_path, cli.log),
+                FileInfo::BspFile(file) => export_bsp(&file, &export_file_path, cli.log),
+                _ => panic!(),
             }
             println!("Done!");
         } else {
             panic!("Expected input path!");
         }
+    }
+}
+
+fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
+    let mut log = if log { Some(String::new()) } else { None };
+    gltf::export::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
+    if let Some(log) = log {
+        std::fs::write("log.txt", log).unwrap();
+    }
+}
+
+fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
+    let mut log = if log { Some(String::new()) } else { None };
+    bsp::export(&file.reader, export_file_path, log.as_mut()).unwrap();
+    if let Some(log) = log {
+        std::fs::write("log.txt", log).unwrap();
     }
 }
 
@@ -291,6 +310,7 @@ fn show_ui(cli: Cli) {
                                 &mut queue,
                                 &mut renderer,
                             ),
+                            _ => todo!(),
                         }
                     }
 
@@ -379,12 +399,24 @@ fn load_mdl_file<P: AsRef<Path>>(path: P) -> MdlFile {
     }
 }
 
+fn load_bsp_file<P: AsRef<Path>>(path: P) -> BspFile {
+    let path = path.as_ref();
+    let data = std::fs::read(path).unwrap();
+    let reader = BspReader::read(data);
+    
+    BspFile {
+        path: path.display().to_string(),
+        reader,
+    }
+}
+
 fn load_file<P: AsRef<Path>>(path: P) -> Option<FileInfo> {
     let path = path.as_ref();
     if let Some(extension) = get_extension_from_path(path) {
         match extension.as_str() {
             "wad" => Some(FileInfo::WadFile(load_wad_file(path))),
             "mdl" => Some(FileInfo::MdlFile(load_mdl_file(path))),
+            "bsp" => Some(FileInfo::BspFile(load_bsp_file(path))),
             _ => None,
         }
     } else {
