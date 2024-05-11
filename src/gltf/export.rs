@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt::Write,
-    ops::Range,
     path::{Path, PathBuf},
 };
 
@@ -21,7 +20,11 @@ use crate::{
 };
 
 use super::{
-    add_and_get_index, buffer::{BufferSlice, BufferType, BufferTypeEx, BufferTypeMinMax, BufferViewAndAccessorSource, MinMax, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER}, transform::ComponentTransform, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
+    add_and_get_index,
+    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax},
+    transform::ComponentTransform,
+    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
+    VertexAttributesSource,
 };
 
 struct SkinnedVertex {
@@ -33,7 +36,10 @@ struct SkinnedVertex {
 }
 
 impl Vertex for SkinnedVertex {
-    fn write_slices(writer: &mut BufferWriter, vertices: &[Self]) -> Box<dyn VertexAttributesSource> {
+    fn write_slices(
+        writer: &mut BufferWriter,
+        vertices: &[Self],
+    ) -> Box<dyn VertexAttributesSource> {
         // Split out the vertex data
         let mut positions = Vec::with_capacity(vertices.len());
         let mut normals = Vec::with_capacity(vertices.len());
@@ -48,11 +54,16 @@ impl Vertex for SkinnedVertex {
             weights.push(vertex.weights);
         }
 
-        let vertex_positions_pair = writer.create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_normals_pair = writer.create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_uvs_pair = writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_joints_pair = writer.create_view_and_accessor_with_min_max(&joints, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_weights_pair = writer.create_view_and_accessor_with_min_max(&weights, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_positions_pair = writer
+            .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_normals_pair = writer
+            .create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_uvs_pair =
+            writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_joints_pair = writer
+            .create_view_and_accessor_with_min_max(&joints, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_weights_pair = writer
+            .create_view_and_accessor_with_min_max(&weights, Some(BufferViewTarget::ArrayBuffer));
 
         Box::new(SkinnedVertexAttributes {
             positions: vertex_positions_pair,
@@ -377,26 +388,26 @@ pub fn export<P: AsRef<Path>>(
 
     // Write our vertex and index data
     let mut buffer_writer = BufferWriter::new();
-    let indices_view = buffer_writer.create_view(&converted_model.indices, Some(BufferViewTarget::ElementArrayBuffer));
-    let vertex_attributes = SkinnedVertex::write_slices(&mut buffer_writer, &converted_model.vertices);
-    let inverse_bind_matrices_pair = buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
+    let indices_view = buffer_writer.create_view(
+        &converted_model.indices,
+        Some(BufferViewTarget::ElementArrayBuffer),
+    );
+    let vertex_attributes =
+        SkinnedVertex::write_slices(&mut buffer_writer, &converted_model.vertices);
+    let inverse_bind_matrices_pair =
+        buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
     let mut mesh_primitives = Vec::new();
     for mesh in &converted_model.meshes {
         let indices = &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end];
-        let (min, max) = u32::find_min_max(
-            indices
-        );
+        let (min, max) = u32::find_min_max(indices);
         let indices_accessor = buffer_writer.create_accessor_with_min_max(
             indices_view,
             mesh.indices_range.start * std::mem::size_of::<u32>(),
             mesh.indices_range.end - mesh.indices_range.start,
-            MinMax { min, max }
+            MinMax { min, max },
         );
-        mesh_primitives.push((
-            indices_accessor,
-            mesh.texture_index,
-        ));
+        mesh_primitives.push((indices_accessor, mesh.texture_index));
     }
     let vertex_attribute_str = {
         let attribute_pairs = vertex_attributes.attribute_pairs();
@@ -527,7 +538,8 @@ pub fn export<P: AsRef<Path>>(
             ));
             // TODO: Consolodate timestamps
             let input_accessor_index = {
-                let pair = buffer_writer.create_view_and_accessor_with_min_max(&animation_data.timestamps, None);
+                let pair = buffer_writer
+                    .create_view_and_accessor_with_min_max(&animation_data.timestamps, None);
                 pair.accessor.0
             };
 
@@ -598,7 +610,7 @@ pub fn export<P: AsRef<Path>>(
 {}
                 ]
             }}"#,
-            inverse_bind_matrices_pair.accessor.0, joints
+        inverse_bind_matrices_pair.accessor.0, joints
     );
 
     let gltf_text = format!(
@@ -800,35 +812,6 @@ fn process_indexed_triangles(
     for trivert in triverts {
         process_trivert(trivert);
     }
-}
-
-fn add_accessor<T: BufferType>(
-    accessors: &mut Vec<(usize, usize, usize, Option<(String, String)>)>,
-    buffer_view_index: usize,
-    byte_offset: usize,
-    len: usize,
-) -> usize {
-    let index = accessors.len();
-    accessors.push((buffer_view_index, byte_offset, len, None));
-    index
-}
-
-fn add_accessor_with_min_max<T: BufferTypeMinMax>(
-    accessors: &mut Vec<(usize, usize, usize, Option<(String, String)>)>,
-    buffer_view_index: usize,
-    byte_offset: usize,
-    len: usize,
-    min: T,
-    max: T,
-) -> usize {
-    let index = accessors.len();
-    accessors.push((
-        buffer_view_index,
-        byte_offset,
-        len,
-        Some((min.write_value(), max.write_value())),
-    ));
-    index
 }
 
 fn process_animation(

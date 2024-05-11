@@ -1,10 +1,10 @@
+mod bsp;
 mod cli;
 mod gltf;
 mod graphics;
 mod mdl_viewer;
 mod numerics;
 mod wad_viewer;
-mod bsp;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -403,7 +403,7 @@ fn load_bsp_file<P: AsRef<Path>>(path: P) -> BspFile {
     let path = path.as_ref();
     let data = std::fs::read(path).unwrap();
     let reader = BspReader::read(data);
-    
+
     BspFile {
         path: path.display().to_string(),
         reader,

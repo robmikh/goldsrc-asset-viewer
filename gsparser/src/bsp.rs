@@ -3,22 +3,22 @@
 
 use serde::Deserialize;
 
-const LUMP_ENTITIES     :usize =  0;
-const LUMP_PLANES       :usize =  1;
-const LUMP_TEXTURES     :usize =  2;
-const LUMP_VERTICES     :usize =  3;
-const LUMP_VISIBILITY   :usize =  4;
-const LUMP_NODES        :usize =  5;
-const LUMP_TEXINFO      :usize =  6;
-const LUMP_FACES        :usize =  7;
-const LUMP_LIGHTING     :usize =  8;
-const LUMP_CLIPNODES    :usize =  9;
-const LUMP_LEAVES       :usize = 10;
-const LUMP_MARKSURFACES :usize = 11;
-const LUMP_EDGES        :usize = 12;
-const LUMP_SURFEDGES    :usize = 13;
-const LUMP_MODELS       :usize = 14;
-const HEADER_LUMPS      :usize = 15;
+const LUMP_ENTITIES: usize = 0;
+const LUMP_PLANES: usize = 1;
+const LUMP_TEXTURES: usize = 2;
+const LUMP_VERTICES: usize = 3;
+const LUMP_VISIBILITY: usize = 4;
+const LUMP_NODES: usize = 5;
+const LUMP_TEXINFO: usize = 6;
+const LUMP_FACES: usize = 7;
+const LUMP_LIGHTING: usize = 8;
+const LUMP_CLIPNODES: usize = 9;
+const LUMP_LEAVES: usize = 10;
+const LUMP_MARKSURFACES: usize = 11;
+const LUMP_EDGES: usize = 12;
+const LUMP_SURFEDGES: usize = 13;
+const LUMP_MODELS: usize = 14;
+const HEADER_LUMPS: usize = 15;
 
 #[repr(C)]
 #[derive(Copy, Clone, Deserialize, Debug)]
@@ -67,10 +67,7 @@ impl BspReader {
     pub fn read(data: Vec<u8>) -> Self {
         let header: BspHeader = bincode::deserialize(&data).unwrap();
         assert_eq!(header.version, 30);
-        Self {
-            header,
-            data,
-        }
+        Self { header, data }
     }
 
     pub fn read_nodes(&self) -> &[BspNode] {
