@@ -1,5 +1,5 @@
 [package]
-name = "mdlparser"
+name = "gsparser"
 version = "0.1.0"
 authors = ["Robert Mikhayelyan <rob.mikh@outlook.com>"]
 edition = "2021"

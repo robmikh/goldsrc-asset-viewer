@@ -6,7 +6,7 @@ edition = "2021"
 description = "A tool to view assets from GoldSource games."
 
 [dependencies]
-wad3parser = { path = "wad3parser" }
+gsparser = { path = "gsparser" }
 wgpu = "0.17"
 winit = "0.27.2"
 clap = { version = "4.5.4", features = ["derive"] }
@@ -18,5 +18,4 @@ imgui = "0.11.0"
 imgui-winit-support = { version = "0.11.0", default-features = false }
 imgui-wgpu = "0.24.0"
 pollster = "0.3.0"
-mdlparser = { path = "mdlparser" }
 id_tree = "1.8.0"

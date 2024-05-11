@@ -1,3 +1,0 @@
-# wad3parser
-
-wip

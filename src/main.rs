@@ -9,13 +9,13 @@ use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use clap::*;
 use cli::Cli;
+use gsparser::wad3::{WadArchive, WadFileInfo};
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
 use rfd::FileDialog;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use wad3parser::{WadArchive, WadFileInfo};
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -25,7 +25,7 @@ use winit::{
 
 pub struct MdlFile {
     pub path: String,
-    pub file: mdlparser::MdlFile,
+    pub file: gsparser::mdl::MdlFile,
     pub texture_names: Vec<ImString>,
     pub body_part_names: Vec<ImString>,
 }
@@ -357,7 +357,7 @@ fn load_wad_file<P: AsRef<Path>>(path: P) -> WadFile {
 
 fn load_mdl_file<P: AsRef<Path>>(path: P) -> MdlFile {
     let path = path.as_ref();
-    let mdl_file = mdlparser::MdlFile::open(path);
+    let mdl_file = gsparser::mdl::MdlFile::open(path);
 
     let mut texture_names = Vec::new();
     for texture in &mdl_file.textures {

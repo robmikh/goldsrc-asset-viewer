@@ -6,13 +6,13 @@ use std::{
 };
 
 use glam::{Mat4, Vec3, Vec4};
+use gsparser::mdl::{
+    null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
+    MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
+};
 use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
     Node, TreeBuilder,
-};
-use mdlparser::{
-    null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
-    MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
 };
 
 use crate::{

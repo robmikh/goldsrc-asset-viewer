@@ -1307,15 +1307,14 @@ dependencies = [
  "clap",
  "env_logger",
  "glam",
+ "gsparser",
  "id_tree",
  "image",
  "imgui",
  "imgui-wgpu",
  "imgui-winit-support",
- "mdlparser",
  "pollster",
  "rfd",
- "wad3parser",
  "wgpu",
  "winit",
 ]
@@ -1370,6 +1369,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bf0b36e6f090b7e1d8a4b49c0cb81c1f8376f72198c65dd3ad9ff3556b8b78c"
 dependencies = [
  "bitflags 2.5.0",
+]
+
+[[package]]
+name = "gsparser"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "byteorder",
+ "image",
+ "serde",
 ]
 
 [[package]]
@@ -1751,16 +1760,6 @@ checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
 dependencies = [
  "cfg-if",
  "rayon",
-]
-
-[[package]]
-name = "mdlparser"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "byteorder",
- "image",
- "serde",
 ]
 
 [[package]]
@@ -3066,16 +3065,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "wad3parser"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "byteorder",
- "image",
- "serde",
-]
 
 [[package]]
 name = "wasi"

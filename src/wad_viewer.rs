@@ -1,9 +1,9 @@
 use crate::graphics::{create_imgui_texture, MipTexture, TextureBundle};
 use crate::WadFile;
+use gsparser::wad3::{CharInfo, TextureType, WadArchive, WadFileInfo};
 use imgui::*;
 use imgui_wgpu::Renderer;
 use std::collections::HashMap;
-use wad3parser::{CharInfo, TextureType, WadArchive, WadFileInfo};
 
 #[derive(Clone)]
 pub struct FontMetadata {

@@ -1,8 +1,8 @@
 use crate::graphics::*;
 use crate::MdlFile;
+use gsparser::mdl::MdlTexture;
 use imgui::*;
 use imgui_wgpu::Renderer;
-use mdlparser::MdlTexture;
 
 #[derive(Clone)]
 pub struct ExtraTextureData {}
