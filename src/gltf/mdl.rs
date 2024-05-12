@@ -19,9 +19,7 @@ use crate::{
         animation::{
             Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget,
             Sampler,
-        },
-        export::write_gltf,
-        transform::quat_from_euler,
+        }, export::write_gltf, material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap}, transform::quat_from_euler
     },
     numerics::{ToVec3, ToVec4},
 };
@@ -374,7 +372,29 @@ pub fn export<P: AsRef<Path>>(
     let inverse_bind_matrices_pair =
         buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
-    let texture_filestems: Vec<_> = file.textures.iter().map(|x| x.name.clone()).collect();
+    // Create materials, textures, and images
+    let mut material_data = MaterialData::new();
+    let sampler = material_data.add_sampler(super::material::Sampler {
+        mag_filter: MagFilter::Linear,
+        min_filter: MinFilter::LinearMipMapLinear,
+        wrap_s: Wrap::MirroredRepeat,
+        wrap_t: Wrap::MirroredRepeat,
+    });
+    for texture in &file.textures {
+        let image = material_data.add_images(Image {
+            uri: format!("{}.png", texture.name),
+        });
+        let texture = material_data.add_texture(Texture {
+            sampler,
+            source: image,
+        });
+        material_data.add_material(Material {
+            base_color_texture: Some(texture),
+            metallic_factor: 0.0,
+            roughness_factor: 1.0,
+            ..Default::default()
+        });
+    }
 
     // Build skin
     let mut skins = Skins::new();
@@ -399,7 +419,7 @@ pub fn export<P: AsRef<Path>>(
         buffer_name,
         &mut buffer_writer,
         &converted_model,
-        &texture_filestems,
+        &material_data,
         scene_root,
         &nodes,
         &skins,

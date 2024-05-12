@@ -9,6 +9,7 @@ pub mod mdl;
 mod node;
 mod skin;
 mod transform;
+mod material;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;

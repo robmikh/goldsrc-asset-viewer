@@ -1,17 +1,14 @@
 use crate::gltf::animation::Animations;
 
 use super::{
-    buffer::{BufferTypeEx, BufferViewTarget, BufferWriter, MinMax},
-    node::{NodeIndex, Nodes},
-    skin::Skins,
-    Model, Vertex,
+    buffer::{BufferTypeEx, BufferViewTarget, BufferWriter, MinMax}, material::MaterialData, node::{NodeIndex, Nodes}, skin::Skins, Model, Vertex
 };
 
 pub fn write_gltf<T: Vertex>(
     buffer_name: &str,
     buffer_writer: &mut BufferWriter,
     model: &Model<T>,
-    texture_filestems: &[String],
+    material_data: &MaterialData,
     scene_root: NodeIndex,
     nodes: &Nodes,
     skins: &Skins,
@@ -60,42 +57,11 @@ pub fn write_gltf<T: Vertex>(
     }
     let primitives = primitives.join(",\n");
 
-    // Create materials, textures, and images
-    let mut materials = Vec::with_capacity(texture_filestems.len());
-    let mut textures = Vec::with_capacity(texture_filestems.len());
-    let mut images = Vec::with_capacity(texture_filestems.len());
-    for (i, texture) in texture_filestems.iter().enumerate() {
-        materials.push(format!(
-            r#"          {{
-            "pbrMetallicRoughness" : {{
-              "baseColorTexture" : {{
-                "index" : {}
-              }},
-              "metallicFactor" : 0.0,
-              "roughnessFactor" : 1.0
-            }}
-          }}"#,
-            i
-        ));
-
-        textures.push(format!(
-            r#"           {{
-            "sampler" : 0,
-            "source" : {}
-          }}"#,
-            i
-        ));
-
-        images.push(format!(
-            r#"         {{
-            "uri" : "{}.png"
-          }}"#,
-            texture
-        ));
-    }
-    let materials = materials.join(",\n");
-    let textures = textures.join(",\n");
-    let images = images.join(",\n");
+    // Write materials, textures, images, and samplers
+    let materials = material_data.write_materials();
+    let textures = material_data.write_textures();
+    let images = material_data.write_images();
+    let samplers = material_data.write_samplers();
 
     // Create buffer views and accessors
     let buffer_views = buffer_writer.write_buffer_views();
@@ -123,6 +89,42 @@ pub fn write_gltf<T: Vertex>(
         );
         gltf_parts.push(animations);
     }
+    if !materials.is_empty() {
+        let materials = format!(
+            r#"    "materials" : [
+{}
+    ]"#,
+            materials.join(",\n")
+        );
+        gltf_parts.push(materials);
+    }
+    if !textures.is_empty() {
+        let textures = format!(
+            r#"    "textures" : [
+{}
+    ]"#,
+    textures.join(",\n")
+        );
+        gltf_parts.push(textures);
+    }
+    if !images.is_empty() {
+        let images = format!(
+            r#"    "images" : [
+{}
+    ]"#,
+    images.join(",\n")
+        );
+        gltf_parts.push(images);
+    }
+    if !samplers.is_empty() {
+        let samplers = format!(
+            r#"    "samplers" : [
+{}
+    ]"#,
+    samplers.join(",\n")
+        );
+        gltf_parts.push(samplers);
+    }
 
     let gltf_text = format!(
         r#"{{
@@ -143,23 +145,6 @@ pub fn write_gltf<T: Vertex>(
              ]
             }}
         ],
-
-        "materials" : [ 
-            {}
-         ],
-        
-          "textures" : [ 
-            {}
-           ],
-          "images" : [ 
-            {}
-           ],
-          "samplers" : [ {{
-            "magFilter" : 9729,
-            "minFilter" : 9987,
-            "wrapS" : 33648,
-            "wrapT" : 33648
-          }} ],
 
           "buffers" : [
             {{
@@ -186,9 +171,6 @@ pub fn write_gltf<T: Vertex>(
         scene_root.0,
         nodes.write_nodes().join(",\n"),
         primitives,
-        materials,
-        textures,
-        images,
         buffer_name,
         buffer_writer.buffer_len(),
         buffer_views,
