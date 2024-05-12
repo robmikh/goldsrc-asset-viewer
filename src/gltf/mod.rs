@@ -5,11 +5,11 @@ mod animation;
 pub mod bsp;
 mod buffer;
 mod export;
+mod material;
 pub mod mdl;
 mod node;
 mod skin;
 mod transform;
-mod material;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;

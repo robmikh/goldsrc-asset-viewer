@@ -1,7 +1,11 @@
 use crate::gltf::animation::Animations;
 
 use super::{
-    buffer::{BufferTypeEx, BufferViewTarget, BufferWriter, MinMax}, material::MaterialData, node::{NodeIndex, Nodes}, skin::Skins, Model, Vertex
+    buffer::{BufferTypeEx, BufferViewTarget, BufferWriter, MinMax},
+    material::MaterialData,
+    node::{NodeIndex, Nodes},
+    skin::Skins,
+    Model, Vertex,
 };
 
 pub fn write_gltf<T: Vertex>(
@@ -103,7 +107,7 @@ pub fn write_gltf<T: Vertex>(
             r#"    "textures" : [
 {}
     ]"#,
-    textures.join(",\n")
+            textures.join(",\n")
         );
         gltf_parts.push(textures);
     }
@@ -112,7 +116,7 @@ pub fn write_gltf<T: Vertex>(
             r#"    "images" : [
 {}
     ]"#,
-    images.join(",\n")
+            images.join(",\n")
         );
         gltf_parts.push(images);
     }
@@ -121,7 +125,7 @@ pub fn write_gltf<T: Vertex>(
             r#"    "samplers" : [
 {}
     ]"#,
-    samplers.join(",\n")
+            samplers.join(",\n")
         );
         gltf_parts.push(samplers);
     }

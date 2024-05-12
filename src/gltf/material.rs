@@ -2,8 +2,6 @@ use glam::Vec4;
 
 use super::add_and_get_index;
 
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct MaterialIndex(pub usize);
 #[derive(Copy, Clone, Debug)]
@@ -98,12 +96,21 @@ impl MaterialData {
         for material in &self.materials {
             let mut extras = Vec::with_capacity(2);
             if let Some(base_color_texture) = material.base_color_texture {
-                extras.push(format!(r#""baseColorTexture" : {{
+                extras.push(format!(
+                    r#""baseColorTexture" : {{
                     "index" : {}
-                }}"#, base_color_texture.0));
+                }}"#,
+                    base_color_texture.0
+                ));
             }
             if let Some(base_color_factor) = material.base_color_factor {
-                extras.push(format!(r#""baseColorFactor" : [ {}, {}, {}, {} ]"#, base_color_factor.x, base_color_factor.y, base_color_factor.z, base_color_factor.w));
+                extras.push(format!(
+                    r#""baseColorFactor" : [ {}, {}, {}, {} ]"#,
+                    base_color_factor.x,
+                    base_color_factor.y,
+                    base_color_factor.z,
+                    base_color_factor.w
+                ));
             }
             let extras = if extras.is_empty() {
                 "".to_owned()
@@ -118,9 +125,7 @@ impl MaterialData {
                     "roughnessFactor" : {}
                 }}
             }}"#,
-                extras,
-                material.metallic_factor,
-                material.roughness_factor,
+                extras, material.metallic_factor, material.roughness_factor,
             ));
         }
         materials
@@ -134,8 +139,7 @@ impl MaterialData {
                 "sampler" : {},
                 "source" : {}
             }}"#,
-                texture.sampler.0,
-                texture.source.0
+                texture.sampler.0, texture.source.0
             ));
         }
         textures
@@ -157,12 +161,18 @@ impl MaterialData {
     pub fn write_samplers(&self) -> Vec<String> {
         let mut samplers = Vec::new();
         for sampler in &self.samplers {
-            samplers.push(format!(r#"{{
+            samplers.push(format!(
+                r#"{{
                 "magFilter" : {},
                 "minFilter" : {},
                 "wrapS" : {},
                 "wrapT" : {}
-            }}"#, sampler.mag_filter as usize, sampler.min_filter as usize, sampler.wrap_s as usize, sampler.wrap_t as usize));
+            }}"#,
+                sampler.mag_filter as usize,
+                sampler.min_filter as usize,
+                sampler.wrap_s as usize,
+                sampler.wrap_t as usize
+            ));
         }
         samplers
     }

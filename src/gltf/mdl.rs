@@ -19,7 +19,10 @@ use crate::{
         animation::{
             Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget,
             Sampler,
-        }, export::write_gltf, material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap}, transform::quat_from_euler
+        },
+        export::write_gltf,
+        material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap},
+        transform::quat_from_euler,
     },
     numerics::{ToVec3, ToVec4},
 };
