@@ -59,14 +59,14 @@ struct BspLumpHeader {
 
 #[repr(C)]
 #[derive(Copy, Clone, Deserialize, Debug)]
-struct BspFace {
-    plane: u16,
-    plane_side: u16,
-    first_edge: u32,
-    edges: u16,
-    texture_info: u16,
-    styles: [u8; 4],
-    lightmap_offset: i32,
+pub struct BspFace {
+    pub plane: u16,
+    pub plane_side: u16,
+    pub first_edge: u32,
+    pub edges: u16,
+    pub texture_info: u16,
+    pub styles: [u8; 4],
+    pub lightmap_offset: i32,
 }
 
 #[repr(C)]
@@ -110,6 +110,28 @@ pub struct BspLeaf {
     pub ambient_levels: [u8; 4],
 }
 
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspMarkSurface(pub u16);
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspSurfaceEdge(pub i32);
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspEdge {
+    pub vertices: [u16; 2],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspVertex {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -129,6 +151,26 @@ impl BspReader {
 
     pub fn read_leaves(&self) -> &[BspLeaf] {
         self.read_lump(LUMP_LEAVES)
+    }
+
+    pub fn read_mark_surfaces(&self) -> &[BspMarkSurface] {
+        self.read_lump(LUMP_MARKSURFACES)
+    }
+
+    pub fn read_faces(&self) -> &[BspFace] {
+        self.read_lump(LUMP_FACES)
+    }
+
+    pub fn read_edges(&self) -> &[BspEdge] {
+        self.read_lump(LUMP_EDGES)
+    }
+
+    pub fn read_surface_edges(&self) -> &[BspSurfaceEdge] {
+        self.read_lump(LUMP_SURFEDGES)
+    }
+
+    pub fn read_vertices(&self) -> &[BspVertex] {
+        self.read_lump(LUMP_VERTICES)
     }
 
     fn read_lump<T: Sized>(&self, index: usize) -> &[T] {
@@ -152,5 +194,11 @@ trait FromValue<T: Sized + Copy>: Sized {
 impl BspLeaf {
     pub fn contents(&self) -> BspContents {
         BspContents::from_value(self.contents).unwrap()
+    }
+}
+
+impl BspVertex {
+    pub fn to_array(&self) -> [f32; 3] {
+        [self.x, self.y, self.z]
     }
 }

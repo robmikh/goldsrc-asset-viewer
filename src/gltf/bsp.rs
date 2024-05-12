@@ -114,6 +114,57 @@ pub fn export<P: AsRef<Path>>(
             )
             .unwrap();
         }
+
+        writeln!(log, "Mark Surfaces:").unwrap();
+        for (i, surface) in reader.read_mark_surfaces().iter().enumerate() {
+            writeln!(log, "  Mark Surface {}", i).unwrap();
+            writeln!(log, "    index: {}", surface.0).unwrap();
+        }
+
+        writeln!(log, "Surface Edges:").unwrap();
+        for (i, edge) in reader.read_surface_edges().iter().enumerate() {
+            writeln!(log, "  Surface Edge {}", i).unwrap();
+            writeln!(log, "    index: {}", edge.0).unwrap();
+        }
+
+        writeln!(log, "Faces:").unwrap();
+        for (i, face) in reader.read_faces().iter().enumerate() {
+            writeln!(log, "  Face {}", i).unwrap();
+            writeln!(log, "    plane: {}", face.plane).unwrap();
+            writeln!(log, "    plane_side: {}", face.plane_side).unwrap();
+            writeln!(log, "    first_edge: {}", face.first_edge).unwrap();
+            writeln!(log, "    edges: {}", face.edges).unwrap();
+            writeln!(log, "    texture_info: {}", face.texture_info).unwrap();
+            writeln!(
+                log,
+                "    styles: [ {}, {}, {}, {} ]",
+                face.styles[0], face.styles[1], face.styles[2], face.styles[3]
+            )
+            .unwrap();
+            writeln!(log, "    lightmap_offset: {}", face.lightmap_offset).unwrap();
+        }
+
+        writeln!(log, "Edges:").unwrap();
+        for (i, edge) in reader.read_edges().iter().enumerate() {
+            writeln!(log, "  Edge {}", i).unwrap();
+            writeln!(
+                log,
+                "    vertices: [ {}, {} ]",
+                edge.vertices[0], edge.vertices[1]
+            )
+            .unwrap();
+        }
+
+        writeln!(log, "Vertices:").unwrap();
+        for (i, vertex) in reader.read_vertices().iter().enumerate() {
+            writeln!(log, "  Vertex {}", i).unwrap();
+            writeln!(
+                log,
+                "    vertices: [ {}, {}, {} ]",
+                vertex.x, vertex.y, vertex.z
+            )
+            .unwrap();
+        }
     }
 
     let mut indices = Vec::new();
