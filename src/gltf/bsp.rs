@@ -3,7 +3,7 @@ use std::{fmt::Write, ops::Range, path::{Path, PathBuf}};
 use glam::Vec4;
 use gsparser::bsp::BspReader;
 
-use super::{add_and_get_index, animation::Animations, buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter}, export::write_gltf, material::{Material, MaterialData}, node::{MeshIndex, Node, Nodes}, skin::Skins, Mesh, Model, Vertex, VertexAttributesSource};
+use super::{add_and_get_index, animation::Animations, buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter}, coordinates::convert_coordinates, export::write_gltf, material::{Material, MaterialData}, node::{MeshIndex, Node, Nodes}, skin::Skins, Mesh, Model, Vertex, VertexAttributesSource};
 
 struct DebugVertex {
     pos: [f32; 3],
@@ -76,21 +76,23 @@ pub fn export<P: AsRef<Path>>(
 
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
-    let primitive_range = create_primitive(
-        &[-2, -2, -2],
-        &[2, 2, 2],
-        &mut indices,
-        &mut vertices
-    );
+    let mut primitives = Vec::new();
+    for node in reader.read_nodes().iter() {
+        let primitive_range = create_primitive(
+            &convert_coordinates(node.mins),
+            &convert_coordinates(node.maxs),
+            &mut indices,
+            &mut vertices
+        );
+        primitives.push(primitive_range);
+    }
 
     let mut buffer_writer = BufferWriter::new();
     let model = {
-        let meshes = vec![
-            Mesh {
-                texture_index: 0,
-                indices_range: primitive_range,
-            }
-        ];
+        let meshes: Vec<_> = primitives.iter().map(|x| Mesh {
+            texture_index: 0,
+            indices_range: x.clone(),
+        }).collect();
         Model {
             indices,
             vertices,
