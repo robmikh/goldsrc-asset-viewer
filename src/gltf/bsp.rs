@@ -1,9 +1,23 @@
-use std::{fmt::Write, ops::Range, path::{Path, PathBuf}};
+use std::{
+    fmt::Write,
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 use glam::Vec4;
 use gsparser::bsp::BspReader;
 
-use super::{add_and_get_index, animation::Animations, buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter}, coordinates::convert_coordinates, export::write_gltf, material::{Material, MaterialData}, node::{MeshIndex, Node, Nodes}, skin::Skins, Mesh, Model, Vertex, VertexAttributesSource};
+use super::{
+    add_and_get_index,
+    animation::Animations,
+    buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter},
+    coordinates::convert_coordinates,
+    export::write_gltf,
+    material::{Material, MaterialData},
+    node::{MeshIndex, Node, Nodes},
+    skin::Skins,
+    Mesh, Model, Vertex, VertexAttributesSource,
+};
 
 struct DebugVertex {
     pos: [f32; 3],
@@ -35,9 +49,7 @@ struct DebugVertexAttributes {
 
 impl VertexAttributesSource for DebugVertexAttributes {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)> {
-        vec![
-            ("POSITION", self.positions.accessor.0),
-        ]
+        vec![("POSITION", self.positions.accessor.0)]
     }
 }
 
@@ -82,17 +94,20 @@ pub fn export<P: AsRef<Path>>(
             &convert_coordinates(node.mins),
             &convert_coordinates(node.maxs),
             &mut indices,
-            &mut vertices
+            &mut vertices,
         );
         primitives.push(primitive_range);
     }
 
     let mut buffer_writer = BufferWriter::new();
     let model = {
-        let meshes: Vec<_> = primitives.iter().map(|x| Mesh {
-            texture_index: 0,
-            indices_range: x.clone(),
-        }).collect();
+        let meshes: Vec<_> = primitives
+            .iter()
+            .map(|x| Mesh {
+                texture_index: 0,
+                indices_range: x.clone(),
+            })
+            .collect();
         Model {
             indices,
             vertices,
@@ -143,40 +158,121 @@ pub fn export<P: AsRef<Path>>(
     Ok(())
 }
 
-fn create_primitive(mins: &[i16; 3], maxs: &[i16; 3], indices: &mut Vec<u32>, vertices: &mut Vec<DebugVertex>) -> Range<usize> {
+fn create_primitive(
+    mins: &[i16; 3],
+    maxs: &[i16; 3],
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<DebugVertex>,
+) -> Range<usize> {
     let start = indices.len();
-    add_rect_prism(
-        mins,
-        maxs,   
-        indices,
-        vertices
-    );
+    add_rect_prism(mins, maxs, indices, vertices);
     let end = indices.len();
     start..end
 }
 
-fn add_rect_prism(mins: &[i16; 3], maxs: &[i16; 3], indices: &mut Vec<u32>, vertices: &mut Vec<DebugVertex>) {
-    let back_top_left = add_and_get_index(vertices, DebugVertex { pos: [mins[0] as f32, maxs[1] as f32, mins[2] as f32] }) as u32;
-    let back_top_right = add_and_get_index(vertices, DebugVertex { pos: [maxs[0] as f32, maxs[1] as f32, mins[2] as f32] }) as u32;
-    let back_bottom_left = add_and_get_index(vertices, DebugVertex { pos: [mins[0] as f32, mins[1] as f32, mins[2] as f32] }) as u32;
-    let back_bottom_right = add_and_get_index(vertices, DebugVertex { pos: [maxs[0] as f32, mins[1] as f32, mins[2] as f32] }) as u32;
-    let front_top_left = add_and_get_index(vertices, DebugVertex { pos: [mins[0] as f32, maxs[1] as f32, maxs[2] as f32] }) as u32;
-    let front_top_right = add_and_get_index(vertices, DebugVertex { pos: [maxs[0] as f32, maxs[1] as f32, maxs[2] as f32] }) as u32;
-    let front_bottom_left = add_and_get_index(vertices, DebugVertex { pos: [mins[0] as f32, mins[1] as f32, maxs[2] as f32] }) as u32;
-    let front_bottom_right = add_and_get_index(vertices, DebugVertex { pos: [maxs[0] as f32, mins[1] as f32, maxs[2] as f32] }) as u32;
+fn add_rect_prism(
+    mins: &[i16; 3],
+    maxs: &[i16; 3],
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<DebugVertex>,
+) {
+    let back_top_left = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [mins[0] as f32, maxs[1] as f32, mins[2] as f32],
+        },
+    ) as u32;
+    let back_top_right = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [maxs[0] as f32, maxs[1] as f32, mins[2] as f32],
+        },
+    ) as u32;
+    let back_bottom_left = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [mins[0] as f32, mins[1] as f32, mins[2] as f32],
+        },
+    ) as u32;
+    let back_bottom_right = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [maxs[0] as f32, mins[1] as f32, mins[2] as f32],
+        },
+    ) as u32;
+    let front_top_left = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [mins[0] as f32, maxs[1] as f32, maxs[2] as f32],
+        },
+    ) as u32;
+    let front_top_right = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [maxs[0] as f32, maxs[1] as f32, maxs[2] as f32],
+        },
+    ) as u32;
+    let front_bottom_left = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [mins[0] as f32, mins[1] as f32, maxs[2] as f32],
+        },
+    ) as u32;
+    let front_bottom_right = add_and_get_index(
+        vertices,
+        DebugVertex {
+            pos: [maxs[0] as f32, mins[1] as f32, maxs[2] as f32],
+        },
+    ) as u32;
 
     // Back
-    append_quad(back_top_left, back_top_right, back_bottom_left, back_bottom_right, indices);
+    append_quad(
+        back_top_left,
+        back_top_right,
+        back_bottom_left,
+        back_bottom_right,
+        indices,
+    );
     // Front
-    append_quad(front_top_left, front_bottom_left, front_top_right, front_bottom_right, indices);
+    append_quad(
+        front_top_left,
+        front_bottom_left,
+        front_top_right,
+        front_bottom_right,
+        indices,
+    );
     // Top
-    append_quad(back_top_left, front_top_left, back_top_right, front_top_right, indices);
+    append_quad(
+        back_top_left,
+        front_top_left,
+        back_top_right,
+        front_top_right,
+        indices,
+    );
     // Bottom
-    append_quad(back_bottom_left, back_bottom_right, front_bottom_left, front_bottom_right, indices);
+    append_quad(
+        back_bottom_left,
+        back_bottom_right,
+        front_bottom_left,
+        front_bottom_right,
+        indices,
+    );
     // Left
-    append_quad(front_top_left, back_top_left, front_bottom_left, back_bottom_left, indices);
+    append_quad(
+        front_top_left,
+        back_top_left,
+        front_bottom_left,
+        back_bottom_left,
+        indices,
+    );
     // Right
-    append_quad(front_top_right, front_bottom_right, back_top_right, back_bottom_right, indices);
+    append_quad(
+        front_top_right,
+        front_bottom_right,
+        back_top_right,
+        back_bottom_right,
+        indices,
+    );
 }
 
 fn append_quad(vertex_0: u32, vertex_1: u32, vertex_2: u32, vertex_3: u32, indices: &mut Vec<u32>) {

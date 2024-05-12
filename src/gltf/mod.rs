@@ -4,13 +4,13 @@ use std::ops::Range;
 mod animation;
 pub mod bsp;
 mod buffer;
+mod coordinates;
 mod export;
 mod material;
 pub mod mdl;
 mod node;
 mod skin;
 mod transform;
-mod coordinates;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;
