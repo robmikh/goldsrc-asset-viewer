@@ -1,4 +1,3 @@
-mod bsp;
 mod cli;
 mod gltf;
 mod graphics;
@@ -81,7 +80,7 @@ fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
 
 fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
-    bsp::export(&file.reader, export_file_path, log.as_mut()).unwrap();
+    gltf::bsp::export(&file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }

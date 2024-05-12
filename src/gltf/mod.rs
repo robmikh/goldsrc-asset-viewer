@@ -11,6 +11,7 @@ mod transform;
 mod node;
 mod skin;
 mod animation;
+pub mod bsp;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;
