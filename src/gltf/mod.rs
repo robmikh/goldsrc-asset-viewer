@@ -5,8 +5,8 @@ use glam::Vec3;
 use self::buffer::BufferWriter;
 
 mod buffer;
-pub mod export;
-mod mdl;
+mod export;
+pub mod mdl;
 mod transform;
 mod node;
 mod skin;

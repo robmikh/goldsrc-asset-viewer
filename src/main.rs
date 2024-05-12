@@ -73,7 +73,7 @@ fn main() {
 
 fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
-    gltf::export::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
+    gltf::mdl::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -281,7 +281,7 @@ fn show_ui(cli: Cli) {
                                         panic!()
                                     };
                                     let mut log = if cli.log { Some(String::new()) } else { None };
-                                    gltf::export::export(&mdl_file.file, new_path, log.as_mut())
+                                    gltf::mdl::export(&mdl_file.file, new_path, log.as_mut())
                                         .unwrap();
                                     if let Some(log) = log {
                                         std::fs::write("log.txt", log).unwrap();
