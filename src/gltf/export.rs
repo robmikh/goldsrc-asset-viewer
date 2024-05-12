@@ -582,7 +582,19 @@ pub fn export<P: AsRef<Path>>(
         }
     };
     let skin_index = skins.add_skin(skin);
-    let skins = skins.write_skins().join(",\n");
+    // TODO: Need a way to update the skin so that we can do this earlier
+    //       instead of hard coding this.
+    assert_eq!(skin_index.0 , 0);
+
+    // Write GLTF
+    let mut gltf_parts = Vec::new();
+    if !skins.is_empty() {
+        let skins = format!(
+r#"    "skins" : [
+        {}
+    ]"#, skins.write_skins().join(",\n"));
+        gltf_parts.push(skins);
+    }
 
     let gltf_text = format!(
         r#"{{
@@ -593,10 +605,6 @@ pub fn export<P: AsRef<Path>>(
             }}
         ],
         "nodes" : [
-{}
-        ],
-
-        "skins" : [
 {}
         ],
         
@@ -640,6 +648,7 @@ pub fn export<P: AsRef<Path>>(
                 {}
             ],
 
+{},
             "animations" : [
 {}
             ],
@@ -651,7 +660,6 @@ pub fn export<P: AsRef<Path>>(
     "#,
         scene_root.0,
         nodes.write_nodes().join(",\n"),
-        skins,
         primitives,
         materials,
         textures,
@@ -659,6 +667,7 @@ pub fn export<P: AsRef<Path>>(
         buffer_writer.buffer_len(),
         buffer_views,
         accessors,
+        gltf_parts.join(",\n"),
         gltf_animations
     );
 

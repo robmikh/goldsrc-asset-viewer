@@ -22,6 +22,10 @@ impl Skins {
         SkinIndex(index)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.skins.is_empty()
+    }
+
     pub fn write_skins(&self) -> Vec<String> {
         let mut skins = Vec::new();
         for skin in &self.skins {
