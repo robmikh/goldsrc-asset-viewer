@@ -23,7 +23,9 @@ pub struct Nodes {
 
 impl Nodes {
     pub fn new(capacity: usize) -> Self {
-        Self { nodes: Vec::with_capacity(capacity) }
+        Self {
+            nodes: Vec::with_capacity(capacity),
+        }
     }
 
     pub fn add_node(&mut self, node: Node) -> NodeIndex {
@@ -45,10 +47,16 @@ impl Nodes {
                 fields.push(format!(r#"            "name" : "{}""#, name));
             }
             if let Some(translation) = node.translation {
-                fields.push(format!(r#"            "translation" : [ {}, {}, {} ]"#, translation.x, translation.y, translation.z));
+                fields.push(format!(
+                    r#"            "translation" : [ {}, {}, {} ]"#,
+                    translation.x, translation.y, translation.z
+                ));
             }
             if let Some(rotation) = node.rotation {
-                fields.push(format!(r#"            "rotation" : [ {}, {}, {}, {} ]"#, rotation.x, rotation.y, rotation.z, rotation.w));
+                fields.push(format!(
+                    r#"            "rotation" : [ {}, {}, {}, {} ]"#,
+                    rotation.x, rotation.y, rotation.z, rotation.w
+                ));
             }
             if !node.children.is_empty() {
                 let mut children = Vec::new();
@@ -59,9 +67,12 @@ impl Nodes {
                 fields.push(format!(r#"            "children" : [ {} ]"#, children));
             }
             let fields = fields.join(",\n");
-            nodes.push(format!(r#"        {{
+            nodes.push(format!(
+                r#"        {{
 {}
-        }}"#, fields));
+        }}"#,
+                fields
+            ));
         }
         nodes
     }

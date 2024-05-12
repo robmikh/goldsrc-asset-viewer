@@ -15,23 +15,42 @@ use id_tree::{
 };
 
 use crate::{
-    gltf::{animation::{Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler}, transform::quat_from_euler},
+    gltf::{
+        animation::{
+            Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler,
+        },
+        transform::quat_from_euler,
+    },
     numerics::{ToVec3, ToVec4},
 };
 
 use super::{
-    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
+    buffer::{
+        BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter,
+        MinMax,
+    },
+    node::{MeshIndex, Node, NodeIndex, Nodes},
+    skin::{Skin, SkinIndex, Skins},
+    transform::ComponentTransform,
+    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
+    VertexAttributesSource,
 };
 
-pub fn write_gltf<T: Vertex>(buffer_name: &str, buffer_writer: &mut BufferWriter, model: &Model<T>, texture_filestems: &[String], scene_root: NodeIndex, nodes: &Nodes, skins: &Skins, animations: &Animations) -> String {
+pub fn write_gltf<T: Vertex>(
+    buffer_name: &str,
+    buffer_writer: &mut BufferWriter,
+    model: &Model<T>,
+    texture_filestems: &[String],
+    scene_root: NodeIndex,
+    nodes: &Nodes,
+    skins: &Skins,
+    animations: &Animations,
+) -> String {
     // Write our vertex and index data
-    let indices_view = buffer_writer.create_view(
-        &model.indices,
-        Some(BufferViewTarget::ElementArrayBuffer),
-    );
-    let vertex_attributes =
-        T::write_slices(buffer_writer, &model.vertices);
-    
+    let indices_view =
+        buffer_writer.create_view(&model.indices, Some(BufferViewTarget::ElementArrayBuffer));
+    let vertex_attributes = T::write_slices(buffer_writer, &model.vertices);
+
     let mut mesh_primitives = Vec::new();
     for mesh in &model.meshes {
         let indices = &model.indices[mesh.indices_range.start..mesh.indices_range.end];
@@ -117,16 +136,20 @@ pub fn write_gltf<T: Vertex>(buffer_name: &str, buffer_writer: &mut BufferWriter
     let mut gltf_parts = Vec::new();
     if !skins.is_empty() {
         let skins = format!(
-r#"    "skins" : [
+            r#"    "skins" : [
         {}
-    ]"#, skins.write_skins().join(",\n"));
+    ]"#,
+            skins.write_skins().join(",\n")
+        );
         gltf_parts.push(skins);
     }
     if !animations.is_empty() {
         let animations = format!(
-r#"    "animations" : [
+            r#"    "animations" : [
         {}
-    ]"#, animations.write_animations().join(",\n"));
+    ]"#,
+            animations.write_animations().join(",\n")
+        );
         gltf_parts.push(animations);
     }
 

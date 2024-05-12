@@ -4,14 +4,14 @@ use glam::Vec3;
 
 use self::buffer::BufferWriter;
 
+mod animation;
+pub mod bsp;
 mod buffer;
 mod export;
 pub mod mdl;
-mod transform;
 mod node;
 mod skin;
-mod animation;
-pub mod bsp;
+mod transform;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;

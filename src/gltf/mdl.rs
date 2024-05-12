@@ -15,12 +15,26 @@ use id_tree::{
 };
 
 use crate::{
-    gltf::{animation::{Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler}, export::write_gltf, transform::quat_from_euler},
+    gltf::{
+        animation::{
+            Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler,
+        },
+        export::write_gltf,
+        transform::quat_from_euler,
+    },
     numerics::{ToVec3, ToVec4},
 };
 
 use super::{
-    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
+    buffer::{
+        BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter,
+        MinMax,
+    },
+    node::{MeshIndex, Node, NodeIndex, Nodes},
+    skin::{Skin, SkinIndex, Skins},
+    transform::ComponentTransform,
+    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
+    VertexAttributesSource,
 };
 
 struct SkinnedVertex {
@@ -98,7 +112,7 @@ pub fn export<P: AsRef<Path>>(
 ) -> std::io::Result<()> {
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
-  
+
     let mut buffer_writer = BufferWriter::new();
 
     if let Some(log) = &mut log {
@@ -202,7 +216,7 @@ pub fn export<P: AsRef<Path>>(
             let node_index = bone_to_node.get(child).unwrap();
             children.push(*node_index);
         }
-        
+
         let node_index = nodes.add_node(Node {
             name: Some(bone_names[bone_index].clone()),
             translation: Some(component_transform.translation),
@@ -360,7 +374,6 @@ pub fn export<P: AsRef<Path>>(
         }
     };
 
-    
     let inverse_bind_matrices_pair =
         buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
@@ -382,10 +395,19 @@ pub fn export<P: AsRef<Path>>(
     let skin_index = skins.add_skin(skin);
     // TODO: Need a way to update the skin so that we can do this earlier
     //       instead of hard coding this.
-    assert_eq!(skin_index.0 , 0);
+    assert_eq!(skin_index.0, 0);
 
     let buffer_name = "data.bin";
-    let gltf_text = write_gltf(buffer_name, &mut buffer_writer, &converted_model, &texture_filestems, scene_root, &nodes, &skins, &animations);
+    let gltf_text = write_gltf(
+        buffer_name,
+        &mut buffer_writer,
+        &converted_model,
+        &texture_filestems,
+        scene_root,
+        &nodes,
+        &skins,
+        &animations,
+    );
 
     let path = output_path.as_ref();
     let data_path = if let Some(parent_path) = path.parent() {
@@ -417,7 +439,6 @@ pub fn export<P: AsRef<Path>>(
 
     Ok(())
 }
-
 
 // Half-Life's coordinate system uses:
 //    X is forward
@@ -547,8 +568,7 @@ fn process_animation(
 
         // TODO: Consolodate timestamps
         let input = {
-            let pair = buffer_writer
-                .create_view_and_accessor_with_min_max(&timestamps, None);
+            let pair = buffer_writer.create_view_and_accessor_with_min_max(&timestamps, None);
             pair.accessor
         };
 
@@ -560,9 +580,7 @@ fn process_animation(
             GltfTargetPath::Rotation => {
                 let quats: Vec<_> = new_keyframes
                     .iter()
-                    .map(|x| {
-                        quat_from_euler(*x).to_vec4()
-                    })
+                    .map(|x| quat_from_euler(*x).to_vec4())
                     .collect();
                 let pair = buffer_writer.create_view_and_accessor(&quats, None);
                 pair.accessor
@@ -580,7 +598,7 @@ fn process_animation(
             target: ChannelTarget {
                 node: NodeIndex(target_node),
                 path: target,
-            }
+            },
         });
 
         true

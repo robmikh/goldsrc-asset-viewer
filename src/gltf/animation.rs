@@ -25,9 +25,7 @@ pub struct ChannelTarget {
     pub path: GltfTargetPath,
 }
 
-enum_with_str!(AnimationInterpolation {
-    Linear : "LINEAR",
-});
+enum_with_str!(AnimationInterpolation { Linear: "LINEAR" });
 
 pub struct Sampler {
     pub input: AccessorIndex,
@@ -82,7 +80,9 @@ impl Animation {
                 "interpolation" : "{}",
                 "output" : {}
             }}"#,
-                sampler.input.0, sampler.interpolation.as_str(), sampler.output.0,
+                sampler.input.0,
+                sampler.interpolation.as_str(),
+                sampler.output.0,
             ));
         }
         let samplers = samplers.join(",\n");
@@ -104,7 +104,9 @@ impl Animation {
 
 impl Animations {
     pub fn new(capacity: usize) -> Self {
-        Self { animations: Vec::with_capacity(capacity) }
+        Self {
+            animations: Vec::with_capacity(capacity),
+        }
     }
 
     pub fn add_animation(&mut self, animation: Animation) -> AnimationIndex {
