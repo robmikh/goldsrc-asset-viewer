@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
+    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
 };
 
 struct SkinnedVertex {
@@ -360,23 +360,76 @@ pub fn export<P: AsRef<Path>>(
         }
     };
 
-    if let Some(log) = &mut log {
-        writeln!(log, "Num meshes: {}", model.meshes.len()).unwrap();
-    }
-
-    // Write our vertex and index data
-    let indices_view = buffer_writer.create_view(
-        &converted_model.indices,
-        Some(BufferViewTarget::ElementArrayBuffer),
-    );
-    let vertex_attributes =
-        SkinnedVertex::write_slices(&mut buffer_writer, &converted_model.vertices);
+    
     let inverse_bind_matrices_pair =
         buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
+    let texture_filestems: Vec<_> = file.textures.iter().map(|x| x.name.clone()).collect();
+
+    // Build skin
+    let mut skins = Skins::new();
+    let skin = {
+        let mut joints = Vec::with_capacity(file.bones.len());
+        for i in 0..file.bones.len() {
+            let node = *bone_to_node.get(&i).unwrap();
+            joints.push(node);
+        }
+        Skin {
+            inverse_bind_matrices: inverse_bind_matrices_pair.accessor,
+            joints,
+        }
+    };
+    let skin_index = skins.add_skin(skin);
+    // TODO: Need a way to update the skin so that we can do this earlier
+    //       instead of hard coding this.
+    assert_eq!(skin_index.0 , 0);
+
+    let buffer_name = "data.bin";
+    let gltf_text = write_gltf(buffer_name, &mut buffer_writer, &converted_model, &texture_filestems, scene_root, &nodes, &skins, &animations);
+
+    let path = output_path.as_ref();
+    let data_path = if let Some(parent_path) = path.parent() {
+        let mut data_path = parent_path.to_owned();
+        data_path.push(buffer_name);
+        data_path
+    } else {
+        PathBuf::from(buffer_name)
+    };
+
+    std::fs::write(path, gltf_text)?;
+    std::fs::write(data_path, buffer_writer.to_inner())?;
+
+    // Write textures
+    let mut texture_path = if let Some(parent_path) = path.parent() {
+        let mut data_path = parent_path.to_owned();
+        data_path.push("something");
+        data_path
+    } else {
+        PathBuf::from("something")
+    };
+    for texture in &file.textures {
+        texture_path.set_file_name(format!("{}.png", texture.name));
+        texture
+            .image_data
+            .save_with_format(&texture_path, image::ImageFormat::Png)
+            .unwrap();
+    }
+
+    Ok(())
+}
+
+fn write_gltf<T: Vertex>(buffer_name: &str, buffer_writer: &mut BufferWriter, model: &Model<T>, texture_filestems: &[String], scene_root: NodeIndex, nodes: &Nodes, skins: &Skins, animations: &Animations) -> String {
+    // Write our vertex and index data
+    let indices_view = buffer_writer.create_view(
+        &model.indices,
+        Some(BufferViewTarget::ElementArrayBuffer),
+    );
+    let vertex_attributes =
+        T::write_slices(buffer_writer, &model.vertices);
+    
     let mut mesh_primitives = Vec::new();
-    for mesh in &converted_model.meshes {
-        let indices = &converted_model.indices[mesh.indices_range.start..mesh.indices_range.end];
+    for mesh in &model.meshes {
+        let indices = &model.indices[mesh.indices_range.start..mesh.indices_range.end];
         let (min, max) = u32::find_min_max(indices);
         let indices_accessor = buffer_writer.create_accessor_with_min_max(
             indices_view,
@@ -397,7 +450,7 @@ pub fn export<P: AsRef<Path>>(
     };
 
     // Create primitives
-    let mut primitives = Vec::with_capacity(converted_model.meshes.len());
+    let mut primitives = Vec::with_capacity(model.meshes.len());
     for (indices, material) in mesh_primitives {
         primitives.push(format!(
             r#"         {{
@@ -413,10 +466,10 @@ pub fn export<P: AsRef<Path>>(
     let primitives = primitives.join(",\n");
 
     // Create materials, textures, and images
-    let mut materials = Vec::with_capacity(file.textures.len());
-    let mut textures = Vec::with_capacity(file.textures.len());
-    let mut images = Vec::with_capacity(file.textures.len());
-    for (i, texture) in file.textures.iter().enumerate() {
+    let mut materials = Vec::with_capacity(texture_filestems.len());
+    let mut textures = Vec::with_capacity(texture_filestems.len());
+    let mut images = Vec::with_capacity(texture_filestems.len());
+    for (i, texture) in texture_filestems.iter().enumerate() {
         materials.push(format!(
             r#"          {{
             "pbrMetallicRoughness" : {{
@@ -442,7 +495,7 @@ pub fn export<P: AsRef<Path>>(
             r#"         {{
             "uri" : "{}.png"
           }}"#,
-            texture.name
+            texture
         ));
     }
     let materials = materials.join(",\n");
@@ -454,24 +507,6 @@ pub fn export<P: AsRef<Path>>(
     let gltf_accessors = buffer_writer.write_accessors();
     let buffer_views = buffer_views.join(",\n");
     let accessors = gltf_accessors.join(",\n");
-
-    // Build skin
-    let mut skins = Skins::new();
-    let skin = {
-        let mut joints = Vec::with_capacity(file.bones.len());
-        for i in 0..file.bones.len() {
-            let node = *bone_to_node.get(&i).unwrap();
-            joints.push(node);
-        }
-        Skin {
-            inverse_bind_matrices: inverse_bind_matrices_pair.accessor,
-            joints,
-        }
-    };
-    let skin_index = skins.add_skin(skin);
-    // TODO: Need a way to update the skin so that we can do this earlier
-    //       instead of hard coding this.
-    assert_eq!(skin_index.0 , 0);
 
     // Write GLTF
     let mut gltf_parts = Vec::new();
@@ -529,7 +564,7 @@ r#"    "animations" : [
 
           "buffers" : [
             {{
-                "uri" : "data.bin",
+                "uri" : "{}",
                 "byteLength" : {}
             }}
           ],
@@ -555,41 +590,14 @@ r#"    "animations" : [
         materials,
         textures,
         images,
+        buffer_name,
         buffer_writer.buffer_len(),
         buffer_views,
         accessors,
         gltf_parts.join(",\n"),
     );
 
-    let path = output_path.as_ref();
-    let data_path = if let Some(parent_path) = path.parent() {
-        let mut data_path = parent_path.to_owned();
-        data_path.push("data.bin");
-        data_path
-    } else {
-        PathBuf::from("data.bin")
-    };
-
-    std::fs::write(path, gltf_text)?;
-    std::fs::write(data_path, buffer_writer.to_inner())?;
-
-    // Write textures
-    let mut texture_path = if let Some(parent_path) = path.parent() {
-        let mut data_path = parent_path.to_owned();
-        data_path.push("something");
-        data_path
-    } else {
-        PathBuf::from("something")
-    };
-    for texture in &file.textures {
-        texture_path.set_file_name(format!("{}.png", texture.name));
-        texture
-            .image_data
-            .save_with_format(&texture_path, image::ImageFormat::Png)
-            .unwrap();
-    }
-
-    Ok(())
+    gltf_text
 }
 
 // Half-Life's coordinate system uses:
