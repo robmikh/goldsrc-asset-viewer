@@ -1,8 +1,5 @@
-use std::ops::Range;
-
-use glam::Vec3;
-
 use self::buffer::BufferWriter;
+use std::ops::Range;
 
 mod animation;
 pub mod bsp;
@@ -33,33 +30,6 @@ struct Model<V: Vertex> {
     indices: Vec<u32>,
     vertices: Vec<V>,
     meshes: Vec<Mesh>,
-}
-
-#[derive(Debug)]
-enum GltfTargetPath {
-    Translation,
-    Rotation,
-}
-
-impl GltfTargetPath {
-    fn get_gltf_str(&self) -> &str {
-        match self {
-            GltfTargetPath::Translation => "translation",
-            GltfTargetPath::Rotation => "rotation",
-        }
-    }
-}
-
-struct GltfAnimation {
-    channels: Vec<GltfChannelAnimation>,
-    name: String,
-}
-
-struct GltfChannelAnimation {
-    node_index: usize,
-    target: GltfTargetPath,
-    values: Vec<Vec3>,
-    timestamps: Vec<f32>,
 }
 
 fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {

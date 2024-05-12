@@ -1,7 +1,4 @@
-use std::{
-    fmt::Write,
-    path::{Path, PathBuf},
-};
+use std::{fmt::Write, path::Path};
 
 use gsparser::bsp::BspReader;
 

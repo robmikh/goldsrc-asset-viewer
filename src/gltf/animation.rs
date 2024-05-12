@@ -1,6 +1,6 @@
 use crate::enum_with_str;
 
-use super::{add_and_get_index, buffer::AccessorIndex, node::NodeIndex, AsStr, GltfTargetPath};
+use super::{add_and_get_index, buffer::AccessorIndex, node::NodeIndex, AsStr};
 
 #[derive(Copy, Clone, Debug)]
 pub struct ChannelIndex(pub usize);
@@ -22,10 +22,14 @@ pub struct Channel {
 
 pub struct ChannelTarget {
     pub node: NodeIndex,
-    pub path: GltfTargetPath,
+    pub path: AnimationTarget,
 }
 
 enum_with_str!(AnimationInterpolation { Linear: "LINEAR" });
+enum_with_str!(AnimationTarget {
+    Translation: "translation",
+    Rotation: "rotation",
+});
 
 pub struct Sampler {
     pub input: AccessorIndex,
@@ -67,7 +71,7 @@ impl Animation {
             }}"#,
                 channel.sampler.0,
                 channel.target.node.0,
-                channel.target.path.get_gltf_str()
+                channel.target.path.as_str()
             ));
         }
         let channels = channels.join(",\n");

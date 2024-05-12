@@ -1,39 +1,10 @@
-use std::{
-    collections::HashMap,
-    fmt::Write,
-    path::{Path, PathBuf},
-};
-
-use glam::{Mat4, Vec3, Vec4};
-use gsparser::mdl::{
-    null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
-    MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
-};
-use id_tree::{
-    InsertBehavior::{AsRoot, UnderNode},
-    TreeBuilder,
-};
-
-use crate::{
-    gltf::{
-        animation::{
-            Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler,
-        },
-        transform::quat_from_euler,
-    },
-    numerics::{ToVec3, ToVec4},
-};
+use crate::gltf::animation::Animations;
 
 use super::{
-    buffer::{
-        BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter,
-        MinMax,
-    },
-    node::{MeshIndex, Node, NodeIndex, Nodes},
-    skin::{Skin, SkinIndex, Skins},
-    transform::ComponentTransform,
-    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
-    VertexAttributesSource,
+    buffer::{BufferTypeEx, BufferViewTarget, BufferWriter, MinMax},
+    node::{NodeIndex, Nodes},
+    skin::Skins,
+    Model, Vertex,
 };
 
 pub fn write_gltf<T: Vertex>(

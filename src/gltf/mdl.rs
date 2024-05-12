@@ -17,7 +17,8 @@ use id_tree::{
 use crate::{
     gltf::{
         animation::{
-            Animation, AnimationInterpolation, Animations, Channel, ChannelTarget, Sampler,
+            Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget,
+            Sampler,
         },
         export::write_gltf,
         transform::quat_from_euler,
@@ -26,15 +27,11 @@ use crate::{
 };
 
 use super::{
-    buffer::{
-        BufferTypeEx, BufferViewAndAccessorPair, BufferViewIndex, BufferViewTarget, BufferWriter,
-        MinMax,
-    },
+    buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter},
     node::{MeshIndex, Node, NodeIndex, Nodes},
     skin::{Skin, SkinIndex, Skins},
     transform::ComponentTransform,
-    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
-    VertexAttributesSource,
+    Mesh, Model, Vertex, VertexAttributesSource,
 };
 
 struct SkinnedVertex {
@@ -272,7 +269,7 @@ pub fn export<P: AsRef<Path>>(
                 &mut animation,
                 &mut buffer_writer,
                 translation,
-                GltfTargetPath::Translation,
+                AnimationTarget::Translation,
                 &translate_animations,
                 &bone_animation.channels,
                 target_node.0,
@@ -284,7 +281,7 @@ pub fn export<P: AsRef<Path>>(
                 &mut animation,
                 &mut buffer_writer,
                 rotation,
-                GltfTargetPath::Rotation,
+                AnimationTarget::Rotation,
                 &rotation_animations,
                 &bone_animation.channels,
                 target_node.0,
@@ -536,7 +533,7 @@ fn process_animation(
     animation: &mut Animation,
     buffer_writer: &mut BufferWriter,
     mut base: Vec3,
-    target: GltfTargetPath,
+    target: AnimationTarget,
     animations: &[(VectorChannel, usize)],
     channels: &[BoneChannelAnimation],
     target_node: usize,
@@ -573,11 +570,11 @@ fn process_animation(
         };
 
         let output = match target {
-            GltfTargetPath::Translation => {
+            AnimationTarget::Translation => {
                 let pair = buffer_writer.create_view_and_accessor(&new_keyframes, None);
                 pair.accessor
             }
-            GltfTargetPath::Rotation => {
+            AnimationTarget::Rotation => {
                 let quats: Vec<_> = new_keyframes
                     .iter()
                     .map(|x| quat_from_euler(*x).to_vec4())
