@@ -11,7 +11,7 @@ use gsparser::mdl::{
 };
 use id_tree::{
     InsertBehavior::{AsRoot, UnderNode},
-    Node, TreeBuilder,
+    TreeBuilder,
 };
 
 use crate::{
@@ -20,11 +20,7 @@ use crate::{
 };
 
 use super::{
-    add_and_get_index,
-    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax},
-    transform::ComponentTransform,
-    GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex,
-    VertexAttributesSource,
+    add_and_get_index, buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes, SkinIndex}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
 };
 
 struct SkinnedVertex {
@@ -129,7 +125,7 @@ pub fn export<P: AsRef<Path>>(
             let parent_node = bone_map.get(&(bone.parent as usize)).unwrap();
             UnderNode(parent_node)
         };
-        let bone_id = bone_tree.insert(Node::new(i), behavior).unwrap();
+        let bone_id = bone_tree.insert(id_tree::Node::new(i), behavior).unwrap();
         bone_map.insert(i, bone_id);
         let bone_pos = Vec3::from_array(convert_coordinates([
             bone.value[0],
@@ -183,15 +179,13 @@ pub fn export<P: AsRef<Path>>(
         final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
     // Build nodes
-    let mut nodes = Vec::with_capacity(file.bones.len() + 1);
-    let mut bone_to_node: HashMap<usize, usize> = HashMap::new();
-    nodes.push(
-        r#"          {
-                "mesh" : 0,
-                "skin" : 0
-            }"#
-        .to_owned(),
-    );
+    let mut nodes = Nodes::new(file.bones.len() + 2);
+    let mut bone_to_node: HashMap<usize, NodeIndex> = HashMap::new();
+    let mesh_node = nodes.add_node(Node {
+        mesh: Some(MeshIndex(0)),
+        skin: Some(SkinIndex(0)),
+        ..Default::default()
+    });
     for node_id in bone_tree
         .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
         .unwrap()
@@ -203,34 +197,18 @@ pub fn export<P: AsRef<Path>>(
         let mut children = Vec::new();
         for child in bone_tree.children(&node_id).unwrap() {
             let child = child.data();
-            let bone_index = bone_to_node.get(child).unwrap();
-            children.push(bone_index.to_string());
+            let node_index = bone_to_node.get(child).unwrap();
+            children.push(*node_index);
         }
-        let children = if children.is_empty() {
-            "".to_owned()
-        } else {
-            let children = children.join(", ");
-            format!("\"children\" : [ {} ],\n           ", children)
-        };
-
-        let gltf_node_index = nodes.len();
-        nodes.push(format!(
-            r#"          {{
-            {}"name" : "{}",
-            "translation" : [ {}, {}, {} ],
-            "rotation" : [ {}, {}, {}, {} ]
-        }}"#,
-            children,
-            &bone_names[bone_index],
-            component_transform.translation.x,
-            component_transform.translation.y,
-            component_transform.translation.z,
-            rotation.x,
-            rotation.y,
-            rotation.z,
-            rotation.w
-        ));
-        bone_to_node.insert(bone_index, gltf_node_index);
+        
+        let node_index = nodes.add_node(Node {
+            name: Some(bone_names[bone_index].clone()),
+            translation: Some(component_transform.translation),
+            rotation: Some(rotation.to_vec4()),
+            children: children,
+            ..Default::default()
+        });
+        bone_to_node.insert(bone_index, node_index);
     }
     let skin_root = *bone_to_node
         .get(
@@ -240,16 +218,10 @@ pub fn export<P: AsRef<Path>>(
                 .data(),
         )
         .unwrap();
-    let scene_root = add_and_get_index(
-        &mut nodes,
-        format!(
-            r#"     {{
-            "children" : [ 0, {} ]
-        }}"#,
-            skin_root
-        ),
-    );
-    let nodes = nodes.join(",\n");
+    let scene_root = nodes.add_node(Node {
+        children: vec![mesh_node, skin_root],
+        ..Default::default()
+    });
 
     // Build animations
     let mut gltf_animations = Vec::with_capacity(file.animations.len());
@@ -284,7 +256,7 @@ pub fn export<P: AsRef<Path>>(
                 GltfTargetPath::Translation,
                 &translate_animations,
                 &bone_animation.channels,
-                target_node,
+                target_node.0,
                 animation.fps,
             ) {
                 animation_data.push(animation);
@@ -294,7 +266,7 @@ pub fn export<P: AsRef<Path>>(
                 GltfTargetPath::Rotation,
                 &rotation_animations,
                 &bone_animation.channels,
-                target_node,
+                target_node.0,
                 animation.fps,
             ) {
                 animation_data.push(animation);
@@ -476,7 +448,7 @@ pub fn export<P: AsRef<Path>>(
     if let Some(log) = &mut log {
         writeln!(log, "Bones to Nodes").unwrap();
         for bone in 0..file.bones.len() {
-            writeln!(log, "  {} -> {}", bone, *bone_to_node.get(&bone).unwrap()).unwrap();
+            writeln!(log, "  {} -> {}", bone, (*bone_to_node.get(&bone).unwrap()).0).unwrap();
         }
 
         writeln!(log, "Bone Transforms").unwrap();
@@ -493,7 +465,7 @@ pub fn export<P: AsRef<Path>>(
             for channel in &animation.channels {
                 let mut name = None;
                 for (bone, node) in &bone_to_node {
-                    if *node == channel.node_index {
+                    if (*node).0 == channel.node_index {
                         name = Some(&bone_names[*bone]);
                     }
                 }
@@ -600,7 +572,7 @@ pub fn export<P: AsRef<Path>>(
     let mut joints = Vec::with_capacity(file.bones.len());
     for i in 0..file.bones.len() {
         let node = *bone_to_node.get(&i).unwrap();
-        joints.push(format!("               {}", node));
+        joints.push(format!("               {}", node.0));
     }
     let joints = joints.join(",\n");
     let skin = format!(
@@ -678,8 +650,8 @@ pub fn export<P: AsRef<Path>>(
             }}
         }}
     "#,
-        scene_root,
-        nodes,
+        scene_root.0,
+        nodes.write_nodes().join("\n, "),
         skin,
         primitives,
         materials,

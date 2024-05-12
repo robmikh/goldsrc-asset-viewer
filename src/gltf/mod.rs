@@ -8,6 +8,7 @@ mod buffer;
 pub mod export;
 mod mdl;
 mod transform;
+mod node;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;
