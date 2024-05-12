@@ -90,13 +90,15 @@ pub fn export<P: AsRef<Path>>(
     let mut vertices = Vec::new();
     let mut primitives = Vec::new();
     for node in reader.read_nodes().iter() {
-        let primitive_range = create_primitive(
-            &convert_coordinates(node.mins),
-            &convert_coordinates(node.maxs),
-            &mut indices,
-            &mut vertices,
-        );
-        primitives.push(primitive_range);
+        if node.children[0] < 0 && node.children[1] < 0 {
+            let primitive_range = create_primitive(
+                &convert_coordinates(node.mins),
+                &convert_coordinates(node.maxs),
+                &mut indices,
+                &mut vertices,
+            );
+            primitives.push(primitive_range);
+        }
     }
 
     let mut buffer_writer = BufferWriter::new();
