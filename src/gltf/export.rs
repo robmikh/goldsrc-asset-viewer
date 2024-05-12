@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    add_and_get_index, buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes, SkinIndex}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
+    buffer::{BufferTypeEx, BufferViewAndAccessorPair, BufferViewTarget, BufferWriter, MinMax}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, GltfAnimation, GltfChannelAnimation, GltfTargetPath, Mesh, Model, Vertex, VertexAttributesSource
 };
 
 struct SkinnedVertex {
@@ -569,21 +569,20 @@ pub fn export<P: AsRef<Path>>(
     let accessors = gltf_accessors.join(",\n");
 
     // Build skin
-    let mut joints = Vec::with_capacity(file.bones.len());
-    for i in 0..file.bones.len() {
-        let node = *bone_to_node.get(&i).unwrap();
-        joints.push(format!("               {}", node.0));
-    }
-    let joints = joints.join(",\n");
-    let skin = format!(
-        r#"          {{
-                "inverseBindMatrices" : {},
-                "joints" : [
-{}
-                ]
-            }}"#,
-        inverse_bind_matrices_pair.accessor.0, joints
-    );
+    let mut skins = Skins::new();
+    let skin = {
+        let mut joints = Vec::with_capacity(file.bones.len());
+        for i in 0..file.bones.len() {
+            let node = *bone_to_node.get(&i).unwrap();
+            joints.push(node);
+        }
+        Skin {
+            inverse_bind_matrices: inverse_bind_matrices_pair.accessor,
+            joints,
+        }
+    };
+    let skin_index = skins.add_skin(skin);
+    let skins = skins.write_skins().join(",\n");
 
     let gltf_text = format!(
         r#"{{
@@ -651,8 +650,8 @@ pub fn export<P: AsRef<Path>>(
         }}
     "#,
         scene_root.0,
-        nodes.write_nodes().join("\n, "),
-        skin,
+        nodes.write_nodes().join(",\n"),
+        skins,
         primitives,
         materials,
         textures,

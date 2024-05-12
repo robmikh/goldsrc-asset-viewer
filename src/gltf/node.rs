@@ -1,11 +1,9 @@
 use glam::{Vec3, Vec4};
 
-use super::add_and_get_index;
+use super::{add_and_get_index, skin::SkinIndex};
 
 #[derive(Copy, Clone, Debug)]
 pub struct MeshIndex(pub usize);
-#[derive(Copy, Clone, Debug)]
-pub struct SkinIndex(pub usize);
 #[derive(Copy, Clone, Debug)]
 pub struct NodeIndex(pub usize);
 
