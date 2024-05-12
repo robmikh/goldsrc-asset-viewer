@@ -3,6 +3,29 @@
 
 use serde::Deserialize;
 
+macro_rules! enum_with_value {
+    ($name:ident : $value_ty:ty { $($var_name:ident = $var_value:literal),* $(,)* }) => {
+        #[repr($value_ty)]
+        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        pub enum $name {
+            $(
+                $var_name = $var_value,
+            )*
+        }
+
+        impl FromValue<$value_ty> for $name {
+            fn from_value(value: $value_ty) -> Option<Self> {
+                match value {
+                    $(
+                        $var_value => Some($name::$var_name),
+                    )*
+                    _ => None
+                }
+            }
+        }
+    };
+}
+
 const LUMP_ENTITIES: usize = 0;
 const LUMP_PLANES: usize = 1;
 const LUMP_TEXTURES: usize = 2;
@@ -47,7 +70,7 @@ struct BspFace {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Deserialize, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct BspNode {
     pub plane: u32,
     pub children: [i16; 2],
@@ -55,6 +78,36 @@ pub struct BspNode {
     pub maxs: [i16; 3],
     pub first_face: u16,
     pub faces: u16,
+}
+
+enum_with_value!(BspContents : i32 {
+    Empty = -1,
+    Solid = -2,
+    Water = -3,
+    Slime = -4,
+    Lava = -5,
+    Sky = -6,
+    Origin = -7,
+    Clip = -8,
+    Current0 = -9,
+    Current90 = -10,
+    Current180 = -11,
+    Current270 = -12,
+    CurrentUp = -13,
+    CurrentDown = -14,
+    Translucent = -15,
+});
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspLeaf {
+    pub contents: i32,
+    pub vis_offset: i32,
+    pub mins: [i16; 3],
+    pub maxs: [i16; 3],
+    pub first_mark_surface: u16,
+    pub mark_surfaces: u16,
+    pub ambient_levels: [u8; 4],
 }
 
 // TODO: Borrow data
@@ -71,15 +124,33 @@ impl BspReader {
     }
 
     pub fn read_nodes(&self) -> &[BspNode] {
-        let lump_header = self.header.lumps[LUMP_NODES];
+        self.read_lump(LUMP_NODES)
+    }
+
+    pub fn read_leaves(&self) -> &[BspLeaf] {
+        self.read_lump(LUMP_LEAVES)
+    }
+
+    fn read_lump<T: Sized>(&self, index: usize) -> &[T] {
+        let lump_header = self.header.lumps[index];
         let start = lump_header.offset as usize;
         let end = start + lump_header.len as usize;
         let lump_data = &self.data[start..end];
 
-        let len = lump_header.len as usize / std::mem::size_of::<BspNode>();
+        let len = lump_header.len as usize / std::mem::size_of::<T>();
         unsafe {
-            let ptr = lump_data.as_ptr() as *const BspNode;
+            let ptr = lump_data.as_ptr() as *const T;
             std::slice::from_raw_parts(ptr, len)
         }
+    }
+}
+
+trait FromValue<T: Sized + Copy>: Sized {
+    fn from_value(value: T) -> Option<Self>;
+}
+
+impl BspLeaf {
+    pub fn contents(&self) -> BspContents {
+        BspContents::from_value(self.contents).unwrap()
     }
 }

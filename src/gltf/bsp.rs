@@ -84,21 +84,61 @@ pub fn export<P: AsRef<Path>>(
             writeln!(log, "    first_face: {}", node.first_face).unwrap();
             writeln!(log, "    faces: {}", node.faces).unwrap();
         }
+
+        writeln!(log, "Leaves:").unwrap();
+        for (i, leaf) in reader.read_leaves().iter().enumerate() {
+            writeln!(log, "  Leaf {}", i).unwrap();
+            writeln!(log, "    contents: {:?}", leaf.contents).unwrap();
+            writeln!(log, "    vis_offset: {}", leaf.vis_offset).unwrap();
+            writeln!(
+                log,
+                "    mins: [ {}, {}, {} ]",
+                leaf.mins[0], leaf.mins[1], leaf.mins[2]
+            )
+            .unwrap();
+            writeln!(
+                log,
+                "    maxs: [ {}, {}, {} ]",
+                leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]
+            )
+            .unwrap();
+            writeln!(log, "    first_mark_surface: {}", leaf.first_mark_surface).unwrap();
+            writeln!(log, "    mark_surfaces: {}", leaf.mark_surfaces).unwrap();
+            writeln!(
+                log,
+                "    ambient_levels: [ {}, {}, {}, {} ]",
+                leaf.ambient_levels[0],
+                leaf.ambient_levels[1],
+                leaf.ambient_levels[2],
+                leaf.ambient_levels[3]
+            )
+            .unwrap();
+        }
     }
 
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut primitives = Vec::new();
-    for node in reader.read_nodes().iter() {
-        if node.children[0] < 0 && node.children[1] < 0 {
-            let primitive_range = create_primitive(
-                &convert_coordinates(node.mins),
-                &convert_coordinates(node.maxs),
-                &mut indices,
-                &mut vertices,
-            );
-            primitives.push(primitive_range);
-        }
+    for leaf in reader.read_leaves().iter() {
+        //match leaf.contents() {
+        //    BspContents::Solid | BspContents::Water | BspContents::Slime => {
+        //        let primitive_range = create_primitive(
+        //            &convert_coordinates(leaf.mins),
+        //            &convert_coordinates(leaf.maxs),
+        //            &mut indices,
+        //            &mut vertices,
+        //        );
+        //        primitives.push(primitive_range);
+        //    }
+        //    _ => {}
+        //}
+        let primitive_range = create_primitive(
+            &convert_coordinates(leaf.mins),
+            &convert_coordinates(leaf.maxs),
+            &mut indices,
+            &mut vertices,
+        );
+        primitives.push(primitive_range);
     }
 
     let mut buffer_writer = BufferWriter::new();
