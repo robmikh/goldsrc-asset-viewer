@@ -10,6 +10,7 @@ mod mdl;
 mod transform;
 mod node;
 mod skin;
+mod animation;
 
 trait VertexAttributesSource {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)>;
@@ -64,4 +65,30 @@ fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     let index = vec.len();
     vec.push(value);
     index
+}
+
+trait AsStr {
+    fn as_str(&self) -> &'static str;
+}
+
+#[macro_export]
+macro_rules! enum_with_str {
+    ($name:ident { $($var_name:ident : $str_value:literal),* $(,)* }) => {
+        #[derive(Copy, Clone, Debug)]
+        pub enum $name {
+            $(
+                $var_name,
+            )*
+        }
+
+        impl crate::gltf::AsStr for $name {
+            fn as_str(&self) -> &'static str {
+                match self {
+                    $(
+                        $name::$var_name => $str_value,
+                    )*
+                }
+            }
+        }
+    };
 }

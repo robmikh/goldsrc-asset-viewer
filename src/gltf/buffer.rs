@@ -1,6 +1,8 @@
 use glam::{Mat4, Vec3, Vec4};
 
-use super::add_and_get_index;
+use crate::enum_with_str;
+
+use super::{add_and_get_index, AsStr};
 
 pub trait BufferType: Sized {
     const COMPONENT_TY: AccessorComponentType;
@@ -267,31 +269,6 @@ pub enum AccessorComponentType {
     UnsignedShort = 5123,
     UnsignedInt = 5125,
     Float = 5126,
-}
-
-trait AsStr {
-    fn as_str(&self) -> &'static str;
-}
-
-macro_rules! enum_with_str {
-    ($name:ident { $($var_name:ident : $str_value:literal),* $(,)* }) => {
-        #[derive(Copy, Clone, Debug)]
-        pub enum $name {
-            $(
-                $var_name,
-            )*
-        }
-
-        impl AsStr for $name {
-            fn as_str(&self) -> &'static str {
-                match self {
-                    $(
-                        $name::$var_name => $str_value,
-                    )*
-                }
-            }
-        }
-    };
 }
 
 enum_with_str!(AccessorDataType {
