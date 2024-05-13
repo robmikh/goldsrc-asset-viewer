@@ -1,9 +1,15 @@
 use std::{
-    collections::HashMap, fmt::Write, ops::Range, path::{Path, PathBuf}
+    collections::HashMap,
+    fmt::Write,
+    ops::Range,
+    path::{Path, PathBuf},
 };
 
 use glam::{Vec3, Vec4};
-use gsparser::{bsp::{BspEdge, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex}, wad3::{MipmapedTextureData, WadArchive}};
+use gsparser::{
+    bsp::{BspEdge, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
+    wad3::{MipmapedTextureData, WadArchive},
+};
 
 use super::{
     add_and_get_index,
@@ -37,8 +43,8 @@ impl Vertex for DebugVertex {
 
         let vertex_positions_pair = writer
             .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_uvs_pair = writer
-        .create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_uvs_pair =
+            writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
 
         Box::new(DebugVertexAttributes {
             positions: vertex_positions_pair,
@@ -57,7 +63,7 @@ impl VertexAttributesSource for DebugVertexAttributes {
         vec![
             ("POSITION", self.positions.accessor.0),
             ("TEXCOORD_0", self.uvs.accessor.0),
-            ]
+        ]
     }
 }
 
@@ -68,7 +74,7 @@ struct SharedVertex {
 }
 
 pub fn export<P: AsRef<Path>>(
-    resource_wad: &WadArchive, 
+    resource_wad: &WadArchive,
     reader: &BspReader,
     export_file_path: P,
     mut log: Option<&mut String>,
@@ -186,7 +192,14 @@ pub fn export<P: AsRef<Path>>(
         for i in 0..texture_reader.len() {
             let reader = texture_reader.get(i).unwrap();
             let name = reader.get_image_name();
-            writeln!(log, "  {} - {} - {}", i, name, reader.has_local_image_data()).unwrap();
+            writeln!(
+                log,
+                "  {} - {} - {}",
+                i,
+                name,
+                reader.has_local_image_data()
+            )
+            .unwrap();
         }
     }
 
@@ -199,7 +212,11 @@ pub fn export<P: AsRef<Path>>(
         } else {
             let name = reader.get_image_name();
             let search_name = name.to_uppercase();
-            let texture_data = if let Some(file) = resource_wad.files.iter().find(|x| x.name.as_str() == search_name.as_str()) {
+            let texture_data = if let Some(file) = resource_wad
+                .files
+                .iter()
+                .find(|x| x.name.as_str() == search_name.as_str())
+            {
                 println!("Found \"{}\"!", name);
                 let texture_data = resource_wad.decode_mipmaped_image(file);
                 Some(texture_data)
@@ -225,7 +242,7 @@ pub fn export<P: AsRef<Path>>(
     //    let t = Vec3::from_array(convert_coordinates(texture_info.t));
     //
     //    let uv = [ pos_vec.dot(s) + texture_info.s_shift, pos_vec.dot(t) + texture_info.t_shift ];
-    //    
+    //
     //    vertices.push(DebugVertex {
     //        pos,
     //        uv,
@@ -244,7 +261,8 @@ pub fn export<P: AsRef<Path>>(
         edge.vertices[edge_vertex_index] as u32
     };
     for leaf in reader.read_leaves().iter() {
-        let mark_surfaces_range = leaf.first_mark_surface..leaf.first_mark_surface+leaf.mark_surfaces;   
+        let mark_surfaces_range =
+            leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
         for mark_surface_index in mark_surfaces_range {
             let mark_surface = &mark_surfaces[mark_surface_index as usize];
             let face = &faces[mark_surface.0 as usize];
@@ -253,11 +271,12 @@ pub fn export<P: AsRef<Path>>(
                 continue;
             }
 
-            let surface_edges_range = face.first_edge as usize..face.first_edge as usize + face.edges as usize;
+            let surface_edges_range =
+                face.first_edge as usize..face.first_edge as usize + face.edges as usize;
             let surface_edges = &surface_edges[surface_edges_range];
 
             let first_vertex = read_vertex_index(&surface_edges[0], edges);
-            
+
             let mut triangle_list = Vec::new();
             let to_shared_vertex = |index: u32, face: &BspFace| -> SharedVertex {
                 SharedVertex {
@@ -266,8 +285,14 @@ pub fn export<P: AsRef<Path>>(
                 }
             };
             for i in 0..surface_edges.len() - 2 {
-                triangle_list.push(to_shared_vertex(read_vertex_index(&surface_edges[i + 2], edges), face));
-                triangle_list.push(to_shared_vertex(read_vertex_index(&surface_edges[i + 1], edges), face));
+                triangle_list.push(to_shared_vertex(
+                    read_vertex_index(&surface_edges[i + 2], edges),
+                    face,
+                ));
+                triangle_list.push(to_shared_vertex(
+                    read_vertex_index(&surface_edges[i + 1], edges),
+                    face,
+                ));
                 triangle_list.push(to_shared_vertex(first_vertex, face));
             }
             let start = indices.len();
@@ -283,7 +308,10 @@ pub fn export<P: AsRef<Path>>(
             );
             let end = indices.len();
 
-            primitives.push((start..end, texture_infos[face.texture_info as usize].texture_index as usize));
+            primitives.push((
+                start..end,
+                texture_infos[face.texture_info as usize].texture_index as usize,
+            ));
         }
     }
 
@@ -374,11 +402,11 @@ pub fn export<P: AsRef<Path>>(
     };
     for (name, texture) in textures {
         //if let Some(texture) = texture {
-            texture_path.set_file_name(format!("{}.png", name));
-            texture
-                .image
-                .save_with_format(&texture_path, image::ImageFormat::Png)
-                .unwrap();
+        texture_path.set_file_name(format!("{}.png", name));
+        texture
+            .image
+            .save_with_format(&texture_path, image::ImageFormat::Png)
+            .unwrap();
         //}
     }
 
@@ -520,7 +548,6 @@ fn append_triangle(vertex_0: u32, vertex_1: u32, vertex_2: u32, indices: &mut Ve
     indices.append(&mut new_indices);
 }
 
-
 fn process_indexed_triangles(
     triangle_list: &[SharedVertex],
     face: &BspFace,
@@ -547,20 +574,20 @@ fn process_indexed_triangles(
             let pos_vec = Vec3::from_array(pos);
             let s = Vec3::from_array(convert_coordinates(texture_info.s));
             let t = Vec3::from_array(convert_coordinates(texture_info.t));
-            let uv = [ pos_vec.dot(s) + texture_info.s_shift, pos_vec.dot(t) + texture_info.t_shift ];
+            let uv = [
+                pos_vec.dot(s) + texture_info.s_shift,
+                pos_vec.dot(t) + texture_info.t_shift,
+            ];
 
             let uv = [
                 uv[0] / texture.image_width as f32,
                 uv[1] / texture.image_height as f32,
             ];
 
-            println!("{:?}", uv);
+            //println!("{:?}", uv);
 
             let index = vertices.len();
-            vertices.push(DebugVertex {
-                pos,
-                uv,
-            });
+            vertices.push(DebugVertex { pos, uv });
             vertex_map.insert(*trivert, index);
             index
         };

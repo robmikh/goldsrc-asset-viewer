@@ -81,11 +81,15 @@ fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
 fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
-    let valve_path = path.ancestors().skip(1).find(|x| {
-        assert!(x.is_dir(), "{:?}", x);
-        let file_stem = x.file_stem().unwrap().to_str().unwrap();
-        file_stem == "valve"
-    }).unwrap();
+    let valve_path = path
+        .ancestors()
+        .skip(1)
+        .find(|x| {
+            assert!(x.is_dir(), "{:?}", x);
+            let file_stem = x.file_stem().unwrap().to_str().unwrap();
+            file_stem == "valve"
+        })
+        .unwrap();
     let halflife_wad_path = {
         let mut path = valve_path.to_owned();
         path.push("halflife.wad");
