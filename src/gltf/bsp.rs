@@ -217,7 +217,7 @@ pub fn export<P: AsRef<Path>>(
                 .iter()
                 .find(|x| x.name.as_str() == search_name.as_str())
             {
-                println!("Found \"{}\"!", name);
+                //println!("Found \"{}\"!", name);
                 let texture_data = resource_wad.decode_mipmaped_image(file);
                 Some(texture_data)
             } else {
