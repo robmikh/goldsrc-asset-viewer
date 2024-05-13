@@ -5,7 +5,7 @@ use std::{
 };
 
 use glam::Vec4;
-use gsparser::bsp::{BspEdge, BspReader, BspSurfaceEdge};
+use gsparser::{bsp::{BspEdge, BspReader, BspSurfaceEdge}, wad3::WadArchive};
 
 use super::{
     add_and_get_index,
@@ -54,6 +54,7 @@ impl VertexAttributesSource for DebugVertexAttributes {
 }
 
 pub fn export<P: AsRef<Path>>(
+    resource_wad: &WadArchive, 
     reader: &BspReader,
     export_file_path: P,
     mut log: Option<&mut String>,
@@ -165,6 +166,34 @@ pub fn export<P: AsRef<Path>>(
             )
             .unwrap();
         }
+
+        writeln!(log, "Textures:").unwrap();
+        let texture_reader = reader.read_textures();
+        for i in 0..texture_reader.len() {
+            let reader = texture_reader.get(i).unwrap();
+            let name = reader.get_image_name();
+            writeln!(log, "  {} - {} - {}", i, name, reader.has_local_image_data()).unwrap();
+        }
+    }
+
+    let texture_reader = reader.read_textures();
+    let mut textures = Vec::new();
+    for i in 0..texture_reader.len() {
+        let reader = texture_reader.get(i).unwrap();
+        if reader.has_local_image_data() {
+            unimplemented!("bsp local image data not implemented");
+        } else {
+            let name = reader.get_image_name();
+            let texture_data = if let Some(file) = resource_wad.files.iter().find(|x| x.name.as_str() == name) {
+                println!("Found \"{}\"!", name);
+                let texture_data = resource_wad.decode_mipmaped_image(file);
+                Some(texture_data)
+            } else {
+                println!("Couldn't find \"{}\"", name);
+                None
+            };
+            textures.push((name.to_owned(), texture_data));
+        }
     }
 
     let mut indices = Vec::new();
@@ -192,6 +221,11 @@ pub fn export<P: AsRef<Path>>(
         for mark_surface_index in mark_surfaces_range {
             let mark_surface = &mark_surfaces[mark_surface_index as usize];
             let face = &faces[mark_surface.0 as usize];
+
+            if face.texture_info == 0 {
+                continue;
+            }
+
             let surface_edges_range = face.first_edge as usize..face.first_edge as usize + face.edges as usize;
             let surface_edges = &surface_edges[surface_edges_range];
 
@@ -264,6 +298,24 @@ pub fn export<P: AsRef<Path>>(
 
     std::fs::write(path, gltf_text)?;
     std::fs::write(data_path, buffer_writer.to_inner())?;
+
+    // Write textures
+    let mut texture_path = if let Some(parent_path) = path.parent() {
+        let mut data_path = parent_path.to_owned();
+        data_path.push("something");
+        data_path
+    } else {
+        PathBuf::from("something")
+    };
+    for (name, texture) in textures {
+        if let Some(texture) = texture {
+            texture_path.set_file_name(format!("{}.png", name));
+            texture
+                .image
+                .save_with_format(&texture_path, image::ImageFormat::Png)
+                .unwrap();
+        }
+    }
 
     Ok(())
 }

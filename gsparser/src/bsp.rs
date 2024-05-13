@@ -3,6 +3,8 @@
 
 use serde::Deserialize;
 
+use crate::mdl::null_terminated_bytes_to_str;
+
 macro_rules! enum_with_value {
     ($name:ident : $value_ty:ty { $($var_name:ident = $var_value:literal),* $(,)* }) => {
         #[repr($value_ty)]
@@ -132,6 +134,21 @@ pub struct BspVertex {
     pub z: f32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Deserialize, Debug)]
+pub struct BspTextureHeader {
+    pub num_textures: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspMipTextureHeader {
+    pub name: [u8; 16],
+    pub width: u32,
+    pub height: u32,
+    pub offsets: [u32; 4],
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -173,13 +190,32 @@ impl BspReader {
         self.read_lump(LUMP_VERTICES)
     }
 
-    fn read_lump<T: Sized>(&self, index: usize) -> &[T] {
+    pub fn read_textures<'a>(&'a self) -> BspTextureReader<'a> {
+        let raw_data = self.read_lump_raw(LUMP_TEXTURES);
+
+        let header: BspTextureHeader = bincode::deserialize(&raw_data).unwrap();
+        let offsets_start = std::mem::size_of::<BspTextureHeader>();
+        let offsets_end = offsets_start + (std::mem::size_of::<i32>() * header.num_textures as usize);
+        let offsets_data = &raw_data[offsets_start..offsets_end];
+        let offsets = unsafe {
+            let ptr = offsets_data.as_ptr() as *const i32;
+            std::slice::from_raw_parts(ptr, header.num_textures as usize)
+        };
+
+        BspTextureReader::new(offsets, raw_data)
+    }
+
+    fn read_lump_raw(&self, index: usize) -> &[u8] {
         let lump_header = self.header.lumps[index];
         let start = lump_header.offset as usize;
         let end = start + lump_header.len as usize;
         let lump_data = &self.data[start..end];
+        lump_data
+    }
 
-        let len = lump_header.len as usize / std::mem::size_of::<T>();
+    fn read_lump<T: Sized>(&self, index: usize) -> &[T] {
+        let lump_data = &self.read_lump_raw(index);
+        let len = lump_data.len() / std::mem::size_of::<T>();
         unsafe {
             let ptr = lump_data.as_ptr() as *const T;
             std::slice::from_raw_parts(ptr, len)
@@ -200,5 +236,135 @@ impl BspLeaf {
 impl BspVertex {
     pub fn to_array(&self) -> [f32; 3] {
         [self.x, self.y, self.z]
+    }
+}
+
+pub struct BspTextureReader<'a> {
+    offsets: &'a [i32],
+    lump_data: &'a [u8],
+}
+
+impl<'a> BspTextureReader<'a> {
+    fn new(offsets: &'a [i32],
+    lump_data: &'a [u8],) -> Self {
+        Self { offsets, lump_data }
+    }
+
+    pub fn len(&self) -> usize {
+        self.offsets.len()
+    }
+
+    pub fn get(&self, index: usize) -> Option<BspMipTextureReader<'a>> {
+        let data = self.get_raw_data(index)?;
+        let header_ptr = data.as_ptr() as *const BspMipTextureHeader;
+        let header = unsafe {
+            header_ptr.as_ref()
+        }?;
+        Some(BspMipTextureReader::new(header, data))
+    }
+
+    fn get_raw_data(&self, index: usize) -> Option<&'a [u8]> {
+        let offset = *self.offsets.get(index)? as usize;
+        let end = *self.offsets.get(index + 1).unwrap_or(&(self.lump_data.len() as i32)) as usize;
+        let data = &self.lump_data[offset..end];
+        Some(data)
+    }
+}
+
+pub struct BspMipTextureReader<'a> {
+    header: &'a BspMipTextureHeader,
+    data: &'a [u8],
+}
+
+impl<'a> BspMipTextureReader<'a> {
+    const MIP_LEVELS: [usize; 4] = [1, 2, 4, 8];
+
+    fn new(
+        header: &'a BspMipTextureHeader,
+        data: &'a [u8],) -> Self {
+            Self { header, data}
+        }
+
+    pub fn header(&self) -> &BspMipTextureHeader {
+        self.header
+    }
+
+    pub fn get_image_name(&self) -> &'a str {
+        null_terminated_bytes_to_str(&self.header.name)
+    }
+
+    pub fn has_local_image_data(&self) -> bool {
+        let offset = self.header.offsets[0];
+        offset != 0
+    }
+
+    pub fn get_image(&self, index: usize) -> Option<BspBitmap<'a>> {
+        let offset = *self.header.offsets.get(index)? as usize;
+        if offset == 0 {
+            return None;
+        }
+        let mip_level = Self::MIP_LEVELS.get(index)?;
+        let width = self.header.width as usize / mip_level;
+        let height = self.header.height as usize / mip_level;
+        let len = width * height;
+        Some(BspBitmap::new(width, height, &self.data[offset..offset+len]))
+    }
+
+    pub fn read_palette(&self) -> BspPaletteReader<'a> {
+        let last_image_offset = self.header.offsets[3] as usize;
+        let mip_level = Self::MIP_LEVELS[3];
+        let width = self.header.width as usize / mip_level;
+        let height = self.header.height as usize / mip_level;
+        let image_len = width * height;
+
+        let palette_offset = last_image_offset + image_len + 2;
+        let palette_len = 256 * 3;
+
+        BspPaletteReader::new(&self.data[palette_offset..palette_offset+palette_len])
+    }
+}
+
+pub struct BspPaletteReader<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> BspPaletteReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data }
+    }
+
+    pub fn get(&self, index: usize) -> BspPixel {
+        let offset = index * 3;
+        let data = &self.data[offset..offset+3];
+        BspPixel {
+            r: data[0],
+            g: data[1],
+            b: data[2],
+        }
+    }
+}
+
+pub struct BspPixel {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+pub struct BspBitmap<'a> {
+    width: usize,
+    height: usize,
+    data: &'a [u8],
+}
+
+impl<'a> BspBitmap<'a> {
+    fn new(
+        width: usize,
+        height: usize,
+        data: &'a [u8],) -> Self {
+            Self { width, height, data }
+        }
+
+    pub fn decode(&self, palette_reader: &BspPaletteReader<'a>) -> Vec<BspPixel> {
+        todo!()
     }
 }
