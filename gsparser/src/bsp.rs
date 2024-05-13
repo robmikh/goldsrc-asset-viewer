@@ -1,6 +1,8 @@
 // Sources:
 // https://developer.valvesoftware.com/wiki/BSP_(GoldSrc)
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 use crate::mdl::null_terminated_bytes_to_str;
@@ -417,5 +419,29 @@ impl<'a> BspBitmap<'a> {
 
     pub fn decode(&self, palette_reader: &BspPaletteReader<'a>) -> Vec<BspPixel> {
         todo!()
+    }
+}
+
+pub struct BspEntity<'a>(pub HashMap<&'a str, &'a str>);
+
+impl<'a> BspEntity<'a> {
+    pub fn parse_entities(source: &'a str) -> Vec<BspEntity<'a>> {
+        let mut entities = Vec::new();
+        let mut current_entity = None;
+        for line in source.lines() {
+            if line == "{" {
+                current_entity = Some(BspEntity(HashMap::new()));
+            } else if line == "}" {
+                let entity = current_entity.take().unwrap();
+                entities.push(entity);
+            } else {
+                let entity = current_entity.as_mut().unwrap();
+                let mut split = line.split("\" \"");
+                let key = split.next().unwrap().trim_matches('\"');
+                let value = split.next().unwrap().trim_matches('\"');
+                entity.0.insert(&key, value);
+            }
+        }
+        entities
     }
 }

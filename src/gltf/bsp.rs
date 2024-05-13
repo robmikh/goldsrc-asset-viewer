@@ -7,7 +7,7 @@ use std::{
 
 use glam::{Vec3, Vec4};
 use gsparser::{
-    bsp::{BspEdge, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
+    bsp::{BspEdge, BspEntity, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
     wad3::{MipmapedTextureData, WadArchive},
 };
 
@@ -211,9 +211,19 @@ pub fn export<P: AsRef<Path>>(
         }
 
         let entities = reader.read_entities();
+        let entities = BspEntity::parse_entities(entities);
         writeln!(log, "Entities:").unwrap();
-        writeln!(log, "{}", entities).unwrap();
-        writeln!(log, "").unwrap();
+        for (i, entity) in entities.iter().enumerate() {
+            writeln!(log, "  Entity {}", i).unwrap();
+            for (key, value) in &entity.0 {
+                writeln!(
+                    log,
+                    "    {}: {}",
+                    key, value
+                )
+                .unwrap();
+            }
+        }
 
         writeln!(log, "Models:").unwrap();
         let models = reader.read_models();
