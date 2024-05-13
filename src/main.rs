@@ -81,22 +81,16 @@ fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
 fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
-    let valve_path = path
+    let game_root_path = path
         .ancestors()
         .skip(1)
         .find(|x| {
             assert!(x.is_dir(), "{:?}", x);
             let file_stem = x.file_stem().unwrap().to_str().unwrap();
-            file_stem == "valve"
+            file_stem == "Half-Life"
         })
         .unwrap();
-    let halflife_wad_path = {
-        let mut path = valve_path.to_owned();
-        path.push("halflife.wad");
-        path
-    };
-    let archive = WadArchive::open(halflife_wad_path);
-    gltf::bsp::export(&archive, &file.reader, export_file_path, log.as_mut()).unwrap();
+    gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }

@@ -8,7 +8,7 @@ use std::{
 use glam::{Vec3, Vec4};
 use gsparser::{
     bsp::{BspEdge, BspEntity, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
-    wad3::{MipmapedTextureData, WadArchive},
+    wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
 
 use super::{
@@ -22,6 +22,8 @@ use super::{
     skin::Skins,
     Mesh, Model, Vertex, VertexAttributesSource,
 };
+
+const QUIVER_PREFIX: &'static str = "\\quiver\\";
 
 struct ModelVertex {
     pos: [f32; 3],
@@ -81,8 +83,8 @@ struct SharedVertex {
     texture: usize,
 }
 
-pub fn export<P: AsRef<Path>>(
-    resource_wad: &WadArchive,
+pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
+    game_root: T,
     reader: &BspReader,
     export_file_path: P,
     mut log: Option<&mut String>,
@@ -216,12 +218,7 @@ pub fn export<P: AsRef<Path>>(
         for (i, entity) in entities.iter().enumerate() {
             writeln!(log, "  Entity {}", i).unwrap();
             for (key, value) in &entity.0 {
-                writeln!(
-                    log,
-                    "    {}: {}",
-                    key, value
-                )
-                .unwrap();
+                writeln!(log, "    {}: {}", key, value).unwrap();
             }
         }
 
@@ -259,6 +256,23 @@ pub fn export<P: AsRef<Path>>(
         }
     }
 
+    let game_root = game_root.as_ref();
+
+    let entities = BspEntity::parse_entities(reader.read_entities());
+    let mut wad_resources = WadCollection::new();
+    for entity in &entities {
+        if let Some(value) = entity.0.get("wad") {
+            for wad_path in value.split(';') {
+                assert!(wad_path.starts_with(QUIVER_PREFIX));
+                let wad_path = &wad_path[QUIVER_PREFIX.len()..];
+                let mut path = game_root.to_owned();
+                path.push(wad_path);
+                let archive = WadArchive::open(path);
+                wad_resources.add(archive);
+            }
+        }
+    }
+
     let texture_reader = reader.read_textures();
     let mut textures = Vec::with_capacity(texture_reader.len());
     for i in 0..texture_reader.len() {
@@ -268,18 +282,15 @@ pub fn export<P: AsRef<Path>>(
         } else {
             let name = reader.get_image_name();
             let search_name = name.to_uppercase();
-            let texture_data = if let Some(file) = resource_wad
-                .files
-                .iter()
-                .find(|x| x.name.as_str() == search_name.as_str())
-            {
-                //println!("Found \"{}\"!", name);
-                let texture_data = resource_wad.decode_mipmaped_image(file);
-                Some(texture_data)
-            } else {
-                println!("Couldn't find \"{}\"", name);
-                None
-            };
+            let texture_data =
+                if let Some((archive, file)) = wad_resources.find(search_name.as_str()) {
+                    //println!("Found \"{}\"!", name);
+                    let texture_data = archive.decode_mipmaped_image(file);
+                    Some(texture_data)
+                } else {
+                    println!("Couldn't find \"{}\"", name);
+                    None
+                };
             textures.push((name.to_owned(), texture_data.unwrap()));
         }
     }
@@ -521,5 +532,28 @@ fn process_indexed_triangles(
 
     for trivert in triangle_list {
         process_trivert(trivert);
+    }
+}
+
+struct WadCollection {
+    wads: Vec<WadArchive>,
+}
+
+impl WadCollection {
+    fn new() -> Self {
+        Self { wads: Vec::new() }
+    }
+
+    fn add(&mut self, archive: WadArchive) {
+        self.wads.push(archive);
+    }
+
+    fn find(&self, key: &str) -> Option<(&WadArchive, &WadFileInfo)> {
+        for wad in &self.wads {
+            if let Some(file) = wad.files.iter().find(|x| x.name.as_str() == key) {
+                return Some((wad, file));
+            }
+        }
+        None
     }
 }
