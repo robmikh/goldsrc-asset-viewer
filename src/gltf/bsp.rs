@@ -515,6 +515,8 @@ fn process_indexed_triangles(
                 pos_vec.dot(t) + texture_info.t_shift,
             ];
 
+            let normal = convert_coordinates(normal);
+
             let uv = [
                 uv[0] / texture.image_width as f32,
                 uv[1] / texture.image_height as f32,
