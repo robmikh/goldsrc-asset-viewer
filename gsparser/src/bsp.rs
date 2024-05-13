@@ -168,6 +168,18 @@ pub struct BspPlane {
     pub ty: i32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspModel {
+    pub mins: [f32; 3],
+    pub maxs: [f32; 3],
+    pub origin: [f32; 3],
+    pub head_nodes: [i32; 4],
+    pub vis_leaves: i32,
+    pub first_face: i32,
+    pub faces: i32,
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -231,6 +243,14 @@ impl BspReader {
 
     pub fn read_planes(&self) -> &[BspPlane] {
         self.read_lump(LUMP_PLANES)
+    }
+
+    pub fn read_entities(&self) -> &str {
+        null_terminated_bytes_to_str(self.read_lump(LUMP_ENTITIES))
+    }
+
+    pub fn read_models(&self) -> &[BspModel] {
+        self.read_lump(LUMP_MODELS)
     }
 
     fn read_lump_raw(&self, index: usize) -> &[u8] {

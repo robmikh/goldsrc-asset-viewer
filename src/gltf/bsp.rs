@@ -209,6 +209,44 @@ pub fn export<P: AsRef<Path>>(
             )
             .unwrap();
         }
+
+        let entities = reader.read_entities();
+        writeln!(log, "Entities:").unwrap();
+        writeln!(log, "{}", entities).unwrap();
+        writeln!(log, "").unwrap();
+
+        writeln!(log, "Models:").unwrap();
+        let models = reader.read_models();
+        for (i, model) in models.iter().enumerate() {
+            writeln!(log, "  Model {}", i).unwrap();
+            writeln!(
+                log,
+                "    mins: [ {}, {}, {} ]",
+                model.mins[0], model.mins[1], model.mins[2]
+            )
+            .unwrap();
+            writeln!(
+                log,
+                "    maxs: [ {}, {}, {} ]",
+                model.maxs[0], model.maxs[1], model.maxs[2]
+            )
+            .unwrap();
+            writeln!(
+                log,
+                "    origin: [ {}, {}, {} ]",
+                model.origin[0], model.origin[1], model.origin[2]
+            )
+            .unwrap();
+            writeln!(
+                log,
+                "    head_nodes: [ {}, {}, {}, {} ]",
+                model.head_nodes[0], model.head_nodes[1], model.head_nodes[2], model.head_nodes[3]
+            )
+            .unwrap();
+            writeln!(log, "    vis_leaves: {}", model.vis_leaves).unwrap();
+            writeln!(log, "    first_face: {}", model.first_face).unwrap();
+            writeln!(log, "    faces: {}", model.faces).unwrap();
+        }
     }
 
     let texture_reader = reader.read_textures();
