@@ -160,6 +160,14 @@ pub struct BspTextureInfo {
     pub flags: u32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspPlane {
+    pub normal: [f32; 3],
+    pub dist: f32,
+    pub ty: i32,
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -219,6 +227,10 @@ impl BspReader {
 
     pub fn read_texture_infos(&self) -> &[BspTextureInfo] {
         self.read_lump(LUMP_TEXINFO)
+    }
+
+    pub fn read_planes(&self) -> &[BspPlane] {
+        self.read_lump(LUMP_PLANES)
     }
 
     fn read_lump_raw(&self, index: usize) -> &[u8] {

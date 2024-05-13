@@ -23,31 +23,37 @@ use super::{
     Mesh, Model, Vertex, VertexAttributesSource,
 };
 
-struct DebugVertex {
+struct ModelVertex {
     pos: [f32; 3],
+    normal: [f32; 3],
     uv: [f32; 2],
 }
 
-impl Vertex for DebugVertex {
+impl Vertex for ModelVertex {
     fn write_slices(
         writer: &mut super::buffer::BufferWriter,
         vertices: &[Self],
     ) -> Box<dyn super::VertexAttributesSource> {
         // Split out the vertex data
         let mut positions = Vec::with_capacity(vertices.len());
+        let mut normals = Vec::with_capacity(vertices.len());
         let mut uvs = Vec::with_capacity(vertices.len());
         for vertex in vertices {
             positions.push(vertex.pos);
+            normals.push(vertex.normal);
             uvs.push(vertex.uv);
         }
 
         let vertex_positions_pair = writer
             .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_normals_pair =
+            writer.create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
         let vertex_uvs_pair =
             writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
 
         Box::new(DebugVertexAttributes {
             positions: vertex_positions_pair,
+            normals: vertex_normals_pair,
             uvs: vertex_uvs_pair,
         })
     }
@@ -55,6 +61,7 @@ impl Vertex for DebugVertex {
 
 struct DebugVertexAttributes {
     positions: BufferViewAndAccessorPair,
+    normals: BufferViewAndAccessorPair,
     uvs: BufferViewAndAccessorPair,
 }
 
@@ -62,6 +69,7 @@ impl VertexAttributesSource for DebugVertexAttributes {
     fn attribute_pairs(&self) -> Vec<(&'static str, usize)> {
         vec![
             ("POSITION", self.positions.accessor.0),
+            ("NORMAL", self.normals.accessor.0),
             ("TEXCOORD_0", self.uvs.accessor.0),
         ]
     }
@@ -254,6 +262,7 @@ pub fn export<P: AsRef<Path>>(
     let faces = reader.read_faces();
     let edges = reader.read_edges();
     let surface_edges = reader.read_surface_edges();
+    let planes = reader.read_planes();
     let read_vertex_index = |edge_index: &BspSurfaceEdge, edges: &[BspEdge]| -> u32 {
         let edge_vertex_index: usize = if edge_index.0 > 0 { 0 } else { 1 };
         let edge_index = edge_index.0.abs() as usize;
@@ -274,6 +283,8 @@ pub fn export<P: AsRef<Path>>(
             let surface_edges_range =
                 face.first_edge as usize..face.first_edge as usize + face.edges as usize;
             let surface_edges = &surface_edges[surface_edges_range];
+
+            let plane = &planes[face.plane as usize];
 
             let first_vertex = read_vertex_index(&surface_edges[0], edges);
 
@@ -299,6 +310,7 @@ pub fn export<P: AsRef<Path>>(
             process_indexed_triangles(
                 &triangle_list,
                 face,
+                plane.normal,
                 bsp_vertices,
                 &textures,
                 texture_infos,
@@ -413,149 +425,15 @@ pub fn export<P: AsRef<Path>>(
     Ok(())
 }
 
-fn create_primitive(
-    mins: &[i16; 3],
-    maxs: &[i16; 3],
-    indices: &mut Vec<u32>,
-    vertices: &mut Vec<DebugVertex>,
-) -> Range<usize> {
-    let start = indices.len();
-    add_rect_prism(mins, maxs, indices, vertices);
-    let end = indices.len();
-    start..end
-}
-
-fn add_rect_prism(
-    mins: &[i16; 3],
-    maxs: &[i16; 3],
-    indices: &mut Vec<u32>,
-    vertices: &mut Vec<DebugVertex>,
-) {
-    let back_top_left = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [mins[0] as f32, maxs[1] as f32, mins[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let back_top_right = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [maxs[0] as f32, maxs[1] as f32, mins[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let back_bottom_left = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [mins[0] as f32, mins[1] as f32, mins[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let back_bottom_right = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [maxs[0] as f32, mins[1] as f32, mins[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let front_top_left = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [mins[0] as f32, maxs[1] as f32, maxs[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let front_top_right = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [maxs[0] as f32, maxs[1] as f32, maxs[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let front_bottom_left = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [mins[0] as f32, mins[1] as f32, maxs[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-    let front_bottom_right = add_and_get_index(
-        vertices,
-        DebugVertex {
-            pos: [maxs[0] as f32, mins[1] as f32, maxs[2] as f32],
-            uv: [0.0, 0.0],
-        },
-    ) as u32;
-
-    // Back
-    append_quad(
-        back_top_left,
-        back_top_right,
-        back_bottom_left,
-        back_bottom_right,
-        indices,
-    );
-    // Front
-    append_quad(
-        front_top_left,
-        front_bottom_left,
-        front_top_right,
-        front_bottom_right,
-        indices,
-    );
-    // Top
-    append_quad(
-        back_top_left,
-        front_top_left,
-        back_top_right,
-        front_top_right,
-        indices,
-    );
-    // Bottom
-    append_quad(
-        back_bottom_left,
-        back_bottom_right,
-        front_bottom_left,
-        front_bottom_right,
-        indices,
-    );
-    // Left
-    append_quad(
-        front_top_left,
-        back_top_left,
-        front_bottom_left,
-        back_bottom_left,
-        indices,
-    );
-    // Right
-    append_quad(
-        front_top_right,
-        front_bottom_right,
-        back_top_right,
-        back_bottom_right,
-        indices,
-    );
-}
-
-fn append_quad(vertex_0: u32, vertex_1: u32, vertex_2: u32, vertex_3: u32, indices: &mut Vec<u32>) {
-    append_triangle(vertex_0, vertex_1, vertex_2, indices);
-    append_triangle(vertex_3, vertex_2, vertex_1, indices);
-}
-
-fn append_triangle(vertex_0: u32, vertex_1: u32, vertex_2: u32, indices: &mut Vec<u32>) {
-    let mut new_indices = vec![vertex_0, vertex_1, vertex_2];
-    indices.append(&mut new_indices);
-}
-
 fn process_indexed_triangles(
     triangle_list: &[SharedVertex],
     face: &BspFace,
+    normal: [f32; 3],
     bsp_vertices: &[BspVertex],
     textures: &[(String, MipmapedTextureData)],
     texture_infos: &[BspTextureInfo],
     indices: &mut Vec<u32>,
-    vertices: &mut Vec<DebugVertex>,
+    vertices: &mut Vec<ModelVertex>,
     vertex_map: &mut HashMap<SharedVertex, usize>,
 ) {
     assert!(
@@ -565,7 +443,6 @@ fn process_indexed_triangles(
     );
     let texture_info = &texture_infos[face.texture_info as usize];
     let (_, texture) = &textures[texture_info.texture_index as usize];
-
     let mut process_trivert = |trivert| {
         let index = if let Some(index) = vertex_map.get(trivert) {
             *index
@@ -587,7 +464,7 @@ fn process_indexed_triangles(
             //println!("{:?}", uv);
 
             let index = vertices.len();
-            vertices.push(DebugVertex { pos, uv });
+            vertices.push(ModelVertex { pos, normal, uv });
             vertex_map.insert(*trivert, index);
             index
         };
