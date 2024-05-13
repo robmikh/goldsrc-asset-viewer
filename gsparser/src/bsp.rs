@@ -149,6 +149,17 @@ pub struct BspMipTextureHeader {
     pub offsets: [u32; 4],
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspTextureInfo {
+    pub s: [f32; 3],
+    pub s_shift: f32,
+    pub t: [f32; 3],
+    pub t_shift: f32,
+    pub texture_index: u32,
+    pub flags: u32,
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -203,6 +214,10 @@ impl BspReader {
         };
 
         BspTextureReader::new(offsets, raw_data)
+    }
+
+    pub fn read_texture_infos(&self) -> &[BspTextureInfo] {
+        self.read_lump(LUMP_TEXINFO)
     }
 
     fn read_lump_raw(&self, index: usize) -> &[u8] {
