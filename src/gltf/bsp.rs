@@ -5,7 +5,7 @@ use std::{
 };
 
 use glam::Vec4;
-use gsparser::bsp::BspReader;
+use gsparser::bsp::{BspEdge, BspReader, BspSurfaceEdge};
 
 use super::{
     add_and_get_index,
@@ -170,26 +170,43 @@ pub fn export<P: AsRef<Path>>(
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut primitives = Vec::new();
+
+    for vertex in reader.read_vertices() {
+        vertices.push(DebugVertex {
+            pos: convert_coordinates(vertex.to_array()),
+        });
+    }
+
+    let mark_surfaces = reader.read_mark_surfaces();
+    let faces = reader.read_faces();
+    let edges = reader.read_edges();
+    let surface_edges = reader.read_surface_edges();
+    let read_vertex_index = |edge_index: &BspSurfaceEdge, edges: &[BspEdge]| -> u32 {
+        let edge_vertex_index: usize = if edge_index.0 > 0 { 0 } else { 1 };
+        let edge_index = edge_index.0.abs() as usize;
+        let edge = &edges[edge_index];
+        edge.vertices[edge_vertex_index] as u32
+    };
     for leaf in reader.read_leaves().iter() {
-        //match leaf.contents() {
-        //    BspContents::Solid | BspContents::Water | BspContents::Slime => {
-        //        let primitive_range = create_primitive(
-        //            &convert_coordinates(leaf.mins),
-        //            &convert_coordinates(leaf.maxs),
-        //            &mut indices,
-        //            &mut vertices,
-        //        );
-        //        primitives.push(primitive_range);
-        //    }
-        //    _ => {}
-        //}
-        let primitive_range = create_primitive(
-            &convert_coordinates(leaf.mins),
-            &convert_coordinates(leaf.maxs),
-            &mut indices,
-            &mut vertices,
-        );
-        primitives.push(primitive_range);
+        let mark_surfaces_range = leaf.first_mark_surface..leaf.first_mark_surface+leaf.mark_surfaces;   
+        for mark_surface_index in mark_surfaces_range {
+            let mark_surface = &mark_surfaces[mark_surface_index as usize];
+            let face = &faces[mark_surface.0 as usize];
+            let surface_edges_range = face.first_edge as usize..face.first_edge as usize + face.edges as usize;
+            let surface_edges = &surface_edges[surface_edges_range];
+
+            let first_vertex = read_vertex_index(&surface_edges[0], edges);
+            
+            let start = indices.len();
+            for i in 0..surface_edges.len() - 2 {
+                indices.push(read_vertex_index(&surface_edges[i + 2], edges));
+                indices.push(read_vertex_index(&surface_edges[i + 1], edges));
+                indices.push(first_vertex);
+            }
+            let end = indices.len();
+
+            primitives.push(start..end);
+        }
     }
 
     let mut buffer_writer = BufferWriter::new();
