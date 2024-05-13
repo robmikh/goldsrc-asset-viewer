@@ -46,8 +46,8 @@ impl Vertex for ModelVertex {
 
         let vertex_positions_pair = writer
             .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_normals_pair =
-            writer.create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
+        let vertex_normals_pair = writer
+            .create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
         let vertex_uvs_pair =
             writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
 
