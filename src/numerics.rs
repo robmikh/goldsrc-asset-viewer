@@ -19,3 +19,9 @@ impl ToVec4 for Quat {
         Vec4::new(self.x, self.y, self.z, self.w)
     }
 }
+
+impl ToVec4 for Vec3 {
+    fn to_vec4(&self) -> Vec4 {
+        Vec4::new(self.x, self.y, self.z, 0.0)
+    }
+}

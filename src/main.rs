@@ -487,7 +487,7 @@ fn load_renderer(file_info: Option<&FileInfo>, device: &wgpu::Device, queue: &wg
                     let textures = read_textures(&file.reader, &wad_resources);
                     let model = gltf::bsp::convert(&file.reader, &textures);
 
-                    let renderer = BspRenderer::new(&model, &textures, device, queue, config);
+                    let renderer = BspRenderer::new(&file.reader, &model, &textures, device, queue, config);
                 
                 Some(Box::new(renderer))
             },

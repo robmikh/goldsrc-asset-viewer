@@ -4,7 +4,7 @@ use std::ops::Range;
 mod animation;
 pub mod bsp;
 mod buffer;
-mod coordinates;
+pub mod coordinates;
 mod export;
 mod material;
 pub mod mdl;

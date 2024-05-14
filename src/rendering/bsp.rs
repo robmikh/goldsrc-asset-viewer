@@ -1,10 +1,11 @@
 use std::{borrow::Cow, ops::Range};
 
-use glam::{Mat4, Vec3};
-use gsparser::wad3::MipmapedTextureData;
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec2, Vec3, Vec4};
+use gsparser::{bsp::{BspEntity, BspReader}, wad3::MipmapedTextureData};
 use wgpu::util::DeviceExt;
 
-use crate::gltf::{bsp::{ModelVertex, TextureInfo}, Mesh, Model};
+use crate::{gltf::{bsp::{ModelVertex, TextureInfo}, coordinates::convert_coordinates, Mesh, Model}, numerics::ToVec4};
 
 use super::Renderer;
 
@@ -12,6 +13,24 @@ struct GpuModel {
     index_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
     meshes: Vec<Mesh>,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct GpuVertex {
+    pos: [f32; 4],
+    normal: [f32; 4],
+    uv: [f32; 2],
+}
+
+impl GpuVertex {
+    fn from(vertex: &ModelVertex) -> Self {
+         Self {
+            pos: Vec3::from_array(vertex.pos).to_vec4().to_array(),
+            normal: Vec3::from_array(vertex.normal).to_vec4().to_array(),
+            uv: vertex.uv,
+         }
+    }
 }
 
 pub struct BspRenderer {
@@ -38,7 +57,9 @@ pub struct BspRenderer {
 }
 
 impl BspRenderer {
-    pub fn new(loaded_model: &Model<ModelVertex>,
+    pub fn new(
+        reader: &BspReader,
+        loaded_model: &Model<ModelVertex>,
         loaded_textures: &[TextureInfo],
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -140,8 +161,30 @@ impl BspRenderer {
             textures.push((texture, view, bind_group));
         }
 
+        // Find the "info_player_start" entity
+        let entities = BspEntity::parse_entities(reader.read_entities());
+        let mut player_start_entity = None;
+        for entity in &entities {
+            if let Some(value) = entity.0.get("classname") {
+                if *value == "info_player_start" {
+                    player_start_entity = Some(entity);
+                }
+            }
+        }
+        let camera_start = {
+            let entity = player_start_entity.unwrap();
+            let value = entity.0.get("origin").unwrap();
+            let mut split = value.split(" ");
+                let x: f32 = split.next().unwrap().parse().unwrap();
+                let y: f32 = split.next().unwrap().parse().unwrap();
+                let z: f32 = split.next().unwrap().parse().unwrap();
+                let coord = [x, y, z];
+                let coord = convert_coordinates(coord);
+                Vec3::from_array(coord)
+        };
+
         // Create other resources
-        let mx_total = generate_matrix(config.width as f32 / config.height as f32);
+        let mx_total = generate_matrix(config.width as f32 / config.height as f32, camera_start);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Globals Uniform Buffer"),
@@ -178,30 +221,31 @@ impl BspRenderer {
         });
 
         let vertex_buffers = [wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<ModelVertex>() as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<GpuVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
+                    format: wgpu::VertexFormat::Float32x4,
                     offset: 0,
                     shader_location: 0,
                 },
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: 3 * 4,
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 4 * 4,
                     shader_location: 1,
                 },
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float32x2,
-                    offset: 6 * 4,
+                    offset: 8 * 4,
                     shader_location: 2,
                 },
             ],
         }];
 
+        let vertices: Vec<GpuVertex> = loaded_model.vertices.iter().map(|x| GpuVertex::from(x)).collect();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&loaded_model.vertices),
+            contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -370,11 +414,11 @@ fn create_texture_and_view(device: &wgpu::Device, queue: &wgpu::Queue, image_dat
     (texture, texture_view)
 }
 
-fn generate_matrix(aspect_ratio: f32) -> Mat4 {
-    let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10.0);
+fn generate_matrix(aspect_ratio: f32, camera_start: Vec3) -> Mat4 {
+    let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
     let mx_view = Mat4::look_at_rh(
-        Vec3::new(1.5, 3.0, -5.0), 
-        Vec3::new(0.0, 0.0, 0.0), 
+        Vec3::new(1305.5, -333.5, 779.5),
+        camera_start, 
         Vec3::new(0.0, 1.0, 0.0)
     );
     mx_projection * mx_view

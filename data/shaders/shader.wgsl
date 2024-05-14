@@ -19,8 +19,8 @@ var<uniform> r_locals: Locals;
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
+    @location(0) position: vec4<f32>,
+    @location(1) normal: vec4<f32>,
     @location(2) tex_coord: vec2<f32>,
 ) -> VertexOutput {
     var in_position: vec4<f32>;
