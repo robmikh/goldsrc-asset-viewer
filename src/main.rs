@@ -4,15 +4,21 @@ mod graphics;
 mod mdl_viewer;
 mod numerics;
 mod wad_viewer;
+mod rendering;
+mod bsp_viewer;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
+use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
+use gltf::bsp::{read_textures, read_wad_resources, WadCollection};
 use gsparser::bsp::BspReader;
 use gsparser::wad3::{WadArchive, WadFileInfo};
 use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig};
+use imgui_wgpu::RendererConfig;
+use rendering::bsp::BspRenderer;
+use rendering::Renderer;
 use rfd::FileDialog;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -81,14 +87,7 @@ fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
 fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
-    let game_root_path = path
-        .ancestors()
-        .skip(1)
-        .find(|x| {
-            assert!(x.is_dir(), "{:?}", x);
-            let file_stem = x.file_stem().unwrap().to_str().unwrap();
-            file_stem == "Half-Life"
-        })
+    let game_root_path = get_game_root_path(&path)
         .unwrap();
     gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
@@ -96,10 +95,22 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     }
 }
 
+fn get_game_root_path(path: &Path) -> Option<&Path> {
+    path
+        .ancestors()
+        .skip(1)
+        .find(|x| {
+            assert!(x.is_dir(), "{:?}", x);
+            let file_stem = x.file_stem().unwrap().to_str().unwrap();
+            file_stem == "Half-Life"
+        })
+}
+
 fn show_ui(cli: Cli) {
     env_logger::init();
 
     let mut file_info = None;
+    let mut renderer = None;
 
     if let Some(path) = &cli.file_path {
         file_info = load_file(path);
@@ -131,7 +142,7 @@ fn show_ui(cli: Cli) {
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
             .unwrap();
 
-    let surface_config = wgpu::SurfaceConfiguration {
+    let mut surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: wgpu::TextureFormat::Rgba8Unorm,
         width: size.width as u32,
@@ -141,6 +152,8 @@ fn show_ui(cli: Cli) {
         view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
     };
     surface.configure(&device, &surface_config);
+
+    renderer = load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
 
     let mut imgui = imgui::Context::create();
     let mut platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
@@ -175,13 +188,13 @@ fn show_ui(cli: Cli) {
         ..Default::default()
     };
 
-    let mut renderer = Renderer::new(&mut imgui, &device, &queue, renderer_config);
+    let mut imgui_renderer = imgui_wgpu::Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
     let mut last_frame = Instant::now();
     let mut last_cursor = None;
-    //let mut demo_open = true;
     let mut wad_viewer = WadViewer::new();
     let mut mdl_viewer = MdlViewer::new();
+    let mut bsp_viewer = BspViewer::new();
 
     let mut pending_path: Option<PathBuf> = None;
 
@@ -203,7 +216,7 @@ fn show_ui(cli: Cli) {
             } => {
                 let size = window.inner_size();
 
-                let surface_config = wgpu::SurfaceConfiguration {
+                surface_config = wgpu::SurfaceConfiguration {
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                     format: wgpu::TextureFormat::Rgba8Unorm,
                     width: size.width as u32,
@@ -213,6 +226,9 @@ fn show_ui(cli: Cli) {
                     view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
                 };
                 surface.configure(&device, &surface_config);
+                if let Some(renderer) = renderer.as_mut() {
+                    renderer.resize(&surface_config, &device, &queue);
+                }
             }
             Event::WindowEvent {
                 event:
@@ -235,7 +251,7 @@ fn show_ui(cli: Cli) {
             }
             Event::RedrawRequested(_) => {
                 let now = Instant::now();
-                imgui.io_mut().update_delta_time(now - last_frame);
+                let delta = now - last_frame;
                 last_frame = now;
 
                 let frame = match surface.get_current_texture() {
@@ -245,15 +261,37 @@ fn show_ui(cli: Cli) {
                         return;
                     }
                 };
+
+                if let Some(new_path) = &pending_path {
+                    file_info = load_file(new_path);
+                    renderer = load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
+                    pending_path = None;
+                }
+
+                let view = frame
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+
+                // Rendering
+                let clear_op = if let Some(renderer) = renderer.as_mut() {
+                    renderer.render(clear_color, &view, &device, &queue);
+                    wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: true,
+                    }
+                } else {
+                    wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(clear_color),
+                        store: true,
+                    }
+                };
+
+                // UI
+                imgui.io_mut().update_delta_time(delta);
                 platform
                     .prepare_frame(imgui.io_mut(), &window)
                     .expect("Failed to prepare frame");
                 let ui = imgui.frame();
-
-                if let Some(new_path) = &pending_path {
-                    file_info = load_file(new_path);
-                    pending_path = None;
-                }
 
                 {
                     ui.main_menu_bar(|| {
@@ -310,20 +348,25 @@ fn show_ui(cli: Cli) {
                                 &file_info,
                                 &mut device,
                                 &mut queue,
-                                &mut renderer,
+                                &mut imgui_renderer,
                             ),
                             FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
                                 &ui,
                                 &file_info,
                                 &mut device,
                                 &mut queue,
-                                &mut renderer,
+                                &mut imgui_renderer,
+                            ),
+                            FileInfo::BspFile(file_info) => bsp_viewer.build_ui(
+                                &ui,
+                                &file_info,
+                                &mut device,
+                                &mut queue,
+                                &mut imgui_renderer,
                             ),
                             _ => todo!(),
                         }
                     }
-
-                    //ui.show_demo_window(&mut demo_open);
                 }
 
                 let mut encoder: wgpu::CommandEncoder =
@@ -335,23 +378,18 @@ fn show_ui(cli: Cli) {
                 }
 
                 {
-                    let view = frame
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: None,
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &view,
                             resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(clear_color),
-                                store: true,
-                            },
+                            ops: clear_op,
                         })],
                         depth_stencil_attachment: None,
                     });
 
-                    renderer
+                    imgui_renderer
                         .render(imgui.render(), &queue, &device, &mut rpass)
                         .expect("Rendering failed");
                 }
@@ -427,6 +465,32 @@ fn load_file<P: AsRef<Path>>(path: P) -> Option<FileInfo> {
             "mdl" => Some(FileInfo::MdlFile(load_mdl_file(path))),
             "bsp" => Some(FileInfo::BspFile(load_bsp_file(path))),
             _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn load_renderer(file_info: Option<&FileInfo>, device: &wgpu::Device, queue: &wgpu::Queue, config: wgpu::SurfaceConfiguration) -> Option<Box<dyn Renderer>> {
+    if let Some(file_info) = file_info {
+        match file_info {
+            FileInfo::WadFile(_) => None,
+            FileInfo::MdlFile(_) => None,
+            FileInfo::BspFile(file) => {
+                let path = PathBuf::from(&file.path).canonicalize().unwrap();
+                let game_root_path = get_game_root_path(&path)
+                    .unwrap();
+
+                    let mut wad_resources = WadCollection::new();
+                    read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
+                
+                    let textures = read_textures(&file.reader, &wad_resources);
+                    let model = gltf::bsp::convert(&file.reader, &textures);
+
+                    let renderer = BspRenderer::new(&model, &textures, device, queue, config);
+                
+                Some(Box::new(renderer))
+            },
         }
     } else {
         None

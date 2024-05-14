@@ -23,15 +23,16 @@ trait Vertex: Sized {
     ) -> Box<dyn VertexAttributesSource>;
 }
 
-struct Mesh {
-    texture_index: usize,
-    indices_range: Range<usize>,
+#[derive(Clone)]
+pub struct Mesh {
+    pub texture_index: usize,
+    pub indices_range: Range<usize>,
 }
 
-struct Model<V: Vertex> {
-    indices: Vec<u32>,
-    vertices: Vec<V>,
-    meshes: Vec<Mesh>,
+pub struct Model<V> {
+    pub indices: Vec<u32>,
+    pub vertices: Vec<V>,
+    pub meshes: Vec<Mesh>,
 }
 
 fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {

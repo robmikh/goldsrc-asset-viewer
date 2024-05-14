@@ -10,10 +10,18 @@ struct Globals {
 @binding(0)
 var<uniform> r_globals: Globals;
 
+struct Locals {
+    transform: mat4x4<f32>,
+};
+@group(1)
+@binding(0)
+var<uniform> r_locals: Locals;
+
 @vertex
 fn vs_main(
     @location(0) position: vec3<f32>,
-    @location(1) tex_coord: vec2<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) tex_coord: vec2<f32>,
 ) -> VertexOutput {
     var in_position: vec4<f32>;
     in_position.x = position.x;

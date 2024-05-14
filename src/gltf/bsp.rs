@@ -1,18 +1,17 @@
 use std::{
     collections::HashMap,
     fmt::Write,
-    ops::Range,
     path::{Path, PathBuf},
 };
 
-use glam::{Vec3, Vec4};
+use bytemuck::{Pod, Zeroable};
+use glam::Vec3;
 use gsparser::{
     bsp::{BspEdge, BspEntity, BspFace, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
     wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
 
 use super::{
-    add_and_get_index,
     animation::Animations,
     buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter},
     coordinates::convert_coordinates,
@@ -25,10 +24,12 @@ use super::{
 
 const QUIVER_PREFIX: &'static str = "\\quiver\\";
 
-struct ModelVertex {
-    pos: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct ModelVertex {
+    pub pos: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 impl Vertex for ModelVertex {
@@ -83,6 +84,17 @@ struct SharedVertex {
     texture: usize,
 }
 
+pub struct TextureInfo {
+    pub name: String,
+    pub image_data: MipmapedTextureData,
+}
+
+impl TextureInfo {
+    fn new(name: String, image_data: MipmapedTextureData) -> Self {
+        Self { name, image_data }
+    }
+}
+
 pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     game_root: T,
     reader: &BspReader,
@@ -90,176 +102,96 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     mut log: Option<&mut String>,
 ) -> std::io::Result<()> {
     if let Some(log) = &mut log {
-        writeln!(log, "Nodes:").unwrap();
-        for (i, node) in reader.read_nodes().iter().enumerate() {
-            writeln!(log, "  Node {}", i).unwrap();
-            writeln!(log, "    plane: {}", node.plane).unwrap();
-            writeln!(
-                log,
-                "    children: [ {}, {} ]",
-                node.children[0], node.children[1]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    mins: [ {}, {}, {} ]",
-                node.mins[0], node.mins[1], node.mins[2]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    maxs: [ {}, {}, {} ]",
-                node.maxs[0], node.maxs[1], node.maxs[2]
-            )
-            .unwrap();
-            writeln!(log, "    first_face: {}", node.first_face).unwrap();
-            writeln!(log, "    faces: {}", node.faces).unwrap();
-        }
-
-        writeln!(log, "Leaves:").unwrap();
-        for (i, leaf) in reader.read_leaves().iter().enumerate() {
-            writeln!(log, "  Leaf {}", i).unwrap();
-            writeln!(log, "    contents: {:?}", leaf.contents).unwrap();
-            writeln!(log, "    vis_offset: {}", leaf.vis_offset).unwrap();
-            writeln!(
-                log,
-                "    mins: [ {}, {}, {} ]",
-                leaf.mins[0], leaf.mins[1], leaf.mins[2]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    maxs: [ {}, {}, {} ]",
-                leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]
-            )
-            .unwrap();
-            writeln!(log, "    first_mark_surface: {}", leaf.first_mark_surface).unwrap();
-            writeln!(log, "    mark_surfaces: {}", leaf.mark_surfaces).unwrap();
-            writeln!(
-                log,
-                "    ambient_levels: [ {}, {}, {}, {} ]",
-                leaf.ambient_levels[0],
-                leaf.ambient_levels[1],
-                leaf.ambient_levels[2],
-                leaf.ambient_levels[3]
-            )
-            .unwrap();
-        }
-
-        writeln!(log, "Mark Surfaces:").unwrap();
-        for (i, surface) in reader.read_mark_surfaces().iter().enumerate() {
-            writeln!(log, "  Mark Surface {}", i).unwrap();
-            writeln!(log, "    index: {}", surface.0).unwrap();
-        }
-
-        writeln!(log, "Surface Edges:").unwrap();
-        for (i, edge) in reader.read_surface_edges().iter().enumerate() {
-            writeln!(log, "  Surface Edge {}", i).unwrap();
-            writeln!(log, "    index: {}", edge.0).unwrap();
-        }
-
-        writeln!(log, "Faces:").unwrap();
-        for (i, face) in reader.read_faces().iter().enumerate() {
-            writeln!(log, "  Face {}", i).unwrap();
-            writeln!(log, "    plane: {}", face.plane).unwrap();
-            writeln!(log, "    plane_side: {}", face.plane_side).unwrap();
-            writeln!(log, "    first_edge: {}", face.first_edge).unwrap();
-            writeln!(log, "    edges: {}", face.edges).unwrap();
-            writeln!(log, "    texture_info: {}", face.texture_info).unwrap();
-            writeln!(
-                log,
-                "    styles: [ {}, {}, {}, {} ]",
-                face.styles[0], face.styles[1], face.styles[2], face.styles[3]
-            )
-            .unwrap();
-            writeln!(log, "    lightmap_offset: {}", face.lightmap_offset).unwrap();
-        }
-
-        writeln!(log, "Edges:").unwrap();
-        for (i, edge) in reader.read_edges().iter().enumerate() {
-            writeln!(log, "  Edge {}", i).unwrap();
-            writeln!(
-                log,
-                "    vertices: [ {}, {} ]",
-                edge.vertices[0], edge.vertices[1]
-            )
-            .unwrap();
-        }
-
-        writeln!(log, "Vertices:").unwrap();
-        for (i, vertex) in reader.read_vertices().iter().enumerate() {
-            writeln!(log, "  Vertex {}", i).unwrap();
-            writeln!(
-                log,
-                "    vertices: [ {}, {}, {} ]",
-                vertex.x, vertex.y, vertex.z
-            )
-            .unwrap();
-        }
-
-        writeln!(log, "Textures:").unwrap();
-        let texture_reader = reader.read_textures();
-        for i in 0..texture_reader.len() {
-            let reader = texture_reader.get(i).unwrap();
-            let name = reader.get_image_name();
-            writeln!(
-                log,
-                "  {} - {} - {}",
-                i,
-                name,
-                reader.has_local_image_data()
-            )
-            .unwrap();
-        }
-
-        let entities = reader.read_entities();
-        let entities = BspEntity::parse_entities(entities);
-        writeln!(log, "Entities:").unwrap();
-        for (i, entity) in entities.iter().enumerate() {
-            writeln!(log, "  Entity {}", i).unwrap();
-            for (key, value) in &entity.0 {
-                writeln!(log, "    {}: {}", key, value).unwrap();
-            }
-        }
-
-        writeln!(log, "Models:").unwrap();
-        let models = reader.read_models();
-        for (i, model) in models.iter().enumerate() {
-            writeln!(log, "  Model {}", i).unwrap();
-            writeln!(
-                log,
-                "    mins: [ {}, {}, {} ]",
-                model.mins[0], model.mins[1], model.mins[2]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    maxs: [ {}, {}, {} ]",
-                model.maxs[0], model.maxs[1], model.maxs[2]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    origin: [ {}, {}, {} ]",
-                model.origin[0], model.origin[1], model.origin[2]
-            )
-            .unwrap();
-            writeln!(
-                log,
-                "    head_nodes: [ {}, {}, {}, {} ]",
-                model.head_nodes[0], model.head_nodes[1], model.head_nodes[2], model.head_nodes[3]
-            )
-            .unwrap();
-            writeln!(log, "    vis_leaves: {}", model.vis_leaves).unwrap();
-            writeln!(log, "    first_face: {}", model.first_face).unwrap();
-            writeln!(log, "    faces: {}", model.faces).unwrap();
-        }
+        log_bsp(reader, log);
     }
 
     let game_root = game_root.as_ref();
 
-    let entities = BspEntity::parse_entities(reader.read_entities());
     let mut wad_resources = WadCollection::new();
+    read_wad_resources(reader, game_root, &mut wad_resources);
+
+    let textures = read_textures(reader, &wad_resources);
+    let model = convert(reader, &textures);
+
+    let mut buffer_writer = BufferWriter::new();
+    
+    let mut material_data = MaterialData::new();
+    let sampler = material_data.add_sampler(super::material::Sampler {
+        mag_filter: MagFilter::Linear,
+        min_filter: MinFilter::LinearMipMapLinear,
+        wrap_s: Wrap::MirroredRepeat,
+        wrap_t: Wrap::MirroredRepeat,
+    });
+    for texture in &textures {
+        let image = material_data.add_images(Image {
+            uri: format!("{}.png", &texture.name),
+        });
+        let texture = material_data.add_texture(Texture {
+            sampler,
+            source: image,
+        });
+        material_data.add_material(Material {
+            base_color_texture: Some(texture),
+            metallic_factor: 0.0,
+            roughness_factor: 1.0,
+            ..Default::default()
+        });
+    }
+
+    let skins = Skins::new();
+    let animations = Animations::new(0);
+    let mut nodes = Nodes::new(1);
+    let scene_root = nodes.add_node(Node {
+        mesh: Some(MeshIndex(0)),
+        ..Default::default()
+    });
+
+    let buffer_name = "data.bin";
+    let gltf_text = write_gltf(
+        buffer_name,
+        &mut buffer_writer,
+        &model,
+        &material_data,
+        scene_root,
+        &nodes,
+        &skins,
+        &animations,
+    );
+
+    let path = export_file_path.as_ref();
+    let data_path = if let Some(parent_path) = path.parent() {
+        let mut data_path = parent_path.to_owned();
+        data_path.push(buffer_name);
+        data_path
+    } else {
+        PathBuf::from(buffer_name)
+    };
+
+    std::fs::write(path, gltf_text)?;
+    std::fs::write(data_path, buffer_writer.to_inner())?;
+
+    // Write textures
+    let mut texture_path = if let Some(parent_path) = path.parent() {
+        let mut data_path = parent_path.to_owned();
+        data_path.push("something");
+        data_path
+    } else {
+        PathBuf::from("something")
+    };
+    for texture in textures {
+        texture_path.set_file_name(format!("{}.png", &texture.name));
+        texture.image_data
+            .image
+            .save_with_format(&texture_path, image::ImageFormat::Png)
+            .unwrap();
+    }
+
+    Ok(())
+}
+
+pub fn read_wad_resources<P: AsRef<Path>>(reader: &BspReader, game_root: P, wad_resources: &mut WadCollection) {
+    let entities = BspEntity::parse_entities(reader.read_entities());
+    let game_root = game_root.as_ref();
     for entity in &entities {
         if let Some(value) = entity.0.get("wad") {
             for wad_path in value.split(';') {
@@ -272,7 +204,9 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
             }
         }
     }
+}
 
+pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<TextureInfo> {
     let texture_reader = reader.read_textures();
     let mut textures = Vec::with_capacity(texture_reader.len());
     for i in 0..texture_reader.len() {
@@ -291,30 +225,19 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
                     println!("Couldn't find \"{}\"", name);
                     None
                 };
-            textures.push((name.to_owned(), texture_data.unwrap()));
+            textures.push(TextureInfo::new(name.to_owned(), texture_data.unwrap()));
         }
     }
+    textures
+}
 
+pub fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
-    let mut primitives = Vec::new();
+    let mut meshes = Vec::new();
 
     let bsp_vertices = reader.read_vertices();
     let texture_infos = reader.read_texture_infos();
-    //assert_eq!(bsp_vertices.len(), texture_infos.len());
-    //for (vertex, texture_info) in bsp_vertices.iter().zip(texture_infos) {
-    //    let pos = convert_coordinates(vertex.to_array());
-    //    let pos_vec = Vec3::from_array(pos);
-    //    let s = Vec3::from_array(convert_coordinates(texture_info.s));
-    //    let t = Vec3::from_array(convert_coordinates(texture_info.t));
-    //
-    //    let uv = [ pos_vec.dot(s) + texture_info.s_shift, pos_vec.dot(t) + texture_info.t_shift ];
-    //
-    //    vertices.push(DebugVertex {
-    //        pos,
-    //        uv,
-    //    });
-    //}
 
     let mut vertex_map = HashMap::<SharedVertex, usize>::new();
     let mark_surfaces = reader.read_mark_surfaces();
@@ -379,109 +302,18 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
             );
             let end = indices.len();
 
-            primitives.push((
-                start..end,
-                texture_infos[face.texture_info as usize].texture_index as usize,
-            ));
+            meshes.push(Mesh {
+                indices_range: start..end,
+                texture_index:texture_infos[face.texture_info as usize].texture_index as usize,
+            });
         }
     }
 
-    let mut buffer_writer = BufferWriter::new();
-    let model = {
-        let meshes: Vec<_> = primitives
-            .iter()
-            .map(|(range, texture_index)| Mesh {
-                texture_index: *texture_index,
-                indices_range: range.clone(),
-            })
-            .collect();
-        Model {
-            indices,
-            vertices,
-            meshes,
-        }
-    };
-
-    let mut material_data = MaterialData::new();
-    //material_data.add_material(Material {
-    //    base_color_factor: Some(Vec4::new(1.0, 0.0, 0.0, 1.0)),
-    //    metallic_factor: 0.0,
-    //    roughness_factor: 1.0,
-    //    ..Default::default()
-    //});
-    let sampler = material_data.add_sampler(super::material::Sampler {
-        mag_filter: MagFilter::Linear,
-        min_filter: MinFilter::LinearMipMapLinear,
-        wrap_s: Wrap::MirroredRepeat,
-        wrap_t: Wrap::MirroredRepeat,
-    });
-    for (name, _) in &textures {
-        let image = material_data.add_images(Image {
-            uri: format!("{}.png", name),
-        });
-        let texture = material_data.add_texture(Texture {
-            sampler,
-            source: image,
-        });
-        material_data.add_material(Material {
-            base_color_texture: Some(texture),
-            metallic_factor: 0.0,
-            roughness_factor: 1.0,
-            ..Default::default()
-        });
+    Model {
+        indices,
+        vertices,
+        meshes,
     }
-
-    let skins = Skins::new();
-    let animations = Animations::new(0);
-    let mut nodes = Nodes::new(1);
-    let scene_root = nodes.add_node(Node {
-        mesh: Some(MeshIndex(0)),
-        ..Default::default()
-    });
-
-    let buffer_name = "data.bin";
-    let gltf_text = write_gltf(
-        buffer_name,
-        &mut buffer_writer,
-        &model,
-        &material_data,
-        scene_root,
-        &nodes,
-        &skins,
-        &animations,
-    );
-
-    let path = export_file_path.as_ref();
-    let data_path = if let Some(parent_path) = path.parent() {
-        let mut data_path = parent_path.to_owned();
-        data_path.push(buffer_name);
-        data_path
-    } else {
-        PathBuf::from(buffer_name)
-    };
-
-    std::fs::write(path, gltf_text)?;
-    std::fs::write(data_path, buffer_writer.to_inner())?;
-
-    // Write textures
-    let mut texture_path = if let Some(parent_path) = path.parent() {
-        let mut data_path = parent_path.to_owned();
-        data_path.push("something");
-        data_path
-    } else {
-        PathBuf::from("something")
-    };
-    for (name, texture) in textures {
-        //if let Some(texture) = texture {
-        texture_path.set_file_name(format!("{}.png", name));
-        texture
-            .image
-            .save_with_format(&texture_path, image::ImageFormat::Png)
-            .unwrap();
-        //}
-    }
-
-    Ok(())
 }
 
 fn process_indexed_triangles(
@@ -489,7 +321,7 @@ fn process_indexed_triangles(
     face: &BspFace,
     normal: [f32; 3],
     bsp_vertices: &[BspVertex],
-    textures: &[(String, MipmapedTextureData)],
+    textures: &[TextureInfo],
     texture_infos: &[BspTextureInfo],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<ModelVertex>,
@@ -501,7 +333,7 @@ fn process_indexed_triangles(
         triangle_list.len()
     );
     let texture_info = &texture_infos[face.texture_info as usize];
-    let (_, texture) = &textures[texture_info.texture_index as usize];
+    let texture = &textures[texture_info.texture_index as usize].image_data;
     let mut process_trivert = |trivert| {
         let index = if let Some(index) = vertex_map.get(trivert) {
             *index
@@ -522,8 +354,6 @@ fn process_indexed_triangles(
                 uv[1] / texture.image_height as f32,
             ];
 
-            //println!("{:?}", uv);
-
             let index = vertices.len();
             vertices.push(ModelVertex { pos, normal, uv });
             vertex_map.insert(*trivert, index);
@@ -537,25 +367,192 @@ fn process_indexed_triangles(
     }
 }
 
-struct WadCollection {
+pub struct WadCollection {
     wads: Vec<WadArchive>,
 }
 
 impl WadCollection {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { wads: Vec::new() }
     }
 
-    fn add(&mut self, archive: WadArchive) {
+    pub fn add(&mut self, archive: WadArchive) {
         self.wads.push(archive);
     }
 
-    fn find(&self, key: &str) -> Option<(&WadArchive, &WadFileInfo)> {
+    pub fn find(&self, key: &str) -> Option<(&WadArchive, &WadFileInfo)> {
         for wad in &self.wads {
             if let Some(file) = wad.files.iter().find(|x| x.name.as_str() == key) {
                 return Some((wad, file));
             }
         }
         None
+    }
+}
+
+fn log_bsp(reader: &BspReader, log: &mut String) {
+    writeln!(log, "Nodes:").unwrap();
+    for (i, node) in reader.read_nodes().iter().enumerate() {
+        writeln!(log, "  Node {}", i).unwrap();
+        writeln!(log, "    plane: {}", node.plane).unwrap();
+        writeln!(
+            log,
+            "    children: [ {}, {} ]",
+            node.children[0], node.children[1]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    mins: [ {}, {}, {} ]",
+            node.mins[0], node.mins[1], node.mins[2]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    maxs: [ {}, {}, {} ]",
+            node.maxs[0], node.maxs[1], node.maxs[2]
+        )
+        .unwrap();
+        writeln!(log, "    first_face: {}", node.first_face).unwrap();
+        writeln!(log, "    faces: {}", node.faces).unwrap();
+    }
+
+    writeln!(log, "Leaves:").unwrap();
+    for (i, leaf) in reader.read_leaves().iter().enumerate() {
+        writeln!(log, "  Leaf {}", i).unwrap();
+        writeln!(log, "    contents: {:?}", leaf.contents).unwrap();
+        writeln!(log, "    vis_offset: {}", leaf.vis_offset).unwrap();
+        writeln!(
+            log,
+            "    mins: [ {}, {}, {} ]",
+            leaf.mins[0], leaf.mins[1], leaf.mins[2]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    maxs: [ {}, {}, {} ]",
+            leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]
+        )
+        .unwrap();
+        writeln!(log, "    first_mark_surface: {}", leaf.first_mark_surface).unwrap();
+        writeln!(log, "    mark_surfaces: {}", leaf.mark_surfaces).unwrap();
+        writeln!(
+            log,
+            "    ambient_levels: [ {}, {}, {}, {} ]",
+            leaf.ambient_levels[0],
+            leaf.ambient_levels[1],
+            leaf.ambient_levels[2],
+            leaf.ambient_levels[3]
+        )
+        .unwrap();
+    }
+
+    writeln!(log, "Mark Surfaces:").unwrap();
+    for (i, surface) in reader.read_mark_surfaces().iter().enumerate() {
+        writeln!(log, "  Mark Surface {}", i).unwrap();
+        writeln!(log, "    index: {}", surface.0).unwrap();
+    }
+
+    writeln!(log, "Surface Edges:").unwrap();
+    for (i, edge) in reader.read_surface_edges().iter().enumerate() {
+        writeln!(log, "  Surface Edge {}", i).unwrap();
+        writeln!(log, "    index: {}", edge.0).unwrap();
+    }
+
+    writeln!(log, "Faces:").unwrap();
+    for (i, face) in reader.read_faces().iter().enumerate() {
+        writeln!(log, "  Face {}", i).unwrap();
+        writeln!(log, "    plane: {}", face.plane).unwrap();
+        writeln!(log, "    plane_side: {}", face.plane_side).unwrap();
+        writeln!(log, "    first_edge: {}", face.first_edge).unwrap();
+        writeln!(log, "    edges: {}", face.edges).unwrap();
+        writeln!(log, "    texture_info: {}", face.texture_info).unwrap();
+        writeln!(
+            log,
+            "    styles: [ {}, {}, {}, {} ]",
+            face.styles[0], face.styles[1], face.styles[2], face.styles[3]
+        )
+        .unwrap();
+        writeln!(log, "    lightmap_offset: {}", face.lightmap_offset).unwrap();
+    }
+
+    writeln!(log, "Edges:").unwrap();
+    for (i, edge) in reader.read_edges().iter().enumerate() {
+        writeln!(log, "  Edge {}", i).unwrap();
+        writeln!(
+            log,
+            "    vertices: [ {}, {} ]",
+            edge.vertices[0], edge.vertices[1]
+        )
+        .unwrap();
+    }
+
+    writeln!(log, "Vertices:").unwrap();
+    for (i, vertex) in reader.read_vertices().iter().enumerate() {
+        writeln!(log, "  Vertex {}", i).unwrap();
+        writeln!(
+            log,
+            "    vertices: [ {}, {}, {} ]",
+            vertex.x, vertex.y, vertex.z
+        )
+        .unwrap();
+    }
+
+    writeln!(log, "Textures:").unwrap();
+    let texture_reader = reader.read_textures();
+    for i in 0..texture_reader.len() {
+        let reader = texture_reader.get(i).unwrap();
+        let name = reader.get_image_name();
+        writeln!(
+            log,
+            "  {} - {} - {}",
+            i,
+            name,
+            reader.has_local_image_data()
+        )
+        .unwrap();
+    }
+
+    let entities = reader.read_entities();
+    let entities = BspEntity::parse_entities(entities);
+    writeln!(log, "Entities:").unwrap();
+    for (i, entity) in entities.iter().enumerate() {
+        writeln!(log, "  Entity {}", i).unwrap();
+        for (key, value) in &entity.0 {
+            writeln!(log, "    {}: {}", key, value).unwrap();
+        }
+    }
+
+    writeln!(log, "Models:").unwrap();
+    let models = reader.read_models();
+    for (i, model) in models.iter().enumerate() {
+        writeln!(log, "  Model {}", i).unwrap();
+        writeln!(
+            log,
+            "    mins: [ {}, {}, {} ]",
+            model.mins[0], model.mins[1], model.mins[2]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    maxs: [ {}, {}, {} ]",
+            model.maxs[0], model.maxs[1], model.maxs[2]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    origin: [ {}, {}, {} ]",
+            model.origin[0], model.origin[1], model.origin[2]
+        )
+        .unwrap();
+        writeln!(
+            log,
+            "    head_nodes: [ {}, {}, {}, {} ]",
+            model.head_nodes[0], model.head_nodes[1], model.head_nodes[2], model.head_nodes[3]
+        )
+        .unwrap();
+        writeln!(log, "    vis_leaves: {}", model.vis_leaves).unwrap();
+        writeln!(log, "    first_face: {}", model.first_face).unwrap();
+        writeln!(log, "    faces: {}", model.faces).unwrap();
     }
 }

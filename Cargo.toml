@@ -19,3 +19,4 @@ imgui-winit-support = { version = "0.11.0", default-features = false }
 imgui-wgpu = "0.24.0"
 pollster = "0.3.0"
 id_tree = "1.8.0"
+bytemuck = { version="1.16.0", features = [ "derive" ] }
