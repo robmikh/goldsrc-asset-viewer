@@ -34,7 +34,7 @@ fn vs_main(
 
     var out: VertexOutput;
     out.tex_coord = tex_coord;
-    out.position = r_globals.transform * in_position;
+    out.position = r_globals.transform * r_locals.transform * in_position;
     return out;
 }
 

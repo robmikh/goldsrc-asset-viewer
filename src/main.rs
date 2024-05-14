@@ -20,7 +20,7 @@ use imgui_wgpu::RendererConfig;
 use rendering::bsp::BspRenderer;
 use rendering::Renderer;
 use rfd::FileDialog;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use winit::{
@@ -199,6 +199,7 @@ fn show_ui(cli: Cli) {
 
     let mut pending_path: Option<PathBuf> = None;
 
+    let mut down_keys = HashSet::<VirtualKeyCode>::new();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
             ControlFlow::Exit
@@ -250,6 +251,27 @@ fn show_ui(cli: Cli) {
             } => {
                 *control_flow = ControlFlow::Exit;
             }
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::event::KeyboardInput {
+                                virtual_keycode,
+                                state,
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                if let Some(keycode) = virtual_keycode {
+                    if state == ElementState::Pressed {
+                        down_keys.insert(keycode);
+                    } else {
+                        down_keys.remove(&keycode);
+                    }
+                }
+            }
             Event::RedrawRequested(_) => {
                 let now = Instant::now();
                 let delta = now - last_frame;
@@ -275,6 +297,7 @@ fn show_ui(cli: Cli) {
 
                 // Rendering
                 let clear_op = if let Some(renderer) = renderer.as_mut() {
+                    renderer.update(&device, &queue, delta, &down_keys);
                     renderer.render(clear_color, &view, &device, &queue);
                     wgpu::Operations {
                         load: wgpu::LoadOp::Load,

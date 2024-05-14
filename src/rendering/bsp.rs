@@ -1,11 +1,12 @@
-use std::{borrow::Cow, ops::Range};
+use std::{borrow::Cow, collections::HashSet, ops::Range};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use gsparser::{bsp::{BspEntity, BspReader}, wad3::MipmapedTextureData};
 use wgpu::util::DeviceExt;
+use winit::event::VirtualKeyCode;
 
-use crate::{gltf::{bsp::{ModelVertex, TextureInfo}, coordinates::convert_coordinates, Mesh, Model}, numerics::ToVec4};
+use crate::{gltf::{bsp::{ModelVertex, TextureInfo}, coordinates::convert_coordinates, Mesh, Model}, numerics::{ToVec3, ToVec4}};
 
 use super::Renderer;
 
@@ -51,9 +52,12 @@ pub struct BspRenderer {
     _model_bind_group_layout: wgpu::BindGroupLayout,
     _texture_bind_group_layout: wgpu::BindGroupLayout,
     _pipeline_layout: wgpu::PipelineLayout,
-    _uniform_buffer: wgpu::Buffer,
+    uniform_buffer: wgpu::Buffer,
     _model_buffer: wgpu::Buffer,
     render_pipeline: wgpu::RenderPipeline,
+
+    camera_position: Vec3,
+    facing: Vec3,
 }
 
 impl BspRenderer {
@@ -178,9 +182,10 @@ impl BspRenderer {
                 let coord = convert_coordinates(coord);
                 Vec3::from_array(coord)
         };
+        let facing = Vec3::new(1.0, 0.0, 0.0);
 
         // Create other resources
-        let mx_total = generate_matrix(config.width as f32 / config.height as f32, camera_start);
+        let mx_total = generate_matrix(config.width as f32 / config.height as f32, camera_start, facing);
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Globals Uniform Buffer"),
@@ -307,9 +312,12 @@ impl BspRenderer {
             _model_bind_group_layout: model_bind_group_layout,
             _texture_bind_group_layout: texture_bind_group_layout,
             _pipeline_layout: pipeline_layout,
-            _uniform_buffer: uniform_buffer,
+            uniform_buffer,
             _model_buffer: model_buffer,
             render_pipeline,
+
+            camera_position: camera_start,
+            facing,
         }
         }
 }
@@ -375,10 +383,52 @@ impl Renderer for BspRenderer {
             self.depth_texture = depth_texture;
             self.depth_view = depth_view;
             self.depth_sampler = depth_sampler;
+            self.config = config.clone();
     }
 
-    fn update(&mut self, delta: std::time::Duration) {
-        // TODO: Update
+    fn update(&mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue, delta: std::time::Duration, down_keys: &HashSet<VirtualKeyCode>) {
+        let mut dirty = false;
+
+            if down_keys.contains(&VirtualKeyCode::Q) {
+                let transform = Mat4::from_rotation_y(5.0_f32.to_radians());
+                let new_facing = transform * self.facing.to_vec4();
+                self.facing = new_facing.to_vec3().normalize();
+                dirty = true;
+            } else if down_keys.contains(&VirtualKeyCode::E) {
+                let transform = Mat4::from_rotation_y(-5.0_f32.to_radians());
+                let new_facing = transform * self.facing.to_vec4();
+                self.facing = new_facing.to_vec3().normalize();
+                dirty = true;
+            }
+
+            if down_keys.contains(&VirtualKeyCode::W) {
+                let delta_position = 5.0 * self.facing;
+                self.camera_position += delta_position;
+                dirty = true;
+            } else if down_keys.contains(&VirtualKeyCode::S) {
+                let delta_position = -5.0 * self.facing;
+                self.camera_position += delta_position;
+                dirty = true;
+            }
+
+            if down_keys.contains(&VirtualKeyCode::A) {
+                let delta_position = -5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
+                self.camera_position += delta_position;
+                dirty = true;
+            } else if down_keys.contains(&VirtualKeyCode::D) {
+                let delta_position = 5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
+                self.camera_position += delta_position;
+                dirty = true;
+            }
+
+
+        if dirty {
+            let mx_total = generate_matrix(self.config.width as f32 / self.config.height as f32, self.camera_position, self.facing);
+        let mx_ref: &[f32; 16] = mx_total.as_ref();
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
+        }
     }
 }
 
@@ -412,9 +462,9 @@ fn create_texture_and_view(device: &wgpu::Device, queue: &wgpu::Queue, image_dat
     (texture, texture_view)
 }
 
-fn generate_matrix(aspect_ratio: f32, camera_start: Vec3) -> Mat4 {
+fn generate_matrix(aspect_ratio: f32, camera_start: Vec3, facing: Vec3) -> Mat4 {
     let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
-    let mx_view = Mat4::look_to_rh(camera_start, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
+    let mx_view = Mat4::look_to_rh(camera_start, facing, Vec3::new(0.0, 1.0, 0.0));
     //let mx_view = Mat4::look_at_rh(
     //    Vec3::new(1305.5, -333.5, 779.5),
     //    camera_start, 

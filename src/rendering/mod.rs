@@ -1,4 +1,6 @@
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
+
+use winit::event::VirtualKeyCode;
 
 pub mod bsp;
 
@@ -14,5 +16,7 @@ pub trait Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,);
 
-    fn update(&mut self, delta: Duration);
+    fn update(&mut self, 
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,delta: Duration, down_keys: &HashSet<VirtualKeyCode>);
 }
