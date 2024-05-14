@@ -114,7 +114,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     let model = convert(reader, &textures);
 
     let mut buffer_writer = BufferWriter::new();
-    
+
     let mut material_data = MaterialData::new();
     let sampler = material_data.add_sampler(super::material::Sampler {
         mag_filter: MagFilter::Linear,
@@ -180,7 +180,8 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     };
     for texture in textures {
         texture_path.set_file_name(format!("{}.png", &texture.name));
-        texture.image_data
+        texture
+            .image_data
             .image
             .save_with_format(&texture_path, image::ImageFormat::Png)
             .unwrap();
@@ -189,7 +190,11 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     Ok(())
 }
 
-pub fn read_wad_resources<P: AsRef<Path>>(reader: &BspReader, game_root: P, wad_resources: &mut WadCollection) {
+pub fn read_wad_resources<P: AsRef<Path>>(
+    reader: &BspReader,
+    game_root: P,
+    wad_resources: &mut WadCollection,
+) {
     let entities = BspEntity::parse_entities(reader.read_entities());
     let game_root = game_root.as_ref();
     for entity in &entities {
@@ -304,7 +309,7 @@ pub fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVerte
 
             meshes.push(Mesh {
                 indices_range: start..end,
-                texture_index:texture_infos[face.texture_info as usize].texture_index as usize,
+                texture_index: texture_infos[face.texture_info as usize].texture_index as usize,
             });
         }
     }

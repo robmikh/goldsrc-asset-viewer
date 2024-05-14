@@ -2,11 +2,21 @@ use std::{borrow::Cow, collections::HashSet, ops::Range};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use gsparser::{bsp::{BspEntity, BspReader}, wad3::MipmapedTextureData};
+use gsparser::{
+    bsp::{BspEntity, BspReader},
+    wad3::MipmapedTextureData,
+};
 use wgpu::util::DeviceExt;
 use winit::event::VirtualKeyCode;
 
-use crate::{gltf::{bsp::{ModelVertex, TextureInfo}, coordinates::convert_coordinates, Mesh, Model}, numerics::{ToVec3, ToVec4}};
+use crate::{
+    gltf::{
+        bsp::{ModelVertex, TextureInfo},
+        coordinates::convert_coordinates,
+        Mesh, Model,
+    },
+    numerics::{ToVec3, ToVec4},
+};
 
 use super::Renderer;
 
@@ -26,11 +36,11 @@ struct GpuVertex {
 
 impl GpuVertex {
     fn from(vertex: &ModelVertex) -> Self {
-         Self {
+        Self {
             pos: Vec3::from_array(vertex.pos).to_vec4().to_array(),
             normal: Vec3::from_array(vertex.normal).to_vec4().to_array(),
             uv: vertex.uv,
-         }
+        }
     }
 }
 
@@ -67,70 +77,75 @@ impl BspRenderer {
         loaded_textures: &[TextureInfo],
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    config: wgpu::SurfaceConfiguration) -> Self {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: None,
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("../../data/shaders/shader.wgsl"))),
-            });
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
+                "../../data/shaders/shader.wgsl"
+            ))),
+        });
 
-            // Depth texture
+        // Depth texture
         let (depth_texture, depth_view, depth_sampler) = create_depth_texture(&device, &config);
 
-            // Create pipeline layout
+        // Create pipeline layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(64),
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(64),
                 },
-            ],
+                count: None,
+            }],
         });
-        let model_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(64),
+        let model_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: wgpu::BufferSize::new(64),
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
-                        sample_type:  wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
-                },
-            ],
-        });
+                }],
+            });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bind_group_layout, &model_bind_group_layout, &texture_bind_group_layout],
+            bind_group_layouts: &[
+                &bind_group_layout,
+                &model_bind_group_layout,
+                &texture_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
 
@@ -150,12 +165,10 @@ impl BspRenderer {
             let (texture, view) = create_texture_and_view(device, queue, &texture.image_data);
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                }],
                 label: None,
             });
             textures.push((texture, view, bind_group));
@@ -175,17 +188,21 @@ impl BspRenderer {
             let entity = player_start_entity.unwrap();
             let value = entity.0.get("origin").unwrap();
             let mut split = value.split(" ");
-                let x: f32 = split.next().unwrap().parse().unwrap();
-                let y: f32 = split.next().unwrap().parse().unwrap();
-                let z: f32 = split.next().unwrap().parse().unwrap();
-                let coord = [x, y, z];
-                let coord = convert_coordinates(coord);
-                Vec3::from_array(coord)
+            let x: f32 = split.next().unwrap().parse().unwrap();
+            let y: f32 = split.next().unwrap().parse().unwrap();
+            let z: f32 = split.next().unwrap().parse().unwrap();
+            let coord = [x, y, z];
+            let coord = convert_coordinates(coord);
+            Vec3::from_array(coord)
         };
         let facing = Vec3::new(1.0, 0.0, 0.0);
 
         // Create other resources
-        let mx_total = generate_matrix(config.width as f32 / config.height as f32, camera_start, facing);
+        let mx_total = generate_matrix(
+            config.width as f32 / config.height as f32,
+            camera_start,
+            facing,
+        );
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Globals Uniform Buffer"),
@@ -202,12 +219,10 @@ impl BspRenderer {
         // Create bind group
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
             label: None,
         });
         let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -247,7 +262,11 @@ impl BspRenderer {
             ],
         }];
 
-        let vertices: Vec<GpuVertex> = loaded_model.vertices.iter().map(|x| GpuVertex::from(x)).collect();
+        let vertices: Vec<GpuVertex> = loaded_model
+            .vertices
+            .iter()
+            .map(|x| GpuVertex::from(x))
+            .collect();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
@@ -264,7 +283,6 @@ impl BspRenderer {
             vertex_buffer,
             meshes,
         };
-
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
@@ -319,16 +337,18 @@ impl BspRenderer {
             camera_position: camera_start,
             facing,
         }
-        }
+    }
 }
 
 impl Renderer for BspRenderer {
-    fn render(&self,
+    fn render(
+        &self,
         clear_color: wgpu::Color,
         view: &wgpu::TextureView,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,) {
-            let mut encoder =
+        queue: &wgpu::Queue,
+    ) {
+        let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -353,10 +373,10 @@ impl Renderer for BspRenderer {
             render_pass.push_debug_group("Prepare frame render pass.");
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.bind_group, &[]);
-            
 
             render_pass.push_debug_group("Prepare render pass for mesh.");
-            render_pass.set_index_buffer(self.model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass
+                .set_index_buffer(self.model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.set_vertex_buffer(0, self.model.vertex_buffer.slice(..));
             render_pass.pop_debug_group();
 
@@ -366,7 +386,11 @@ impl Renderer for BspRenderer {
                 let texture = mesh.texture_index;
                 let (_, _, bind_group) = &self.textures[texture];
                 render_pass.set_bind_group(2, bind_group, &[]);
-                render_pass.draw_indexed(mesh.indices_range.start as u32..mesh.indices_range.end as u32, 0, 0..1);
+                render_pass.draw_indexed(
+                    mesh.indices_range.start as u32..mesh.indices_range.end as u32,
+                    0,
+                    0..1,
+                );
             }
 
             render_pass.pop_debug_group();
@@ -375,64 +399,77 @@ impl Renderer for BspRenderer {
         queue.submit(Some(encoder.finish()));
     }
 
-    fn resize(&mut self,
+    fn resize(
+        &mut self,
         config: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,) {
-            let (depth_texture, depth_view, depth_sampler) = create_depth_texture(device, config);
-            self.depth_texture = depth_texture;
-            self.depth_view = depth_view;
-            self.depth_sampler = depth_sampler;
-            self.config = config.clone();
+        queue: &wgpu::Queue,
+    ) {
+        let (depth_texture, depth_view, depth_sampler) = create_depth_texture(device, config);
+        self.depth_texture = depth_texture;
+        self.depth_view = depth_view;
+        self.depth_sampler = depth_sampler;
+        self.config = config.clone();
     }
 
-    fn update(&mut self,
+    fn update(
+        &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue, delta: std::time::Duration, down_keys: &HashSet<VirtualKeyCode>) {
+        queue: &wgpu::Queue,
+        delta: std::time::Duration,
+        down_keys: &HashSet<VirtualKeyCode>,
+    ) {
         let mut dirty = false;
 
-            if down_keys.contains(&VirtualKeyCode::Q) {
-                let transform = Mat4::from_rotation_y(5.0_f32.to_radians());
-                let new_facing = transform * self.facing.to_vec4();
-                self.facing = new_facing.to_vec3().normalize();
-                dirty = true;
-            } else if down_keys.contains(&VirtualKeyCode::E) {
-                let transform = Mat4::from_rotation_y(-5.0_f32.to_radians());
-                let new_facing = transform * self.facing.to_vec4();
-                self.facing = new_facing.to_vec3().normalize();
-                dirty = true;
-            }
+        if down_keys.contains(&VirtualKeyCode::Q) {
+            let transform = Mat4::from_rotation_y(5.0_f32.to_radians());
+            let new_facing = transform * self.facing.to_vec4();
+            self.facing = new_facing.to_vec3().normalize();
+            dirty = true;
+        } else if down_keys.contains(&VirtualKeyCode::E) {
+            let transform = Mat4::from_rotation_y(-5.0_f32.to_radians());
+            let new_facing = transform * self.facing.to_vec4();
+            self.facing = new_facing.to_vec3().normalize();
+            dirty = true;
+        }
 
-            if down_keys.contains(&VirtualKeyCode::W) {
-                let delta_position = 5.0 * self.facing;
-                self.camera_position += delta_position;
-                dirty = true;
-            } else if down_keys.contains(&VirtualKeyCode::S) {
-                let delta_position = -5.0 * self.facing;
-                self.camera_position += delta_position;
-                dirty = true;
-            }
+        if down_keys.contains(&VirtualKeyCode::W) {
+            let delta_position = 5.0 * self.facing;
+            self.camera_position += delta_position;
+            dirty = true;
+        } else if down_keys.contains(&VirtualKeyCode::S) {
+            let delta_position = -5.0 * self.facing;
+            self.camera_position += delta_position;
+            dirty = true;
+        }
 
-            if down_keys.contains(&VirtualKeyCode::A) {
-                let delta_position = -5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
-                self.camera_position += delta_position;
-                dirty = true;
-            } else if down_keys.contains(&VirtualKeyCode::D) {
-                let delta_position = 5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
-                self.camera_position += delta_position;
-                dirty = true;
-            }
-
+        if down_keys.contains(&VirtualKeyCode::A) {
+            let delta_position = -5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            self.camera_position += delta_position;
+            dirty = true;
+        } else if down_keys.contains(&VirtualKeyCode::D) {
+            let delta_position = 5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            self.camera_position += delta_position;
+            dirty = true;
+        }
 
         if dirty {
-            let mx_total = generate_matrix(self.config.width as f32 / self.config.height as f32, self.camera_position, self.facing);
-        let mx_ref: &[f32; 16] = mx_total.as_ref();
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
+            let mx_total = generate_matrix(
+                self.config.width as f32 / self.config.height as f32,
+                self.camera_position,
+                self.facing,
+            );
+            let mx_ref: &[f32; 16] = mx_total.as_ref();
+            queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
         }
     }
 }
 
-fn create_texture_and_view(device: &wgpu::Device, queue: &wgpu::Queue, image_data: &MipmapedTextureData) -> (wgpu::Texture, wgpu::TextureView) {
+fn create_texture_and_view(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    image_data: &MipmapedTextureData,
+) -> (wgpu::Texture, wgpu::TextureView) {
     let texture_extent = wgpu::Extent3d {
         width: image_data.image_width,
         height: image_data.image_height,
@@ -467,13 +504,16 @@ fn generate_matrix(aspect_ratio: f32, camera_start: Vec3, facing: Vec3) -> Mat4 
     let mx_view = Mat4::look_to_rh(camera_start, facing, Vec3::new(0.0, 1.0, 0.0));
     //let mx_view = Mat4::look_at_rh(
     //    Vec3::new(1305.5, -333.5, 779.5),
-    //    camera_start, 
+    //    camera_start,
     //    Vec3::new(0.0, 1.0, 0.0)
     //);
     mx_projection * mx_view
 }
 
-fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
+fn create_depth_texture(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
     let size = wgpu::Extent3d {
         width: config.width,
         height: config.height,
@@ -487,22 +527,18 @@ fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfigurati
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Depth32Float,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[
-            wgpu::TextureFormat::Depth32Float,
-        ],
+        view_formats: &[wgpu::TextureFormat::Depth32Float],
     };
     let texture = device.create_texture(&desc);
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let sampler = device.create_sampler(
-        &wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::MirrorRepeat,
-            address_mode_v: wgpu::AddressMode::MirrorRepeat,
-            address_mode_w: wgpu::AddressMode::MirrorRepeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        }
-    );
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::MirrorRepeat,
+        address_mode_v: wgpu::AddressMode::MirrorRepeat,
+        address_mode_w: wgpu::AddressMode::MirrorRepeat,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
     (texture, view, sampler)
 }

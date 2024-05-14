@@ -60,7 +60,7 @@ impl BspViewer {
         ui.window("Texture list")
             .size([300.0, 400.0], Condition::FirstUseEver)
             .build(|| {
-                ui.text(format!("Path: {}", &file_info.path));          
+                ui.text(format!("Path: {}", &file_info.path));
             });
     }
 }

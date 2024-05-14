@@ -1,11 +1,11 @@
+mod bsp_viewer;
 mod cli;
 mod gltf;
 mod graphics;
 mod mdl_viewer;
 mod numerics;
-mod wad_viewer;
 mod rendering;
-mod bsp_viewer;
+mod wad_viewer;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -87,8 +87,7 @@ fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
 fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
-    let game_root_path = get_game_root_path(&path)
-        .unwrap();
+    let game_root_path = get_game_root_path(&path).unwrap();
     gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
@@ -96,14 +95,11 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
 }
 
 fn get_game_root_path(path: &Path) -> Option<&Path> {
-    path
-        .ancestors()
-        .skip(1)
-        .find(|x| {
-            assert!(x.is_dir(), "{:?}", x);
-            let file_stem = x.file_stem().unwrap().to_str().unwrap();
-            file_stem == "Half-Life"
-        })
+    path.ancestors().skip(1).find(|x| {
+        assert!(x.is_dir(), "{:?}", x);
+        let file_stem = x.file_stem().unwrap().to_str().unwrap();
+        file_stem == "Half-Life"
+    })
 }
 
 fn show_ui(cli: Cli) {
@@ -189,7 +185,8 @@ fn show_ui(cli: Cli) {
         ..Default::default()
     };
 
-    let mut imgui_renderer = imgui_wgpu::Renderer::new(&mut imgui, &device, &queue, renderer_config);
+    let mut imgui_renderer =
+        imgui_wgpu::Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
     let mut last_frame = Instant::now();
     let mut last_cursor = None;
@@ -287,13 +284,14 @@ fn show_ui(cli: Cli) {
 
                 if let Some(new_path) = &pending_path {
                     file_info = load_file(new_path);
-                    renderer = load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
+                    renderer =
+                        load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
                     pending_path = None;
                 }
 
                 let view = frame
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
                 // Rendering
                 let clear_op = if let Some(renderer) = renderer.as_mut() {
@@ -402,7 +400,6 @@ fn show_ui(cli: Cli) {
                 }
 
                 {
-                    
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: None,
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -495,26 +492,31 @@ fn load_file<P: AsRef<Path>>(path: P) -> Option<FileInfo> {
     }
 }
 
-fn load_renderer(file_info: Option<&FileInfo>, device: &wgpu::Device, queue: &wgpu::Queue, config: wgpu::SurfaceConfiguration) -> Option<Box<dyn Renderer>> {
+fn load_renderer(
+    file_info: Option<&FileInfo>,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+) -> Option<Box<dyn Renderer>> {
     if let Some(file_info) = file_info {
         match file_info {
             FileInfo::WadFile(_) => None,
             FileInfo::MdlFile(_) => None,
             FileInfo::BspFile(file) => {
                 let path = PathBuf::from(&file.path).canonicalize().unwrap();
-                let game_root_path = get_game_root_path(&path)
-                    .unwrap();
+                let game_root_path = get_game_root_path(&path).unwrap();
 
-                    let mut wad_resources = WadCollection::new();
-                    read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
-                
-                    let textures = read_textures(&file.reader, &wad_resources);
-                    let model = gltf::bsp::convert(&file.reader, &textures);
+                let mut wad_resources = WadCollection::new();
+                read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
 
-                    let renderer = BspRenderer::new(&file.reader, &model, &textures, device, queue, config);
-                
+                let textures = read_textures(&file.reader, &wad_resources);
+                let model = gltf::bsp::convert(&file.reader, &textures);
+
+                let renderer =
+                    BspRenderer::new(&file.reader, &model, &textures, device, queue, config);
+
                 Some(Box::new(renderer))
-            },
+            }
         }
     } else {
         None
