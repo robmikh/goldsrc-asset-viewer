@@ -101,6 +101,12 @@ impl BspRenderer {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -116,12 +122,6 @@ impl BspRenderer {
                     },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -132,8 +132,8 @@ impl BspRenderer {
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_u: wgpu::AddressMode::MirrorRepeat,
+            address_mode_v: wgpu::AddressMode::MirrorRepeat,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
@@ -150,10 +150,6 @@ impl BspRenderer {
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
                     },
                 ],
                 label: None,
@@ -215,6 +211,10 @@ impl BspRenderer {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: model_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],
             label: None,
@@ -396,9 +396,7 @@ fn create_texture_and_view(device: &wgpu::Device, queue: &wgpu::Queue, image_dat
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8Unorm,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[
-            wgpu::TextureFormat::Rgba8Unorm
-        ],
+        view_formats: &[],
     });
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     queue.write_texture(
@@ -416,11 +414,12 @@ fn create_texture_and_view(device: &wgpu::Device, queue: &wgpu::Queue, image_dat
 
 fn generate_matrix(aspect_ratio: f32, camera_start: Vec3) -> Mat4 {
     let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
-    let mx_view = Mat4::look_at_rh(
-        Vec3::new(1305.5, -333.5, 779.5),
-        camera_start, 
-        Vec3::new(0.0, 1.0, 0.0)
-    );
+    let mx_view = Mat4::look_to_rh(camera_start, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
+    //let mx_view = Mat4::look_at_rh(
+    //    Vec3::new(1305.5, -333.5, 779.5),
+    //    camera_start, 
+    //    Vec3::new(0.0, 1.0, 0.0)
+    //);
     mx_projection * mx_view
 }
 
@@ -448,13 +447,10 @@ fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfigurati
         &wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::MirrorRepeat,
             address_mode_v: wgpu::AddressMode::MirrorRepeat,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::MirrorRepeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
             ..Default::default()
         }
     );

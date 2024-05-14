@@ -119,6 +119,7 @@ fn show_ui(cli: Cli) {
     let event_loop = EventLoop::new();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
+        //backends: wgpu::Backends::DX12,
         ..Default::default()
     });
     let (window, size, surface) = {
