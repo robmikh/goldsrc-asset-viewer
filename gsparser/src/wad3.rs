@@ -135,17 +135,39 @@ impl WadArchive {
         let file_size = file.metadata().unwrap().len();
         let mut file = BufReader::new(file);
 
-        let header: WadHeader = bincode::deserialize_from(&mut file).unwrap();
+        let file_infos = Self::read_file_infos(&mut file);
+
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut file_data = vec![0u8; file_size as usize];
+        file.read(&mut file_data).unwrap();
+
+        WadArchive {
+            files: file_infos,
+            raw_data: file_data,
+        }
+    }
+
+    pub fn from_bytes(wad_bytes: Vec<u8>) -> Self {
+        let mut reader = std::io::Cursor::new(&wad_bytes);
+        let file_infos = Self::read_file_infos(&mut reader);
+        Self {
+            files: file_infos,
+            raw_data: wad_bytes,
+        }
+    }
+
+    fn read_file_infos<R: Read + Seek>(mut reader: R) -> Vec<WadFileInfo> {
+        let header: WadHeader = bincode::deserialize_from(&mut reader).unwrap();
         assert_eq!(header.magic[0], 87); // 'W' in ASCII
         assert_eq!(header.magic[1], 65); // 'A' in ASCII
         assert_eq!(header.magic[2], 68); // 'D' in ASCII
         assert_eq!(header.magic[3], 51); // '3' in ASCII
 
         let mut file_infos = Vec::new();
-        file.seek(SeekFrom::Start(header.dir_offset as u64))
+        reader.seek(SeekFrom::Start(header.dir_offset as u64))
             .unwrap();
         for _i in 0..header.num_dir {
-            let wad_dir: WadDirectory = bincode::deserialize_from(&mut file).unwrap();
+            let wad_dir: WadDirectory = bincode::deserialize_from(&mut reader).unwrap();
             let name = str::from_utf8(&wad_dir.name).unwrap();
             let name = name.trim_matches(char::from(0));
             let texture_type = match wad_dir.dir_type {
@@ -162,14 +184,7 @@ impl WadArchive {
             });
         }
 
-        file.seek(SeekFrom::Start(0)).unwrap();
-        let mut file_data = vec![0u8; file_size as usize];
-        file.read(&mut file_data).unwrap();
-
-        WadArchive {
-            files: file_infos,
-            raw_data: file_data,
-        }
+        file_infos
     }
 
     pub fn decode_decal(&self, file_info: &WadFileInfo) -> MipmapedTextureData {
@@ -221,6 +236,10 @@ impl WadArchive {
         );
 
         let mut reader = self.get_file_data(file_info);
+        Self::decode_mipmaped_image_from_reader(&mut reader)
+    }
+
+    pub fn decode_mipmaped_image_from_reader<R: Read + Seek>(mut reader: R) -> MipmapedTextureData {
         let texture_header: MipmappedTextureHeader =
             bincode::deserialize_from(&mut reader).unwrap();
 
@@ -455,9 +474,9 @@ fn create_image_greyscale(
     .unwrap()
 }
 
-fn read_mipmapped_image_data(
+fn read_mipmapped_image_data<R: Read + Seek>(
     texture_header: &MipmappedTextureHeader,
-    reader: &mut Cursor<&[u8]>,
+    mut reader: R,
 ) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut image_data = vec![0u8; (texture_header.width * texture_header.height) as usize];
     let mut mipmap1_data =

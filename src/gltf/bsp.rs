@@ -204,6 +204,10 @@ pub fn read_wad_resources<P: AsRef<Path>>(
                 let wad_path = &wad_path[QUIVER_PREFIX.len()..];
                 let mut path = game_root.to_owned();
                 path.push(wad_path);
+                if !path.exists() {
+                    println!("WARNING: Could not find \"{}\"", path.display());
+                    continue;
+                }
                 let archive = WadArchive::open(path);
                 wad_resources.add(archive);
             }
@@ -216,10 +220,15 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     let mut textures = Vec::with_capacity(texture_reader.len());
     for i in 0..texture_reader.len() {
         let reader = texture_reader.get(i).unwrap();
-        if reader.has_local_image_data() {
-            unimplemented!("bsp local image data not implemented");
+        let name = reader.get_image_name();
+        let texture_info = if reader.has_local_image_data() {
+            let len = reader.raw_data().len();
+            let mut data = vec![0u8; len];
+            data.as_mut_slice().copy_from_slice(reader.raw_data());
+            let mut reader = std::io::Cursor::new(&data);
+            let texture_data = WadArchive::decode_mipmaped_image_from_reader(&mut reader);
+            TextureInfo::new(name.to_owned(), texture_data)
         } else {
-            let name = reader.get_image_name();
             let search_name = name.to_uppercase();
             let texture_data =
                 if let Some((archive, file)) = wad_resources.find(search_name.as_str()) {
@@ -230,8 +239,9 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
                     println!("Couldn't find \"{}\"", name);
                     None
                 };
-            textures.push(TextureInfo::new(name.to_owned(), texture_data.unwrap()));
-        }
+            TextureInfo::new(name.to_owned(), texture_data.unwrap())
+        };
+        textures.push(texture_info);
     }
     textures
 }

@@ -320,7 +320,7 @@ fn show_ui(cli: Cli) {
                         ui.menu("File", || {
                             if ui.menu_item_config("Open").shortcut("Ctrl+O").build() {
                                 if let Some(new_path) = FileDialog::new()
-                                    .add_filter("Half-Life Assets", &["wad", "mdl"])
+                                    .add_filter("Half-Life Assets", &["wad", "mdl", "bsp"])
                                     .set_directory("/")
                                     .pick_file()
                                 {
