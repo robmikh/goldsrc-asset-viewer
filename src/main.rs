@@ -6,15 +6,18 @@ mod mdl_viewer;
 mod numerics;
 mod rendering;
 mod wad_viewer;
+mod hittest;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
+use glam::Vec2;
 use gltf::bsp::{read_textures, read_wad_resources, WadCollection};
-use gsparser::bsp::BspReader;
+use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
+use hittest::hittest_node_for_leaf;
 use imgui::*;
 use imgui_wgpu::RendererConfig;
 use rendering::bsp::BspRenderer;
@@ -196,6 +199,7 @@ fn show_ui(cli: Cli) {
 
     let mut pending_path: Option<PathBuf> = None;
 
+    let mut current_mouse_position = Vec2::new(0.0, 0.0);
     let mut down_keys = HashSet::<VirtualKeyCode>::new();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
@@ -269,6 +273,80 @@ fn show_ui(cli: Cli) {
                     }
                 }
             }
+            Event::WindowEvent {
+                event: WindowEvent::CursorMoved { position, ..},
+                ..
+            } => {
+                current_mouse_position = Vec2::new(position.x as f32, position.y as f32);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::MouseInput { state, button, ..},
+                ..
+            } => {
+                if state == ElementState::Released && button == winit::event::MouseButton::Left {
+                    if down_keys.contains(&VirtualKeyCode::LShift) {
+                        if let Some(renderer) = renderer.as_ref() {
+                            let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(current_mouse_position);
+
+                            println!("pos: {:?}    ray: {:?}", pos, ray);
+                            if let Some(file_info) = file_info.as_ref() {
+                                match file_info {
+                                    FileInfo::BspFile(file_info) => {
+                                        if let Some(leaf_index) = hittest_node_for_leaf(&file_info.reader, 0, pos, ray) {
+                                            println!("Hit something... {}", leaf_index);
+                                            // Get the face indices from the leaf
+                                            let leaf = &file_info.reader.read_leaves()[leaf_index];
+                                            let mark_surfaces_range =
+            leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
+
+            let mark_surfaces = file_info.reader.read_mark_surfaces();
+            let mut leaf_faces = HashSet::new();
+            for mark_surface_index in mark_surfaces_range {
+                let mark_surface = &mark_surfaces[mark_surface_index as usize];
+                leaf_faces.insert(mark_surface.0 as usize);
+            }
+
+                                            
+                                            // Build entity map
+                                            let entities = BspEntity::parse_entities(file_info.reader.read_entities());               
+                                            let mut model_to_entity = Vec::new();
+                                            for (entity_index, entity) in entities.iter().enumerate() {
+                                                if let Some(value) = entity.0.get("model") {
+                                                    if value.starts_with('*') {
+                                                        let model_ref: usize = value.trim_start_matches('*').parse().unwrap();
+                                                        model_to_entity.push((model_ref, entity_index));
+                                                    }
+                                                }
+                                            }
+
+                                            let models = file_info.reader.read_models();
+                                            let mut found = None;
+                                            'find_entity: for (model_index, entity_index) in model_to_entity {
+                                                let model = models[model_index];
+                                                let faces_start = model.first_face as usize;
+                                                let faces_len = model.faces as usize;
+                                                let faces_end = faces_start+faces_len;
+                                                for i in faces_start..faces_end {
+                                                    if leaf_faces.contains(&i) {
+                                                        found = Some(entity_index);
+                                                        break 'find_entity;
+                                                    }
+                                                }
+                                            }
+
+                                            if let Some(entity_index) = found {
+                                                println!("woop");
+                                                bsp_viewer.select_entity(entity_index as i32);
+                                            }
+                                        }
+                                    },
+                                    _ => (),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Event::RedrawRequested(_) => {
                 let now = Instant::now();
                 let delta = now - last_frame;
@@ -296,6 +374,8 @@ fn show_ui(cli: Cli) {
                 // Rendering
                 let clear_op = if let Some(renderer) = renderer.as_mut() {
                     renderer.update(&device, &queue, delta, &down_keys);
+                    let position = renderer.get_position();
+                    bsp_viewer.set_position(position);
                     renderer.render(clear_color, &view, &device, &queue);
                     wgpu::Operations {
                         load: wgpu::LoadOp::Load,

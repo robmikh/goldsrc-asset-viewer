@@ -1,5 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
+use glam::{Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
 pub mod bsp;
@@ -27,4 +28,11 @@ pub trait Renderer {
         delta: Duration,
         down_keys: &HashSet<VirtualKeyCode>,
     );
+
+    fn world_pos_and_ray_from_screen_pos(
+        &self,
+        pos: Vec2,
+    ) -> (Vec3, Vec3);
+
+    fn get_position(&self) -> Vec3;
 }
