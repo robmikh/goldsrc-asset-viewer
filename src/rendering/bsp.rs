@@ -465,27 +465,28 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
+    fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
         let (projection, view) = compute_projection_and_view_transforms(
             self.config.width as f32 / self.config.height as f32,
             self.camera_position,
             self.facing,
         );
 
-        let ray_nds = Vec3::new(
-            (2.0 * pos.x) / self.config.width as f32 - 1.0,
-            1.0 - (2.0 * pos.y) / self.config.height as f32,
-            1.0,
-        );
-        let ray_clip = Vec4::new(ray_nds.x, ray_nds.y, 1.0, 1.0);
-        let ray_clip = Vec4::new(pos.x, self.config.height as f32 - pos.y, 1.0, 1.0);
-        let ray_eye = view.inverse() * ray_clip;
-        (ray_eye.xyz(), self.facing)
-        //println!("ray_eye: {:?}", ray_eye);
-        //let world_pos = (projection.inverse() * ray_eye).xyz();
-        //let ray_eye = Vec4::new(ray_eye.x, ray_eye.y, 1.0, 0.0);
-        //let ray_world = ((projection.inverse() * ray_eye).xyz()).normalize();
-        //(world_pos, ray_world)
+        let target_size = Vec2::new(self.config.width as f32, self.config.height as f32);
+        pos.y = target_size.y - pos.y;
+        let ndc = pos * 2.0 / target_size - Vec2::ONE;
+
+        let ndc_to_world = view * projection.inverse();
+        let world_near_plane = ndc_to_world.project_point3(ndc.extend(1.0));
+        let world_far_plane = ndc_to_world.project_point3(ndc.extend(f32::EPSILON));
+
+        let direction = world_far_plane - world_near_plane;
+        let length = direction.length();
+        let direction = (length.is_finite() && length > 0.0).then_some(direction / length);
+        let direction = direction.unwrap();
+
+        //(world_near_plane, direction.normalize())
+        (self.camera_position, self.facing)
     }
 
     fn get_position(&self) -> Vec3 {
