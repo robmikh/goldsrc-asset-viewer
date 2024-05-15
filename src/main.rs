@@ -88,7 +88,7 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
     let game_root_path = get_game_root_path(&path).unwrap();
-    gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
+    gltf::bsp::export(game_root_path, &file.reader, export_file_path, true, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -510,7 +510,7 @@ fn load_renderer(
                 read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
 
                 let textures = read_textures(&file.reader, &wad_resources);
-                let model = gltf::bsp::convert(&file.reader, &textures);
+                let model = gltf::bsp::convert(&file.reader, &textures, true);
 
                 let renderer =
                     BspRenderer::new(&file.reader, &model, &textures, device, queue, config);
