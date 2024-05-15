@@ -46,5 +46,8 @@ var r_texture: texture_2d<f32>;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var tex_color: vec4<f32>;
     tex_color = textureSample(r_texture, r_sampler, in.tex_coord);
+    if tex_color.w == 0.0 {
+        discard;
+    }
     return tex_color;
 }
