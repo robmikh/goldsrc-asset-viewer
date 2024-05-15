@@ -164,7 +164,8 @@ impl WadArchive {
         assert_eq!(header.magic[3], 51); // '3' in ASCII
 
         let mut file_infos = Vec::new();
-        reader.seek(SeekFrom::Start(header.dir_offset as u64))
+        reader
+            .seek(SeekFrom::Start(header.dir_offset as u64))
             .unwrap();
         for _i in 0..header.num_dir {
             let wad_dir: WadDirectory = bincode::deserialize_from(&mut reader).unwrap();

@@ -465,19 +465,17 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn world_pos_and_ray_from_screen_pos(
-        &self,
-        pos: Vec2,
-    ) -> (Vec3, Vec3) {
+    fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
         let (projection, view) = compute_projection_and_view_transforms(
             self.config.width as f32 / self.config.height as f32,
             self.camera_position,
-            self.facing);
+            self.facing,
+        );
 
         let ray_nds = Vec3::new(
             (2.0 * pos.x) / self.config.width as f32 - 1.0,
             1.0 - (2.0 * pos.y) / self.config.height as f32,
-            1.0
+            1.0,
         );
         let ray_clip = Vec4::new(ray_nds.x, ray_nds.y, 1.0, 1.0);
         let ray_clip = Vec4::new(pos.x, self.config.height as f32 - pos.y, 1.0, 1.0);
@@ -489,7 +487,7 @@ impl Renderer for BspRenderer {
         //let ray_world = ((projection.inverse() * ray_eye).xyz()).normalize();
         //(world_pos, ray_world)
     }
-    
+
     fn get_position(&self) -> Vec3 {
         self.camera_position
     }
@@ -529,7 +527,11 @@ fn create_texture_and_view(
     (texture, texture_view)
 }
 
-fn compute_projection_and_view_transforms(aspect_ratio: f32, camera_start: Vec3, facing: Vec3) -> (Mat4, Mat4) {
+fn compute_projection_and_view_transforms(
+    aspect_ratio: f32,
+    camera_start: Vec3,
+    facing: Vec3,
+) -> (Mat4, Mat4) {
     let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
     let mx_view = Mat4::look_to_rh(camera_start, facing, Vec3::new(0.0, 1.0, 0.0));
     (mx_projection, mx_view)

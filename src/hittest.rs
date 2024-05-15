@@ -3,14 +3,25 @@ use gsparser::bsp::{BspNode, BspReader};
 
 use crate::gltf::coordinates::convert_coordinates;
 
-pub fn hittest_node_for_leaf(reader: &BspReader, node_index: usize, pos: Vec3, ray: Vec3) -> Option<usize> {
+pub fn hittest_node_for_leaf(
+    reader: &BspReader,
+    node_index: usize,
+    pos: Vec3,
+    ray: Vec3,
+) -> Option<usize> {
     let p1 = pos;
     let p2 = pos + (ray * 10000.0);
     let nodes = reader.read_nodes();
     hittest_node_for_leaf_impl(reader, nodes, node_index, p1, p2)
 }
 
-fn hittest_node_for_leaf_impl(reader: &BspReader, nodes: &[BspNode], node_index: usize, p1: Vec3, p2: Vec3) -> Option<usize> {
+fn hittest_node_for_leaf_impl(
+    reader: &BspReader,
+    nodes: &[BspNode],
+    node_index: usize,
+    p1: Vec3,
+    p2: Vec3,
+) -> Option<usize> {
     let current_node = &nodes[node_index];
     let planes = reader.read_planes();
     let plane = &planes[current_node.plane as usize];

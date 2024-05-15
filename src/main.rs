@@ -2,11 +2,11 @@ mod bsp_viewer;
 mod cli;
 mod gltf;
 mod graphics;
+mod hittest;
 mod mdl_viewer;
 mod numerics;
 mod rendering;
 mod wad_viewer;
-mod hittest;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -91,7 +91,14 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
     let game_root_path = get_game_root_path(&path).unwrap();
-    gltf::bsp::export(game_root_path, &file.reader, export_file_path, true, log.as_mut()).unwrap();
+    gltf::bsp::export(
+        game_root_path,
+        &file.reader,
+        export_file_path,
+        true,
+        log.as_mut(),
+    )
+    .unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -274,58 +281,72 @@ fn show_ui(cli: Cli) {
                 }
             }
             Event::WindowEvent {
-                event: WindowEvent::CursorMoved { position, ..},
+                event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
                 current_mouse_position = Vec2::new(position.x as f32, position.y as f32);
             }
             Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button, ..},
+                event: WindowEvent::MouseInput { state, button, .. },
                 ..
             } => {
                 if state == ElementState::Released && button == winit::event::MouseButton::Left {
                     if down_keys.contains(&VirtualKeyCode::LShift) {
                         if let Some(renderer) = renderer.as_ref() {
-                            let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(current_mouse_position);
+                            let (pos, ray) =
+                                renderer.world_pos_and_ray_from_screen_pos(current_mouse_position);
 
                             println!("pos: {:?}    ray: {:?}", pos, ray);
                             if let Some(file_info) = file_info.as_ref() {
                                 match file_info {
                                     FileInfo::BspFile(file_info) => {
-                                        if let Some(leaf_index) = hittest_node_for_leaf(&file_info.reader, 0, pos, ray) {
+                                        if let Some(leaf_index) =
+                                            hittest_node_for_leaf(&file_info.reader, 0, pos, ray)
+                                        {
                                             println!("Hit something... {}", leaf_index);
                                             // Get the face indices from the leaf
                                             let leaf = &file_info.reader.read_leaves()[leaf_index];
-                                            let mark_surfaces_range =
-            leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
+                                            let mark_surfaces_range = leaf.first_mark_surface
+                                                ..leaf.first_mark_surface + leaf.mark_surfaces;
 
-            let mark_surfaces = file_info.reader.read_mark_surfaces();
-            let mut leaf_faces = HashSet::new();
-            for mark_surface_index in mark_surfaces_range {
-                let mark_surface = &mark_surfaces[mark_surface_index as usize];
-                leaf_faces.insert(mark_surface.0 as usize);
-            }
+                                            let mark_surfaces =
+                                                file_info.reader.read_mark_surfaces();
+                                            let mut leaf_faces = HashSet::new();
+                                            for mark_surface_index in mark_surfaces_range {
+                                                let mark_surface =
+                                                    &mark_surfaces[mark_surface_index as usize];
+                                                leaf_faces.insert(mark_surface.0 as usize);
+                                            }
 
-                                            
                                             // Build entity map
-                                            let entities = BspEntity::parse_entities(file_info.reader.read_entities());               
+                                            let entities = BspEntity::parse_entities(
+                                                file_info.reader.read_entities(),
+                                            );
                                             let mut model_to_entity = Vec::new();
-                                            for (entity_index, entity) in entities.iter().enumerate() {
+                                            for (entity_index, entity) in
+                                                entities.iter().enumerate()
+                                            {
                                                 if let Some(value) = entity.0.get("model") {
                                                     if value.starts_with('*') {
-                                                        let model_ref: usize = value.trim_start_matches('*').parse().unwrap();
-                                                        model_to_entity.push((model_ref, entity_index));
+                                                        let model_ref: usize = value
+                                                            .trim_start_matches('*')
+                                                            .parse()
+                                                            .unwrap();
+                                                        model_to_entity
+                                                            .push((model_ref, entity_index));
                                                     }
                                                 }
                                             }
 
                                             let models = file_info.reader.read_models();
                                             let mut found = None;
-                                            'find_entity: for (model_index, entity_index) in model_to_entity {
+                                            'find_entity: for (model_index, entity_index) in
+                                                model_to_entity
+                                            {
                                                 let model = models[model_index];
                                                 let faces_start = model.first_face as usize;
                                                 let faces_len = model.faces as usize;
-                                                let faces_end = faces_start+faces_len;
+                                                let faces_end = faces_start + faces_len;
                                                 for i in faces_start..faces_end {
                                                     if leaf_faces.contains(&i) {
                                                         found = Some(entity_index);
@@ -339,7 +360,7 @@ fn show_ui(cli: Cli) {
                                                 bsp_viewer.select_entity(entity_index as i32);
                                             }
                                         }
-                                    },
+                                    }
                                     _ => (),
                                 }
                             }

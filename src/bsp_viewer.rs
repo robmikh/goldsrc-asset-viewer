@@ -67,13 +67,16 @@ impl BspViewer {
             self.reset_listbox_index();
             force_new_selection = true;
 
-            self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities()).iter().map(|x| {
-                let mut result = HashMap::new();
-                for (key, value) in &x.0 {
-                    result.insert((*key).to_owned(), (*value).to_owned());
-                }
-                result
-            }).collect();
+            self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities())
+                .iter()
+                .map(|x| {
+                    let mut result = HashMap::new();
+                    for (key, value) in &x.0 {
+                        result.insert((*key).to_owned(), (*value).to_owned());
+                    }
+                    result
+                })
+                .collect();
 
             self.entities = format!("{:#?}", self.cached_entities);
         }
@@ -87,7 +90,9 @@ impl BspViewer {
                 ui.text(format!("  y: {}", self.state.position.y));
                 ui.text(format!("  z: {}", self.state.position.z));
                 ui.text("Selected Entity:");
-                if self.state.selected_entity_index >= 0 && (self.state.selected_entity_index as usize) < self.cached_entities.len() {
+                if self.state.selected_entity_index >= 0
+                    && (self.state.selected_entity_index as usize) < self.cached_entities.len()
+                {
                     let entity = &self.cached_entities[self.state.selected_entity_index as usize];
                     let text = format!("{:#?}", entity);
                     ui.text(text);

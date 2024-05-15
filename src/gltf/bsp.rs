@@ -247,7 +247,11 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     textures
 }
 
-pub fn convert(reader: &BspReader, textures: &[TextureInfo], hide_engine_entities: bool) -> Model<ModelVertex> {
+pub fn convert(
+    reader: &BspReader,
+    textures: &[TextureInfo],
+    hide_engine_entities: bool,
+) -> Model<ModelVertex> {
     let entities = BspEntity::parse_entities(reader.read_entities());
     let invisible_faces = if hide_engine_entities {
         let mut invisible_faces = HashSet::new();
@@ -255,11 +259,17 @@ pub fn convert(reader: &BspReader, textures: &[TextureInfo], hide_engine_entitie
             if let Some(value) = entity.0.get("style") {
                 // TODO: Learn what the styles are
                 if *value == "32" {
-                    let model_ref: usize = entity.0.get("model").unwrap().trim_start_matches('*').parse().unwrap();
+                    let model_ref: usize = entity
+                        .0
+                        .get("model")
+                        .unwrap()
+                        .trim_start_matches('*')
+                        .parse()
+                        .unwrap();
                     let model = &reader.read_models()[model_ref];
                     let faces_start = model.first_face as usize;
                     let faces_len = model.faces as usize;
-                    let faces_end = faces_start+faces_len;
+                    let faces_end = faces_start + faces_len;
                     for i in faces_start..faces_end {
                         invisible_faces.insert(i);
                     }
@@ -270,7 +280,7 @@ pub fn convert(reader: &BspReader, textures: &[TextureInfo], hide_engine_entitie
     } else {
         HashSet::new()
     };
-    
+
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
