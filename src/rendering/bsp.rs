@@ -476,8 +476,8 @@ impl Renderer for BspRenderer {
         pos.y = target_size.y - pos.y;
         let ndc = pos * 2.0 / target_size - Vec2::ONE;
 
-        let ndc_to_world = view * projection.inverse();
-        let world_near_plane = ndc_to_world.project_point3(ndc.extend(1.0));
+        let ndc_to_world = (projection * view).inverse();
+        let world_near_plane = ndc_to_world.project_point3(ndc.extend(-1.0));
         let world_far_plane = ndc_to_world.project_point3(ndc.extend(f32::EPSILON));
 
         let direction = world_far_plane - world_near_plane;
@@ -485,8 +485,8 @@ impl Renderer for BspRenderer {
         let direction = (length.is_finite() && length > 0.0).then_some(direction / length);
         let direction = direction.unwrap();
 
-        //(world_near_plane, direction.normalize())
-        (self.camera_position, self.facing)
+        (world_near_plane, direction.normalize())
+        //(self.camera_position, self.facing)
     }
 
     fn get_position(&self) -> Vec3 {
