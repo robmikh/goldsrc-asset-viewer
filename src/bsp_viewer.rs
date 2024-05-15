@@ -15,6 +15,7 @@ pub struct ExtraTextureData {}
 struct BspViewerState {
     pub selected_entity_index: i32,
     pub position: Vec3,
+    pub direction: Vec3,
 }
 
 impl BspViewerState {
@@ -22,12 +23,14 @@ impl BspViewerState {
         Self {
             selected_entity_index: -1,
             position: Vec3::ZERO,
+            direction: Vec3::ZERO,
         }
     }
 
     fn copy_state(&mut self, other: &Self) {
         self.selected_entity_index = other.selected_entity_index;
         self.position = other.position;
+        self.direction = other.direction;
     }
 }
 
@@ -89,6 +92,10 @@ impl BspViewer {
                 ui.text(format!("  x: {}", self.state.position.x));
                 ui.text(format!("  y: {}", self.state.position.y));
                 ui.text(format!("  z: {}", self.state.position.z));
+                ui.text("Direction:");
+                ui.text(format!("  x: {}", self.state.direction.x));
+                ui.text(format!("  y: {}", self.state.direction.y));
+                ui.text(format!("  z: {}", self.state.direction.z));
                 ui.text("Selected Entity:");
                 if self.state.selected_entity_index >= 0
                     && (self.state.selected_entity_index as usize) < self.cached_entities.len()
@@ -111,8 +118,9 @@ impl BspViewer {
         self.state.selected_entity_index = index;
     }
 
-    pub fn set_position(&mut self, position: Vec3) {
+    pub fn set_position(&mut self, position: Vec3, facing: Vec3) {
         self.state.position = position;
+        self.state.direction = facing;
     }
 }
 

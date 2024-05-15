@@ -489,8 +489,8 @@ impl Renderer for BspRenderer {
         //(self.camera_position, self.facing)
     }
 
-    fn get_position(&self) -> Vec3 {
-        self.camera_position
+    fn get_position_and_direction(&self) -> (Vec3, Vec3) {
+        (self.camera_position, self.facing)
     }
 }
 

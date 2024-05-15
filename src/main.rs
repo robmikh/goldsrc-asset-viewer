@@ -395,8 +395,8 @@ fn show_ui(cli: Cli) {
                 // Rendering
                 let clear_op = if let Some(renderer) = renderer.as_mut() {
                     renderer.update(&device, &queue, delta, &down_keys);
-                    let position = renderer.get_position();
-                    bsp_viewer.set_position(position);
+                    let (position, direction) = renderer.get_position_and_direction();
+                    bsp_viewer.set_position(position, direction);
                     renderer.render(clear_color, &view, &device, &queue);
                     wgpu::Operations {
                         load: wgpu::LoadOp::Load,

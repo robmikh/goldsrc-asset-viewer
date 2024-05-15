@@ -31,5 +31,5 @@ pub trait Renderer {
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);
 
-    fn get_position(&self) -> Vec3;
+    fn get_position_and_direction(&self) -> (Vec3, Vec3);
 }
