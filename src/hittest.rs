@@ -28,7 +28,8 @@ fn hittest_node_for_leaf_impl(
     } else {
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
-        println!("returning {:016b} -> {:016b} ({} -> {})", node_index, leaf_index, node_index, leaf_index);        //if leaf.mark_surfaces > 0 {
+        println!("returning {:016b} -> {:016b} ({} -> {})", node_index, leaf_index, node_index, leaf_index);
+        //if leaf.mark_surfaces > 0 {
         //    return Some(leaf_index as usize);
         //} else {
         //    return None;
