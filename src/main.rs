@@ -299,30 +299,34 @@ fn show_ui(cli: Cli) {
                             if let Some(file_info) = file_info.as_ref() {
                                 match file_info {
                                     FileInfo::BspFile(file_info) => {
-                                        if let Some((intersection_point, leaf_index)) =
-                                            hittest_node_for_leaf(&file_info.reader, 0, pos, ray)
-                                        {
-                                            renderer.set_debug_point(intersection_point);
-                                            println!("Hit something... {}", leaf_index);
-                                            // Get the face indices from the leaf
-                                            let leaf = &file_info.reader.read_leaves()[leaf_index];
-                                            let mark_surfaces_range = leaf.first_mark_surface
-                                                ..leaf.first_mark_surface + leaf.mark_surfaces;
-
-                                            let mark_surfaces =
-                                                file_info.reader.read_mark_surfaces();
-                                            let mut leaf_faces = HashSet::new();
-                                            for mark_surface_index in mark_surfaces_range {
-                                                let mark_surface =
-                                                    &mark_surfaces[mark_surface_index as usize];
-                                                leaf_faces.insert(mark_surface.0 as usize);
+                                        let models = file_info.reader.read_models();
+                                        let mut closest_intersection = None;
+                                        for (i, model) in models.iter().enumerate() {
+                                            let node_index = model.head_nodes[0] as usize;
+                                            if let Some((intersection_point, leaf_index)) =
+                                                hittest_node_for_leaf(&file_info.reader, node_index, pos, ray) {
+                                                    let distance = pos.distance(intersection_point);
+                                                    if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                                                        let old_distance = pos.distance(old_intersection);
+                                                        if distance < old_distance {
+                                                            closest_intersection = Some((i, intersection_point));
+                                                        } else {
+                                                            closest_intersection = Some((old_i, old_intersection));
+                                                        }
+                                                    } else {
+                                                        closest_intersection = Some((i, intersection_point));
+                                                    }
                                             }
+                                        }
 
-                                            // Build entity map
+                                        if let Some((model_index, intersection_point)) = closest_intersection {
+                                            renderer.set_debug_point(intersection_point);
+                                            println!("Hit something... {}", model_index);
+
+                                            let mut found = None;
                                             let entities = BspEntity::parse_entities(
                                                 file_info.reader.read_entities(),
                                             );
-                                            let mut model_to_entity = Vec::new();
                                             for (entity_index, entity) in
                                                 entities.iter().enumerate()
                                             {
@@ -332,25 +336,10 @@ fn show_ui(cli: Cli) {
                                                             .trim_start_matches('*')
                                                             .parse()
                                                             .unwrap();
-                                                        model_to_entity
-                                                            .push((model_ref, entity_index));
-                                                    }
-                                                }
-                                            }
-
-                                            let models = file_info.reader.read_models();
-                                            let mut found = None;
-                                            'find_entity: for (model_index, entity_index) in
-                                                model_to_entity
-                                            {
-                                                let model = models[model_index];
-                                                let faces_start = model.first_face as usize;
-                                                let faces_len = model.faces as usize;
-                                                let faces_end = faces_start + faces_len;
-                                                for i in faces_start..faces_end {
-                                                    if leaf_faces.contains(&i) {
-                                                        found = Some(entity_index);
-                                                        break 'find_entity;
+                                                        if model_ref == model_index {
+                                                            found = Some(entity_index);
+                                                            break;
+                                                        }
                                                     }
                                                 }
                                             }

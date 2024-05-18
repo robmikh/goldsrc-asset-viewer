@@ -279,7 +279,6 @@ pub fn convert_models(
             skipped_first = true;
             continue;
         }
-        println!("{} -> {}", bsp_model.head_nodes[0], node_index);
         let mut indices = Vec::new();
         let mut vertices = Vec::new();
         let mut meshes = Vec::new();
