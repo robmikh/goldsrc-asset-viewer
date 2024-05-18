@@ -270,9 +270,13 @@ pub fn convert_models(
     let bsp_models = reader.read_models();
 
     let mut models = Vec::with_capacity(bsp_models.len());
+    let mut skipped_first = false;
     for bsp_model in bsp_models {
         let node_index = bsp_model.head_nodes[0] as i16;
         if node_index == 0 {
+            assert!(models.is_empty());
+            assert!(!skipped_first);
+            skipped_first = true;
             continue;
         }
         println!("{} -> {}", bsp_model.head_nodes[0], node_index);
@@ -288,6 +292,7 @@ pub fn convert_models(
             meshes,
         });
     }
+    assert!(skipped_first);
 
     models
 }
