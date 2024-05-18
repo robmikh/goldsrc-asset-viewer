@@ -99,7 +99,6 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     game_root: T,
     reader: &BspReader,
     export_file_path: P,
-    hide_engine_entities: bool,
     mut log: Option<&mut String>,
 ) -> std::io::Result<()> {
     if let Some(log) = &mut log {
@@ -112,7 +111,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     read_wad_resources(reader, game_root, &mut wad_resources);
 
     let textures = read_textures(reader, &wad_resources);
-    let model = convert(reader, &textures, hide_engine_entities);
+    let model = convert(reader, &textures);
 
     let mut buffer_writer = BufferWriter::new();
 
@@ -250,34 +249,8 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
 pub fn convert(
     reader: &BspReader,
     textures: &[TextureInfo],
-    hide_engine_entities: bool,
 ) -> Model<ModelVertex> {
     let entities = BspEntity::parse_entities(reader.read_entities());
-    let invisible_faces = if hide_engine_entities {
-        let mut invisible_faces = HashSet::new();
-        for entity in entities {
-            if let Some(value) = entity.0.get("style") {
-                // TODO: Learn what the styles are
-                if *value == "32" {
-                    if let Some(model_value) = entity.0.get("model") {
-                        if model_value.starts_with('*') {
-                            let model_ref: usize = model_value.trim_start_matches('*').parse().unwrap();
-                            let model = &reader.read_models()[model_ref];
-                            let faces_start = model.first_face as usize;
-                            let faces_len = model.faces as usize;
-                            let faces_end = faces_start + faces_len;
-                            for i in faces_start..faces_end {
-                                invisible_faces.insert(i);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        invisible_faces
-    } else {
-        HashSet::new()
-    };
 
     let mut indices = Vec::new();
     let mut vertices = Vec::new();

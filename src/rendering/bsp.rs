@@ -521,7 +521,7 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn world_pos_and_ray_from_screen_pos(&mut self, mut pos: Vec2) -> (Vec3, Vec3) {
+    fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
         let (projection, view) = compute_projection_and_view_transforms(
             self.config.width as f32 / self.config.height as f32,
             self.camera_position,
@@ -541,11 +541,7 @@ impl Renderer for BspRenderer {
         let direction = (length.is_finite() && length > 0.0).then_some(direction / length);
         let direction = direction.unwrap();
 
-        self.new_debug_point = Some(world_near_plane);
-        //self.new_debug_point = Some(self.camera_position);
-
         (world_near_plane, direction.normalize())
-        //(self.camera_position, self.facing)
     }
 
     fn get_position_and_direction(&self) -> (Vec3, Vec3) {
