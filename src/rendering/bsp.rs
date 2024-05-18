@@ -45,7 +45,8 @@ impl GpuVertex {
 }
 
 pub struct BspRenderer {
-    model: GpuModel,
+    map_model: GpuModel,
+    map_models: Vec<GpuModel>,
     textures: Vec<(wgpu::Texture, wgpu::TextureView, wgpu::BindGroup)>,
     sampler: wgpu::Sampler,
 
@@ -77,6 +78,7 @@ impl BspRenderer {
     pub fn new(
         reader: &BspReader,
         loaded_model: &Model<ModelVertex>,
+        loaded_map_models: &[Model<ModelVertex>],
         loaded_textures: &[TextureInfo],
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -266,27 +268,8 @@ impl BspRenderer {
             ],
         }];
 
-        let vertices: Vec<GpuVertex> = loaded_model
-            .vertices
-            .iter()
-            .map(|x| GpuVertex::from(x))
-            .collect();
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&loaded_model.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let meshes = loaded_model.meshes.clone();
-        let model = GpuModel {
-            index_buffer,
-            vertex_buffer,
-            meshes,
-        };
+        let map_model = create_gpu_model_for_model(loaded_model, device);
+        let map_models = loaded_map_models.iter().map(|x| create_gpu_model_for_model(x, device)).collect();
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
@@ -317,7 +300,8 @@ impl BspRenderer {
         });
 
         Self {
-            model,
+            map_model,
+            map_models,
             textures,
             sampler,
 
@@ -344,6 +328,23 @@ impl BspRenderer {
             new_debug_point: None,
             debug_point: None,
         }
+    }
+
+    fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
+        render_pass
+                .set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+
+            for mesh in &model.meshes {
+                let texture = mesh.texture_index;
+                let (_, _, bind_group) = &self.textures[texture];
+                render_pass.set_bind_group(2, bind_group, &[]);
+                render_pass.draw_indexed(
+                    mesh.indices_range.start as u32..mesh.indices_range.end as u32,
+                    0,
+                    0..1,
+                );
+            }
     }
 }
 
@@ -381,39 +382,16 @@ impl Renderer for BspRenderer {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.bind_group, &[]);
 
-            render_pass.push_debug_group("Prepare render pass for mesh.");
-            render_pass
-                .set_index_buffer(self.model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.set_vertex_buffer(0, self.model.vertex_buffer.slice(..));
-            render_pass.pop_debug_group();
-
             render_pass.insert_debug_marker("Draw!");
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
-            for mesh in &self.model.meshes {
-                let texture = mesh.texture_index;
-                let (_, _, bind_group) = &self.textures[texture];
-                render_pass.set_bind_group(2, bind_group, &[]);
-                render_pass.draw_indexed(
-                    mesh.indices_range.start as u32..mesh.indices_range.end as u32,
-                    0,
-                    0..1,
-                );
+            self.render_model(&mut render_pass, &self.map_model);
+
+            for model in &self.map_models {
+                self.render_model(&mut render_pass, model);
             }
 
             if let Some(model) = self.debug_point.as_ref() {
-                render_pass
-                .set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-
-                let mesh = model.meshes.first().unwrap();
-                let texture = mesh.texture_index;
-                let (_, _, bind_group) = &self.textures[texture];
-                render_pass.set_bind_group(2, bind_group, &[]);
-                render_pass.draw_indexed(
-                    mesh.indices_range.start as u32..mesh.indices_range.end as u32,
-                    0,
-                    0..1,
-                );
+                self.render_model(&mut render_pass, model);
             }
 
             render_pass.pop_debug_group();
@@ -639,4 +617,28 @@ fn create_depth_texture(
         ..Default::default()
     });
     (texture, view, sampler)
+}
+
+fn create_gpu_model_for_model(model: &Model<ModelVertex>, device: &wgpu::Device) -> GpuModel {
+    let vertices: Vec<GpuVertex> = model
+        .vertices
+        .iter()
+        .map(|x| GpuVertex::from(x))
+        .collect();
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Vertex Buffer"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Index Buffer"),
+        contents: bytemuck::cast_slice(&model.indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    let meshes = model.meshes.clone();
+    GpuModel {
+        index_buffer,
+        vertex_buffer,
+        meshes,
+    }
 }

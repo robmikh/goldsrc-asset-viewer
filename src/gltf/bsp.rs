@@ -250,8 +250,6 @@ pub fn convert(
     reader: &BspReader,
     textures: &[TextureInfo],
 ) -> Model<ModelVertex> {
-    let entities = BspEntity::parse_entities(reader.read_entities());
-
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
@@ -263,6 +261,35 @@ pub fn convert(
         vertices,
         meshes,
     }
+}
+
+pub fn convert_models(
+    reader: &BspReader,
+    textures: &[TextureInfo],
+) -> Vec<Model<ModelVertex>> {
+    let bsp_models = reader.read_models();
+
+    let mut models = Vec::with_capacity(bsp_models.len());
+    for bsp_model in bsp_models {
+        let node_index = bsp_model.head_nodes[0] as i16;
+        if node_index == 0 {
+            continue;
+        }
+        println!("{} -> {}", bsp_model.head_nodes[0], node_index);
+        let mut indices = Vec::new();
+        let mut vertices = Vec::new();
+        let mut meshes = Vec::new();
+        let mut vertex_map = HashMap::<SharedVertex, usize>::new();
+        convert_node(reader, reader.read_nodes(), node_index, false, &mut indices, &mut vertices, &mut vertex_map, &mut meshes, &textures);
+        
+        models.push(Model {
+            indices,
+            vertices,
+            meshes,
+        });
+    }
+
+    models
 }
 
 fn process_indexed_triangles(
