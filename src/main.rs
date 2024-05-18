@@ -91,13 +91,7 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
     let game_root_path = get_game_root_path(&path).unwrap();
-    gltf::bsp::export(
-        game_root_path,
-        &file.reader,
-        export_file_path,
-        log.as_mut(),
-    )
-    .unwrap();
+    gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -304,22 +298,36 @@ fn show_ui(cli: Cli) {
                                         for (i, model) in models.iter().enumerate() {
                                             let node_index = model.head_nodes[0] as usize;
                                             if let Some((intersection_point, leaf_index)) =
-                                                hittest_node_for_leaf(&file_info.reader, node_index, pos, ray) {
-                                                    let distance = pos.distance(intersection_point);
-                                                    if let Some((old_i, old_intersection)) = closest_intersection.take() {
-                                                        let old_distance = pos.distance(old_intersection);
-                                                        if distance < old_distance {
-                                                            closest_intersection = Some((i, intersection_point));
-                                                        } else {
-                                                            closest_intersection = Some((old_i, old_intersection));
-                                                        }
+                                                hittest_node_for_leaf(
+                                                    &file_info.reader,
+                                                    node_index,
+                                                    pos,
+                                                    ray,
+                                                )
+                                            {
+                                                let distance = pos.distance(intersection_point);
+                                                if let Some((old_i, old_intersection)) =
+                                                    closest_intersection.take()
+                                                {
+                                                    let old_distance =
+                                                        pos.distance(old_intersection);
+                                                    if distance < old_distance {
+                                                        closest_intersection =
+                                                            Some((i, intersection_point));
                                                     } else {
-                                                        closest_intersection = Some((i, intersection_point));
+                                                        closest_intersection =
+                                                            Some((old_i, old_intersection));
                                                     }
+                                                } else {
+                                                    closest_intersection =
+                                                        Some((i, intersection_point));
+                                                }
                                             }
                                         }
 
-                                        if let Some((model_index, intersection_point)) = closest_intersection {
+                                        if let Some((model_index, intersection_point)) =
+                                            closest_intersection
+                                        {
                                             renderer.set_debug_point(intersection_point);
                                             println!("Hit something... {}", model_index);
 
@@ -603,8 +611,15 @@ fn load_renderer(
                 let model = gltf::bsp::convert(&file.reader, &textures);
                 let map_models = gltf::bsp::convert_models(&file.reader, &textures);
 
-                let renderer =
-                    BspRenderer::new(&file.reader, &model, &map_models, &textures, device, queue, config);
+                let renderer = BspRenderer::new(
+                    &file.reader,
+                    &model,
+                    &map_models,
+                    &textures,
+                    device,
+                    queue,
+                    config,
+                );
 
                 Some(Box::new(renderer))
             }

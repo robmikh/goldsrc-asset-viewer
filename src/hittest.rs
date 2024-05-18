@@ -72,7 +72,9 @@ fn hittest_node_for_leaf_impl(
     );
     let side = if t1 >= 0.0 { 0 } else { 1 };
 
-    if let Some(hit) = hittest_node_for_leaf_impl(reader, nodes, current_node.children[side], p1, mid, false) {
+    if let Some(hit) =
+        hittest_node_for_leaf_impl(reader, nodes, current_node.children[side], p1, mid, false)
+    {
         return Some(hit);
     }
 

@@ -10,8 +10,16 @@ pub fn create_debug_point(
     vertices: &mut Vec<ModelVertex>,
 ) -> Range<usize> {
     let size = 5;
-    let mins = [pos.x as i16 - size, pos.y as i16 - size, pos.z as i16 - size];
-    let maxs = [pos.x as i16 + size, pos.y as i16 + size, pos.z as i16 + size];
+    let mins = [
+        pos.x as i16 - size,
+        pos.y as i16 - size,
+        pos.z as i16 - size,
+    ];
+    let maxs = [
+        pos.x as i16 + size,
+        pos.y as i16 + size,
+        pos.z as i16 + size,
+    ];
 
     create_primitive(&mins, &maxs, indices, vertices)
 }

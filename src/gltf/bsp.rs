@@ -7,7 +7,10 @@ use std::{
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use gsparser::{
-    bsp::{BspEdge, BspEntity, BspFace, BspLeaf, BspNode, BspReader, BspSurfaceEdge, BspTextureInfo, BspVertex},
+    bsp::{
+        BspEdge, BspEntity, BspFace, BspLeaf, BspNode, BspReader, BspSurfaceEdge, BspTextureInfo,
+        BspVertex,
+    },
     wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
 
@@ -246,15 +249,22 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     textures
 }
 
-pub fn convert(
-    reader: &BspReader,
-    textures: &[TextureInfo],
-) -> Model<ModelVertex> {
+pub fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
     let mut vertex_map = HashMap::<SharedVertex, usize>::new();
-    convert_node(reader, reader.read_nodes(), 0, true, &mut indices, &mut vertices, &mut vertex_map, &mut meshes, &textures);
+    convert_node(
+        reader,
+        reader.read_nodes(),
+        0,
+        true,
+        &mut indices,
+        &mut vertices,
+        &mut vertex_map,
+        &mut meshes,
+        &textures,
+    );
 
     Model {
         indices,
@@ -263,10 +273,7 @@ pub fn convert(
     }
 }
 
-pub fn convert_models(
-    reader: &BspReader,
-    textures: &[TextureInfo],
-) -> Vec<Model<ModelVertex>> {
+pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model<ModelVertex>> {
     let bsp_models = reader.read_models();
 
     let mut models = Vec::with_capacity(bsp_models.len());
@@ -283,8 +290,18 @@ pub fn convert_models(
         let mut vertices = Vec::new();
         let mut meshes = Vec::new();
         let mut vertex_map = HashMap::<SharedVertex, usize>::new();
-        convert_node(reader, reader.read_nodes(), node_index, false, &mut indices, &mut vertices, &mut vertex_map, &mut meshes, &textures);
-        
+        convert_node(
+            reader,
+            reader.read_nodes(),
+            node_index,
+            false,
+            &mut indices,
+            &mut vertices,
+            &mut vertex_map,
+            &mut meshes,
+            &textures,
+        );
+
         models.push(Model {
             indices,
             vertices,
@@ -377,29 +394,62 @@ fn read_vertex_index(edge_index: &BspSurfaceEdge, edges: &[BspEdge]) -> u32 {
     edge.vertices[edge_vertex_index] as u32
 }
 
-fn convert_node(reader: &BspReader, nodes: &[BspNode], node_index: i16, allow_zero: bool, indices: &mut Vec<u32>, vertices: &mut Vec<ModelVertex>, vertex_map: &mut HashMap<SharedVertex, usize>, meshes: &mut Vec<Mesh>, textures: &[TextureInfo]) {
+fn convert_node(
+    reader: &BspReader,
+    nodes: &[BspNode],
+    node_index: i16,
+    allow_zero: bool,
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<ModelVertex>,
+    vertex_map: &mut HashMap<SharedVertex, usize>,
+    meshes: &mut Vec<Mesh>,
+    textures: &[TextureInfo],
+) {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
     } else {
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
-        convert_leaf(reader, leaf, indices, vertices, vertex_map, meshes, textures);
+        convert_leaf(
+            reader, leaf, indices, vertices, vertex_map, meshes, textures,
+        );
         return;
     };
 
     let current_node = &nodes[node_index];
-    convert_node(reader, nodes, current_node.children[0], false, indices, vertices, vertex_map, meshes, textures);
-    convert_node(reader, nodes, current_node.children[1], false, indices, vertices, vertex_map, meshes, textures);
+    convert_node(
+        reader,
+        nodes,
+        current_node.children[0],
+        false,
+        indices,
+        vertices,
+        vertex_map,
+        meshes,
+        textures,
+    );
+    convert_node(
+        reader,
+        nodes,
+        current_node.children[1],
+        false,
+        indices,
+        vertices,
+        vertex_map,
+        meshes,
+        textures,
+    );
 }
 
 fn convert_leaf(
-    reader: &BspReader, 
-    leaf: &BspLeaf, 
-    indices: &mut Vec<u32>, 
-    vertices: &mut Vec<ModelVertex>, 
-    vertex_map: &mut HashMap<SharedVertex, usize>, 
+    reader: &BspReader,
+    leaf: &BspLeaf,
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<ModelVertex>,
+    vertex_map: &mut HashMap<SharedVertex, usize>,
     meshes: &mut Vec<Mesh>,
-textures: &[TextureInfo]) {
+    textures: &[TextureInfo],
+) {
     let bsp_vertices = reader.read_vertices();
     let texture_infos = reader.read_texture_infos();
     let mark_surfaces = reader.read_mark_surfaces();
@@ -408,61 +458,60 @@ textures: &[TextureInfo]) {
     let surface_edges = reader.read_surface_edges();
     let planes = reader.read_planes();
 
-    let mark_surfaces_range =
-            leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
-        for mark_surface_index in mark_surfaces_range {
-            let mark_surface = &mark_surfaces[mark_surface_index as usize];
-            let face = &faces[mark_surface.0 as usize];
+    let mark_surfaces_range = leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
+    for mark_surface_index in mark_surfaces_range {
+        let mark_surface = &mark_surfaces[mark_surface_index as usize];
+        let face = &faces[mark_surface.0 as usize];
 
-            if face.texture_info == 0 {
-                continue;
-            }
-
-            let surface_edges_range =
-                face.first_edge as usize..face.first_edge as usize + face.edges as usize;
-            let surface_edges = &surface_edges[surface_edges_range];
-
-            let plane = &planes[face.plane as usize];
-
-            let first_vertex = read_vertex_index(&surface_edges[0], edges);
-
-            let mut triangle_list = Vec::new();
-            let to_shared_vertex = |index: u32, face: &BspFace| -> SharedVertex {
-                SharedVertex {
-                    vertex: index as usize,
-                    texture: face.texture_info as usize,
-                }
-            };
-            for i in 0..surface_edges.len() - 2 {
-                triangle_list.push(to_shared_vertex(
-                    read_vertex_index(&surface_edges[i + 2], edges),
-                    face,
-                ));
-                triangle_list.push(to_shared_vertex(
-                    read_vertex_index(&surface_edges[i + 1], edges),
-                    face,
-                ));
-                triangle_list.push(to_shared_vertex(first_vertex, face));
-            }
-            let start = indices.len();
-            process_indexed_triangles(
-                &triangle_list,
-                face,
-                plane.normal,
-                bsp_vertices,
-                textures,
-                texture_infos,
-                indices,
-                vertices,
-                vertex_map,
-            );
-            let end = indices.len();
-
-            meshes.push(Mesh {
-                indices_range: start..end,
-                texture_index: texture_infos[face.texture_info as usize].texture_index as usize,
-            });
+        if face.texture_info == 0 {
+            continue;
         }
+
+        let surface_edges_range =
+            face.first_edge as usize..face.first_edge as usize + face.edges as usize;
+        let surface_edges = &surface_edges[surface_edges_range];
+
+        let plane = &planes[face.plane as usize];
+
+        let first_vertex = read_vertex_index(&surface_edges[0], edges);
+
+        let mut triangle_list = Vec::new();
+        let to_shared_vertex = |index: u32, face: &BspFace| -> SharedVertex {
+            SharedVertex {
+                vertex: index as usize,
+                texture: face.texture_info as usize,
+            }
+        };
+        for i in 0..surface_edges.len() - 2 {
+            triangle_list.push(to_shared_vertex(
+                read_vertex_index(&surface_edges[i + 2], edges),
+                face,
+            ));
+            triangle_list.push(to_shared_vertex(
+                read_vertex_index(&surface_edges[i + 1], edges),
+                face,
+            ));
+            triangle_list.push(to_shared_vertex(first_vertex, face));
+        }
+        let start = indices.len();
+        process_indexed_triangles(
+            &triangle_list,
+            face,
+            plane.normal,
+            bsp_vertices,
+            textures,
+            texture_infos,
+            indices,
+            vertices,
+            vertex_map,
+        );
+        let end = indices.len();
+
+        meshes.push(Mesh {
+            indices_range: start..end,
+            texture_index: texture_infos[face.texture_info as usize].texture_index as usize,
+        });
+    }
 }
 
 fn log_bsp(reader: &BspReader, log: &mut String) {
