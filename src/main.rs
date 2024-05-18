@@ -353,7 +353,7 @@ fn show_ui(cli: Cli) {
                                             }
 
                                             if let Some(entity_index) = found {
-                                                println!("woop");
+                                                println!("Found entity: {}", entity_index);
                                                 bsp_viewer.select_entity(entity_index as i32);
                                             }
                                         }
