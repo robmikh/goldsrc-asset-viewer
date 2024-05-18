@@ -292,7 +292,7 @@ fn show_ui(cli: Cli) {
             } => {
                 if state == ElementState::Released && button == winit::event::MouseButton::Left {
                     if down_keys.contains(&VirtualKeyCode::LShift) {
-                        if let Some(renderer) = renderer.as_ref() {
+                        if let Some(renderer) = renderer.as_mut() {
                             let (pos, ray) =
                                 renderer.world_pos_and_ray_from_screen_pos(current_mouse_position);
 
@@ -300,9 +300,10 @@ fn show_ui(cli: Cli) {
                             if let Some(file_info) = file_info.as_ref() {
                                 match file_info {
                                     FileInfo::BspFile(file_info) => {
-                                        if let Some(leaf_index) =
+                                        if let Some((intersection_point, leaf_index)) =
                                             hittest_node_for_leaf(&file_info.reader, 0, pos, ray)
                                         {
+                                            renderer.set_debug_point(intersection_point);
                                             println!("Hit something... {}", leaf_index);
                                             // Get the face indices from the leaf
                                             let leaf = &file_info.reader.read_leaves()[leaf_index];

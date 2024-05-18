@@ -18,7 +18,7 @@ use crate::{
     numerics::{ToVec3, ToVec4},
 };
 
-use super::Renderer;
+use super::{debug::create_debug_point, Renderer};
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -68,6 +68,9 @@ pub struct BspRenderer {
 
     camera_position: Vec3,
     facing: Vec3,
+
+    new_debug_point: Option<Vec3>,
+    debug_point: Option<GpuModel>,
 }
 
 impl BspRenderer {
@@ -337,6 +340,9 @@ impl BspRenderer {
 
             camera_position: camera_start,
             facing,
+
+            new_debug_point: None,
+            debug_point: None,
         }
     }
 }
@@ -384,6 +390,22 @@ impl Renderer for BspRenderer {
             render_pass.insert_debug_marker("Draw!");
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
             for mesh in &self.model.meshes {
+                let texture = mesh.texture_index;
+                let (_, _, bind_group) = &self.textures[texture];
+                render_pass.set_bind_group(2, bind_group, &[]);
+                render_pass.draw_indexed(
+                    mesh.indices_range.start as u32..mesh.indices_range.end as u32,
+                    0,
+                    0..1,
+                );
+            }
+
+            if let Some(model) = self.debug_point.as_ref() {
+                render_pass
+                .set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+
+                let mesh = model.meshes.first().unwrap();
                 let texture = mesh.texture_index;
                 let (_, _, bind_group) = &self.textures[texture];
                 render_pass.set_bind_group(2, bind_group, &[]);
@@ -463,9 +485,43 @@ impl Renderer for BspRenderer {
             let mx_ref: &[f32; 16] = mx_total.as_ref();
             queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
         }
+
+        if let Some(new_debug_point) = self.new_debug_point.take() {
+            let mut indices = Vec::new();
+            let mut vertices = Vec::new();
+            let range = create_debug_point(new_debug_point, &mut indices, &mut vertices);
+
+            let vertices: Vec<GpuVertex> = vertices
+            .iter()
+            .map(|x| GpuVertex::from(x))
+            .collect();
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let meshes = vec![
+            Mesh {
+                indices_range: range,
+                texture_index: 0,
+            }
+        ];
+        let model = GpuModel {
+            index_buffer,
+            vertex_buffer,
+            meshes,
+        };
+
+        self.debug_point = Some(model);
+        }
     }
 
-    fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
+    fn world_pos_and_ray_from_screen_pos(&mut self, mut pos: Vec2) -> (Vec3, Vec3) {
         let (projection, view) = compute_projection_and_view_transforms(
             self.config.width as f32 / self.config.height as f32,
             self.camera_position,
@@ -485,12 +541,19 @@ impl Renderer for BspRenderer {
         let direction = (length.is_finite() && length > 0.0).then_some(direction / length);
         let direction = direction.unwrap();
 
+        self.new_debug_point = Some(world_near_plane);
+        //self.new_debug_point = Some(self.camera_position);
+
         (world_near_plane, direction.normalize())
         //(self.camera_position, self.facing)
     }
 
     fn get_position_and_direction(&self) -> (Vec3, Vec3) {
         (self.camera_position, self.facing)
+    }
+    
+    fn set_debug_point(&mut self, point: Vec3) {
+        self.new_debug_point = Some(point);
     }
 }
 

@@ -4,6 +4,7 @@ use glam::{Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
 pub mod bsp;
+mod debug;
 
 pub trait Renderer {
     fn render(
@@ -29,7 +30,9 @@ pub trait Renderer {
         down_keys: &HashSet<VirtualKeyCode>,
     );
 
-    fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);
+    fn world_pos_and_ray_from_screen_pos(&mut self, pos: Vec2) -> (Vec3, Vec3);
 
     fn get_position_and_direction(&self) -> (Vec3, Vec3);
+
+    fn set_debug_point(&mut self, point: Vec3);
 }

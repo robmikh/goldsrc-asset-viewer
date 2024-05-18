@@ -25,7 +25,7 @@ use super::{
 const QUIVER_PREFIX: &'static str = "\\quiver\\";
 
 #[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
 pub struct ModelVertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],

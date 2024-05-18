@@ -8,7 +8,7 @@ pub fn hittest_node_for_leaf(
     node_index: usize,
     pos: Vec3,
     ray: Vec3,
-) -> Option<usize> {
+) -> Option<(Vec3, usize)> {
     let p1 = pos;
     let p2 = pos + (ray * 10000.0);
     let nodes = reader.read_nodes();
@@ -22,7 +22,7 @@ fn hittest_node_for_leaf_impl(
     p1: Vec3,
     p2: Vec3,
     allow_zero: bool,
-) -> Option<usize> {
+) -> Option<(Vec3, usize)> {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
     } else {
@@ -35,7 +35,7 @@ fn hittest_node_for_leaf_impl(
         //    return None;
         //}
         if leaf.contents() == BspContents::Solid {
-            return Some(leaf_index as usize);
+            return Some((p1, leaf_index as usize));
         } else {
             return None;
         }

@@ -35,7 +35,7 @@ pub struct Model<V> {
     pub meshes: Vec<Mesh>,
 }
 
-fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
+pub fn add_and_get_index<T>(vec: &mut Vec<T>, value: T) -> usize {
     let index = vec.len();
     vec.push(value);
     index
