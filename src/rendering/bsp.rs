@@ -1,7 +1,7 @@
-use std::{borrow::Cow, collections::HashSet, ops::Range};
+use std::{borrow::Cow, collections::{HashMap, HashSet}};
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{Mat4, Vec2, Vec3};
 use gsparser::{
     bsp::{BspEntity, BspReader},
     wad3::MipmapedTextureData,
@@ -23,6 +23,8 @@ use super::{debug::create_debug_point, Renderer};
 struct GpuModel {
     index_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
+    _model_buffer: wgpu::Buffer,
+    model_bind_group: wgpu::BindGroup,
     meshes: Vec<Mesh>,
 }
 
@@ -58,13 +60,11 @@ pub struct BspRenderer {
     depth_sampler: wgpu::Sampler,
 
     bind_group: wgpu::BindGroup,
-    model_bind_group: wgpu::BindGroup,
     _bind_group_layout: wgpu::BindGroupLayout,
-    _model_bind_group_layout: wgpu::BindGroupLayout,
+    model_bind_group_layout: wgpu::BindGroupLayout,
     _texture_bind_group_layout: wgpu::BindGroupLayout,
     _pipeline_layout: wgpu::PipelineLayout,
     uniform_buffer: wgpu::Buffer,
-    _model_buffer: wgpu::Buffer,
     render_pipeline: wgpu::RenderPipeline,
 
     camera_position: Vec3,
@@ -214,12 +214,6 @@ impl BspRenderer {
             contents: bytemuck::cast_slice(mx_ref),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let mx_ref: &[f32; 16] = Mat4::IDENTITY.as_ref();
-        let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Model Uniform Buffer"),
-            contents: bytemuck::cast_slice(mx_ref),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
 
         // Create bind group
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -228,20 +222,6 @@ impl BspRenderer {
                 binding: 0,
                 resource: uniform_buffer.as_entire_binding(),
             }],
-            label: None,
-        });
-        let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &model_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: model_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
             label: None,
         });
 
@@ -267,9 +247,44 @@ impl BspRenderer {
             ],
         }];
 
+        // Create a map of models to entities
+        // TODO: Can we assume 1:1 (minus models not tied to any entities)?
+        let mut model_to_entity = HashMap::new();
+        for (entity_index, entity) in entities.iter().enumerate() {
+            if let Some(model_value) = entity.0.get("model") {
+                if model_value.starts_with('*') {
+                    let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
+                    let old = model_to_entity.insert(model_index, entity_index);
+                    assert!(old.is_none());
+                }
+            }
+        }
+
         let map_models: Vec<GpuModel> = loaded_map_models
             .iter()
-            .map(|x| create_gpu_model_for_model(x, device))
+            .enumerate()
+            .map(|(i, model)| -> GpuModel {
+                let origin = {
+                    let mut origin = Vec3::ZERO;
+
+                    if let Some(entity_index) = model_to_entity.get(&i) {
+                        let entity = &entities[*entity_index];
+                        if let Some(origin_str) = entity.0.get("origin") {
+                            let mut parts = origin_str.split_whitespace();
+                            let hl_x: isize = parts.next().unwrap().parse().unwrap();
+                            let hl_y: isize = parts.next().unwrap().parse().unwrap();
+                            let hl_z: isize = parts.next().unwrap().parse().unwrap();
+
+                            let coord = convert_coordinates([hl_x, hl_y, hl_z]);
+                            origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
+                        } 
+                    }
+
+                    origin
+                };
+
+                create_gpu_model_for_model(model, origin, device, &model_bind_group_layout, &sampler)
+    })
             .collect();
 
         // Record which models to hide
@@ -332,13 +347,11 @@ impl BspRenderer {
             depth_sampler,
 
             bind_group,
-            model_bind_group,
             _bind_group_layout: bind_group_layout,
-            _model_bind_group_layout: model_bind_group_layout,
+            model_bind_group_layout,
             _texture_bind_group_layout: texture_bind_group_layout,
             _pipeline_layout: pipeline_layout,
             uniform_buffer,
-            _model_buffer: model_buffer,
             render_pipeline,
 
             camera_position: camera_start,
@@ -401,9 +414,9 @@ impl Renderer for BspRenderer {
             render_pass.set_bind_group(0, &self.bind_group, &[]);
 
             render_pass.insert_debug_marker("Draw!");
-            render_pass.set_bind_group(1, &self.model_bind_group, &[]);
             for model_index in &self.models_to_render {
                 let model = &self.map_models[*model_index];
+                render_pass.set_bind_group(1, &model.model_bind_group, &[]);
                 self.render_model(&mut render_pass, model);
             }
 
@@ -481,33 +494,10 @@ impl Renderer for BspRenderer {
             queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
         }
 
-        if let Some(new_debug_point) = self.new_debug_point.take() {
-            let mut indices = Vec::new();
-            let mut vertices = Vec::new();
-            let range = create_debug_point(new_debug_point, &mut indices, &mut vertices);
-
-            let vertices: Vec<GpuVertex> = vertices.iter().map(|x| GpuVertex::from(x)).collect();
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
-            let meshes = vec![Mesh {
-                indices_range: range,
-                texture_index: 0,
-            }];
-            let model = GpuModel {
-                index_buffer,
-                vertex_buffer,
-                meshes,
-            };
-
-            self.debug_point = Some(model);
+        if let Some(new_debug_point) = self.new_debug_point.take() {      
+            let model = create_debug_point_model(new_debug_point, 0);
+            let gpu_model = create_gpu_model_for_model(&model, Vec3::ZERO, device, &self.model_bind_group_layout, &self.sampler);
+            self.debug_point = Some(gpu_model);
         }
     }
 
@@ -631,7 +621,7 @@ fn create_depth_texture(
     (texture, view, sampler)
 }
 
-fn create_gpu_model_for_model(model: &Model<ModelVertex>, device: &wgpu::Device) -> GpuModel {
+fn create_gpu_model_for_model(model: &Model<ModelVertex>, origin: Vec3, device: &wgpu::Device, model_bind_group_layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler) -> GpuModel {
     let vertices: Vec<GpuVertex> = model.vertices.iter().map(|x| GpuVertex::from(x)).collect();
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
@@ -644,9 +634,50 @@ fn create_gpu_model_for_model(model: &Model<ModelVertex>, device: &wgpu::Device)
         usage: wgpu::BufferUsages::INDEX,
     });
     let meshes = model.meshes.clone();
+
+    let transform = Mat4::from_translation(origin);
+    let mx_ref: &[f32; 16] = transform.as_ref();
+    let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Model Uniform Buffer"),
+        contents: bytemuck::cast_slice(mx_ref),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+    let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &model_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: model_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+        label: None,
+    });
+
     GpuModel {
         index_buffer,
         vertex_buffer,
+        _model_buffer: model_buffer,
+        model_bind_group,
         meshes,
+    }
+}
+
+fn create_debug_point_model(point: Vec3, texture_index: usize) -> Model<ModelVertex> {
+    let mut indices = Vec::new();
+    let mut vertices = Vec::new();
+    let indices_range = create_debug_point(point, &mut indices, &mut vertices);
+    Model {
+        indices,
+        vertices,
+        meshes: vec![
+            Mesh {
+                texture_index,
+                indices_range,
+            }
+        ]
     }
 }
