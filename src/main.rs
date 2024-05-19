@@ -287,7 +287,7 @@ fn show_ui(cli: Cli) {
                         down_keys.remove(&keycode);
                     }
 
-                    // TODO: Consolodate keyboard key up/dowm logic
+                    // TODO: Consolodate keyboard key up/down logic
                     if keycode == VirtualKeyCode::B && was_down && down_keys.contains(&VirtualKeyCode::LShift) {
                         let new_input_mode = match mouse_controller.input_mode() {
                             MouseInputMode::Cursor => MouseInputMode::CameraLook,
