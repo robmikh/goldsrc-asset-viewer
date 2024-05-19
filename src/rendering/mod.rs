@@ -35,6 +35,7 @@ pub trait Renderer {
         mouse_delta: Option<Vec2>,
         // TODO: remove
         file_info: &Option<FileInfo>,
+        noclip: bool,
     );
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);

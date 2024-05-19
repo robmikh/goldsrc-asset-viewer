@@ -210,6 +210,7 @@ fn show_ui(cli: Cli) {
 
     let mut mouse_controller = MouseInputController::new();
     let mut down_keys = HashSet::<VirtualKeyCode>::new();
+    let mut noclip = false;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
             ControlFlow::Exit
@@ -443,7 +444,15 @@ fn show_ui(cli: Cli) {
                         mouse_delta
                     };
 
-                    renderer.update(&device, &queue, delta, &down_keys, mouse_delta, &file_info);
+                    renderer.update(
+                        &device,
+                        &queue,
+                        delta,
+                        &down_keys,
+                        mouse_delta,
+                        &file_info,
+                        noclip,
+                    );
                     let (position, direction) = renderer.get_position_and_direction();
                     bsp_viewer.set_position(position, direction);
                     renderer.render(clear_color, &view, &device, &queue);
@@ -511,6 +520,12 @@ fn show_ui(cli: Cli) {
                                 *control_flow = ControlFlow::Exit;
                             }
                         });
+
+                        ui.menu("Game", || {
+                            if ui.menu_item_config("Noclip").selected(noclip).build() {
+                                noclip = !noclip;
+                            }
+                        })
                     });
 
                     if let Some(file_info) = file_info.as_ref() {

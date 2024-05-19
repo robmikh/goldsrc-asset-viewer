@@ -28,7 +28,7 @@ pub fn hittest_clip_node(
     clip_node_index: usize,
     start: Vec3,
     end: Vec3,
-) -> Option<(Vec3, usize)> {
+) -> Option<Vec3> {
     let p1 = start;
     let p2 = end;
     let nodes = reader.read_clip_nodes();
@@ -70,7 +70,8 @@ impl RaycastNode for BspClipNode {
 
 fn hittest_node_for_leaf_impl<
     T: RaycastNode,
-    F: Fn(&BspReader, i16, bool, Vec3) -> ResolvedNode,
+    V,
+    F: Fn(&BspReader, i16, bool, Vec3) -> ResolvedNode<V>,
 >(
     reader: &BspReader,
     nodes: &[T],
@@ -79,7 +80,7 @@ fn hittest_node_for_leaf_impl<
     p2: Vec3,
     allow_zero: bool,
     node_resolver: &F,
-) -> Option<(Vec3, usize)> {
+) -> Option<V> {
     let node_index = match node_resolver(reader, node_index, allow_zero, p1) {
         ResolvedNode::NodeIndex(node_index) => node_index,
         ResolvedNode::Leaf(result) => return result,
@@ -140,23 +141,22 @@ fn hittest_node_for_leaf_impl<
     )
 }
 
-enum ResolvedNode {
+enum ResolvedNode<T> {
     NodeIndex(usize),
-    Leaf(Option<(Vec3, usize)>),
+    Leaf(Option<T>),
 }
 
-fn node_resolver(reader: &BspReader, node_index: i16, allow_zero: bool, p1: Vec3) -> ResolvedNode {
+fn node_resolver(
+    reader: &BspReader,
+    node_index: i16,
+    allow_zero: bool,
+    p1: Vec3,
+) -> ResolvedNode<(Vec3, usize)> {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
     } else {
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
-        //println!("returning {:016b} -> {:016b} ({} -> {})", node_index, leaf_index, node_index, leaf_index);
-        //if leaf.mark_surfaces > 0 {
-        //    return Some(leaf_index as usize);
-        //} else {
-        //    return None;
-        //}
         if leaf.contents() == BspContents::Solid {
             return ResolvedNode::Leaf(Some((p1, leaf_index as usize)));
         } else {
@@ -171,13 +171,13 @@ fn clip_node_resolver(
     node_index: i16,
     allow_zero: bool,
     p1: Vec3,
-) -> ResolvedNode {
+) -> ResolvedNode<Vec3> {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
     } else {
         let contents = BspContents::from_value(node_index as i32).unwrap();
         if contents == BspContents::Solid {
-            return ResolvedNode::Leaf(Some((p1, node_index.abs() as usize)));
+            return ResolvedNode::Leaf(Some(p1));
         } else {
             return ResolvedNode::Leaf(None);
         }

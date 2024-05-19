@@ -461,6 +461,7 @@ impl Renderer for BspRenderer {
         down_keys: &HashSet<VirtualKeyCode>,
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
+        noclip: bool,
     ) {
         let mut rotation = self.camera.yaw_pitch_roll();
         let old_rotation = rotation;
@@ -511,22 +512,22 @@ impl Renderer for BspRenderer {
             let mut position =
                 self.camera.position() + (direction * (MAX_RUN_SPEED * delta.as_secs_f32()));
 
-            let reader = match file_info.as_ref().unwrap() {
-                FileInfo::BspFile(file) => &file.reader,
-                _ => panic!(),
-            };
-            let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-            if let Some((intersection, _leaf)) =
-                hittest_clip_node(reader, clip_node_index, self.camera.position(), position)
-            {
-                //println!("hit! {:?}, {}", intersection, _leaf);
-
-                // TODO: A better way to not stick to walls
-                let temp_start = self.camera.position() + (direction * 0.1);
-                if let Some((_, _)) =
-                    hittest_clip_node(reader, clip_node_index, temp_start, position)
+            if !noclip {
+                let reader = match file_info.as_ref().unwrap() {
+                    FileInfo::BspFile(file) => &file.reader,
+                    _ => panic!(),
+                };
+                let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+                if let Some(intersection) =
+                    hittest_clip_node(reader, clip_node_index, self.camera.position(), position)
                 {
-                    position = intersection;
+                    // TODO: A better way to not stick to walls
+                    let temp_start = self.camera.position() + (direction * 0.1);
+                    if let Some(_) =
+                        hittest_clip_node(reader, clip_node_index, temp_start, position)
+                    {
+                        position = intersection;
+                    }
                 }
             }
 
