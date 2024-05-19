@@ -1,7 +1,8 @@
-extern crate wad3parser;
+extern crate gsparser;
 
 use std::env;
-use wad3parser::{TextureType, WadArchive};
+
+use gsparser::wad3::{TextureType, WadArchive};
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -31,12 +32,12 @@ fn main() {
                 image_data.mipmap3.save("test_mipmap3.png").unwrap();
             } else {
                 let image_data = match info.texture_type {
-                    TextureType::Image => archive.decode_image(&info),
-                    TextureType::Font => archive.decode_font(&info),
+                    TextureType::Image => archive.decode_image(&info).image,
+                    TextureType::Font => archive.decode_font(&info).image,
                     _ => panic!("New texture type! {:?}", info.texture_type),
                 };
 
-                image_data.image.save("test.png").unwrap();
+                image_data.save("test.png").unwrap();
             }
         }
     }

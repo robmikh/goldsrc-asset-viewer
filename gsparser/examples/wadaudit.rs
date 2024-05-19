@@ -1,9 +1,8 @@
 extern crate glob;
-extern crate wad3parser;
 
 use glob::glob;
+use gsparser::wad3::{TextureType, WadArchive};
 use std::env;
-use wad3parser::{TextureType, WadArchive};
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -14,17 +13,16 @@ fn main() {
     let wads = glob(&search).unwrap();
     for wad in wads {
         let wad = wad.unwrap();
-        let wad_path = wad.to_string_lossy();
-        println!("wad: {}", wad_path);
+        println!("wad: {}", wad.display());
 
-        let archive = WadArchive::open(&wad_path);
+        let archive = WadArchive::open(&wad);
         let file_infos = &archive.files;
         for info in file_infos {
             let name = &info.name;
             if info.texture_type == TextureType::Font {
                 println!("{} - {:?}", name, info.texture_type);
 
-                let texture_data = archive.decode_font(&info);
+                let _texture_data = archive.decode_font(&info);
             }
         }
     }

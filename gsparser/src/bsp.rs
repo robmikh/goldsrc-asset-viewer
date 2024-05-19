@@ -239,6 +239,13 @@ impl BspReader {
         BspTextureReader::new(offsets, raw_data)
     }
 
+    pub fn read_textures_header(&self) -> BspTextureHeader {
+        let raw_data = self.read_lump_raw(LUMP_TEXTURES);
+
+        let header: BspTextureHeader = bincode::deserialize(&raw_data).unwrap();
+        header
+    }
+
     pub fn read_texture_infos(&self) -> &[BspTextureInfo] {
         self.read_lump(LUMP_TEXINFO)
     }
