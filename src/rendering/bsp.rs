@@ -21,7 +21,7 @@ use crate::{
     numerics::{ToVec3, ToVec4},
 };
 
-use super::{debug::create_debug_point, Renderer};
+use super::{camera::Camera, debug::create_debug_point, Renderer};
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -62,16 +62,13 @@ pub struct BspRenderer {
     depth_view: wgpu::TextureView,
     depth_sampler: wgpu::Sampler,
 
-    bind_group: wgpu::BindGroup,
     _bind_group_layout: wgpu::BindGroupLayout,
     model_bind_group_layout: wgpu::BindGroupLayout,
     _texture_bind_group_layout: wgpu::BindGroupLayout,
     _pipeline_layout: wgpu::PipelineLayout,
-    uniform_buffer: wgpu::Buffer,
     render_pipeline: wgpu::RenderPipeline,
 
-    camera_position: Vec3,
-    facing: Vec3,
+    camera: Camera,
 
     new_debug_point: Option<Vec3>,
     debug_point: Option<GpuModel>,
@@ -205,28 +202,15 @@ impl BspRenderer {
         println!("Start position: {:?}", camera_start);
         let facing = Vec3::new(1.0, 0.0, 0.0);
 
-        // Create other resources
-        let mx_total = generate_matrix(
-            config.width as f32 / config.height as f32,
+        // Create camera
+        let camera = Camera::new(
             camera_start,
             facing,
+            Vec2::new(config.width as f32, config.height as f32),
+            &bind_group_layout,
+            &device,
+            &queue,
         );
-        let mx_ref: &[f32; 16] = mx_total.as_ref();
-        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Globals Uniform Buffer"),
-            contents: bytemuck::cast_slice(mx_ref),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // Create bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-            label: None,
-        });
 
         let vertex_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<GpuVertex>() as wgpu::BufferAddress,
@@ -358,16 +342,13 @@ impl BspRenderer {
             depth_view,
             depth_sampler,
 
-            bind_group,
             _bind_group_layout: bind_group_layout,
             model_bind_group_layout,
             _texture_bind_group_layout: texture_bind_group_layout,
             _pipeline_layout: pipeline_layout,
-            uniform_buffer,
             render_pipeline,
 
-            camera_position: camera_start,
-            facing,
+            camera,
 
             new_debug_point: None,
             debug_point: None,
@@ -423,7 +404,7 @@ impl Renderer for BspRenderer {
             });
             render_pass.push_debug_group("Prepare frame render pass.");
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
 
             render_pass.insert_debug_marker("Draw!");
             for model_index in &self.models_to_render {
@@ -453,6 +434,8 @@ impl Renderer for BspRenderer {
         self.depth_view = depth_view;
         self.depth_sampler = depth_sampler;
         self.config = config.clone();
+        self.camera
+            .on_resize(Vec2::new(config.width as f32, config.height as f32));
     }
 
     fn update(
@@ -461,50 +444,36 @@ impl Renderer for BspRenderer {
         queue: &wgpu::Queue,
         delta: std::time::Duration,
         down_keys: &HashSet<VirtualKeyCode>,
+        mouse_delta: Option<Vec2>,
     ) {
-        let mut dirty = false;
+        let movement = 5.0;
 
         if down_keys.contains(&VirtualKeyCode::Q) {
-            let transform = Mat4::from_rotation_y(5.0_f32.to_radians());
-            let new_facing = transform * self.facing.to_vec4();
-            self.facing = new_facing.to_vec3().normalize();
-            dirty = true;
+            self.camera.rotate(5.0_f32.to_radians());
         } else if down_keys.contains(&VirtualKeyCode::E) {
-            let transform = Mat4::from_rotation_y(-5.0_f32.to_radians());
-            let new_facing = transform * self.facing.to_vec4();
-            self.facing = new_facing.to_vec3().normalize();
-            dirty = true;
+            self.camera.rotate(-5.0_f32.to_radians());
         }
 
+        let mut position = self.camera.position();
+        let facing = self.camera.facing();
         if down_keys.contains(&VirtualKeyCode::W) {
-            let delta_position = 5.0 * self.facing;
-            self.camera_position += delta_position;
-            dirty = true;
+            let delta_position = movement * facing;
+            position += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::S) {
-            let delta_position = -5.0 * self.facing;
-            self.camera_position += delta_position;
-            dirty = true;
+            let delta_position = -movement * facing;
+            position += delta_position;
         }
 
         if down_keys.contains(&VirtualKeyCode::A) {
-            let delta_position = -5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
-            self.camera_position += delta_position;
-            dirty = true;
+            let delta_position = -movement * facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            position += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::D) {
-            let delta_position = 5.0 * self.facing.cross(Vec3::new(0.0, 1.0, 0.0));
-            self.camera_position += delta_position;
-            dirty = true;
+            let delta_position = movement * facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            position += delta_position;
         }
 
-        if dirty {
-            let mx_total = generate_matrix(
-                self.config.width as f32 / self.config.height as f32,
-                self.camera_position,
-                self.facing,
-            );
-            let mx_ref: &[f32; 16] = mx_total.as_ref();
-            queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
-        }
+        self.camera.set_position(position);
+        self.camera.update(queue);
 
         if let Some(new_debug_point) = self.new_debug_point.take() {
             let model = create_debug_point_model(new_debug_point, 0);
@@ -519,31 +488,12 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
-        let (projection, view) = compute_projection_and_view_transforms(
-            self.config.width as f32 / self.config.height as f32,
-            self.camera_position,
-            self.facing,
-        );
-
-        let target_size = Vec2::new(self.config.width as f32, self.config.height as f32);
-        pos.y = target_size.y - pos.y;
-        let ndc = pos * 2.0 / target_size - Vec2::ONE;
-
-        let ndc_to_world = (projection * view).inverse();
-        let world_near_plane = ndc_to_world.project_point3(ndc.extend(-1.0));
-        let world_far_plane = ndc_to_world.project_point3(ndc.extend(f32::EPSILON));
-
-        let direction = world_far_plane - world_near_plane;
-        let length = direction.length();
-        let direction = (length.is_finite() && length > 0.0).then_some(direction / length);
-        let direction = direction.unwrap();
-
-        (world_near_plane, direction.normalize())
+    fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
+        self.camera.world_pos_and_ray_from_screen_pos(pos)
     }
 
     fn get_position_and_direction(&self) -> (Vec3, Vec3) {
-        (self.camera_position, self.facing)
+        (self.camera.position(), self.camera.facing())
     }
 
     fn set_debug_point(&mut self, point: Vec3) {
@@ -583,27 +533,6 @@ fn create_texture_and_view(
         texture_extent,
     );
     (texture, texture_view)
-}
-
-fn compute_projection_and_view_transforms(
-    aspect_ratio: f32,
-    camera_start: Vec3,
-    facing: Vec3,
-) -> (Mat4, Mat4) {
-    let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
-    let mx_view = Mat4::look_to_rh(camera_start, facing, Vec3::new(0.0, 1.0, 0.0));
-    (mx_projection, mx_view)
-}
-
-fn generate_matrix(aspect_ratio: f32, camera_start: Vec3, facing: Vec3) -> Mat4 {
-    let mx_projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 1.0, 10000.0);
-    let mx_view = Mat4::look_to_rh(camera_start, facing, Vec3::new(0.0, 1.0, 0.0));
-    //let mx_view = Mat4::look_at_rh(
-    //    Vec3::new(1305.5, -333.5, 779.5),
-    //    camera_start,
-    //    Vec3::new(0.0, 1.0, 0.0)
-    //);
-    mx_projection * mx_view
 }
 
 fn create_depth_texture(

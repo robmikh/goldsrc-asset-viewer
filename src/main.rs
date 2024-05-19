@@ -423,7 +423,15 @@ fn show_ui(cli: Cli) {
 
                 // Rendering
                 let clear_op = if let Some(renderer) = renderer.as_mut() {
-                    renderer.update(&device, &queue, delta, &down_keys);
+                    let mouse_delta = {
+                        let mut mouse_delta = None;
+                        if mouse_controller.input_mode() == MouseInputMode::CameraLook {
+                            mouse_delta = mouse_controller.take_mouse_delta();
+                        }
+                        mouse_delta
+                    };
+
+                    renderer.update(&device, &queue, delta, &down_keys, mouse_delta);
                     let (position, direction) = renderer.get_position_and_direction();
                     bsp_viewer.set_position(position, direction);
                     renderer.render(clear_color, &view, &device, &queue);

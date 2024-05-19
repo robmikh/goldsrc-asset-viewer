@@ -11,6 +11,7 @@ pub struct MouseInputController {
     input_mode: MouseInputMode,
     manual_lock: Option<Vec2>,
     mouse_position: Vec2,
+    mouse_position_delta: Option<Vec2>,
 }
 
 impl MouseInputController {
@@ -19,6 +20,7 @@ impl MouseInputController {
             input_mode: MouseInputMode::Cursor,
             manual_lock: None,
             mouse_position: Vec2::ZERO,
+            mouse_position_delta: None,
         }
     }
 
@@ -31,8 +33,12 @@ impl MouseInputController {
     pub fn on_mouse_move(&mut self, window: &Window, new_position: Vec2) {
         self.mouse_position = new_position;
         if let Some(position) = self.manual_lock.as_ref() {
+            self.mouse_position_delta = Some(self.mouse_position - *position);
             let position = PhysicalPosition::new(position.x as u32, position.y as u32);
             window.set_cursor_position(position).unwrap();
+        } else {
+            // TODO: Verify this is true
+            self.mouse_position_delta = Some(new_position);
         }
     }
 
@@ -42,6 +48,10 @@ impl MouseInputController {
 
     pub fn mouse_position(&self) -> Vec2 {
         self.mouse_position
+    }
+
+    pub fn take_mouse_delta(&mut self) -> Option<Vec2> {
+        self.mouse_position_delta.take()
     }
 
     pub fn set_input_mode(&mut self, window: &Window, input_mode: MouseInputMode) {
