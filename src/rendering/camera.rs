@@ -1,11 +1,7 @@
-use glam::{Mat4, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
+use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use wgpu::util::DeviceExt;
-
-use crate::gltf::transform::quat_from_euler;
-
 pub struct Camera {
     position: Vec3,
-    facing: Vec3,
     viewport_size: Vec2,
 
     yaw: f32,
@@ -21,13 +17,12 @@ pub struct Camera {
 impl Camera {
     pub fn new(
         position: Vec3,
-        facing: Vec3,
         viewport_size: Vec2,
         bind_group_layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self {
-        let mx_total = generate_matrix(viewport_size.x / viewport_size.y, position, facing);
+        let mx_total = generate_matrix(viewport_size.x / viewport_size.y, position, Vec3::new(0.0, 0.0, 1.0));
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Globals Uniform Buffer"),
@@ -46,11 +41,10 @@ impl Camera {
 
         Self {
             position,
-            facing: facing.normalize(),
             viewport_size,
 
             yaw: 0.0,
-            pitch: std::f32::consts::PI / 2.0,
+            pitch: 0.0,
             roll: 0.0,
 
             dirty: false,
@@ -93,13 +87,13 @@ impl Camera {
             }
         }
 
-        //let old_pitch = self.pitch;
-        let min = 2.0 * f32::EPSILON;
-        self.pitch = self.pitch.clamp(min, std::f32::consts::PI - min);
+        let old_pitch = self.pitch;
+        let min = 0.1;
+        self.pitch = self.pitch.clamp((std::f32::consts::PI / -2.0) + min, (std::f32::consts::PI / 2.0) - min);
         //self.pitch = old_pitch;
-        //println!("{} -> {}", old_pitch, self.pitch);
-        //println!("facing: {:?}", self.facing());
-        //println!("");
+        println!("{} -> {}", old_pitch, self.pitch);
+        println!("facing: {:?}", self.facing());
+        println!("");
         
         // TODO: Roll validation
 
@@ -119,6 +113,14 @@ impl Camera {
     }
 
     pub fn facing(&self) -> Vec3 {
+        let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
+        //let quat = quat_from_euler(self.yaw_pitch_roll().yxz());
+        //let new_facing = transform * self.facing.extend(0.0);
+        let new_facing = transform * Vec4::new(0.0, 0.0, 1.0, 0.0);
+        new_facing.xyz().normalize()
+    }
+
+    pub fn up(&self) -> Vec3 {
         let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
         //let quat = quat_from_euler(self.yaw_pitch_roll().yxz());
         //let new_facing = transform * self.facing.extend(0.0);

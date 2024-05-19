@@ -200,12 +200,10 @@ impl BspRenderer {
             Vec3::from_array(coord)
         };
         println!("Start position: {:?}", camera_start);
-        let facing = Vec3::new(1.0, 0.0, 0.0);
 
         // Create camera
         let camera = Camera::new(
             camera_start,
-            facing,
             Vec2::new(config.width as f32, config.height as f32),
             &bind_group_layout,
             &device,
@@ -469,6 +467,7 @@ impl Renderer for BspRenderer {
         let mut position = self.camera.position();
         let old_position = position;
         let facing = self.camera.facing();
+        let up = self.camera.up();
         if down_keys.contains(&VirtualKeyCode::W) {
             let delta_position = movement * facing;
             position += delta_position;
@@ -478,10 +477,10 @@ impl Renderer for BspRenderer {
         }
 
         if down_keys.contains(&VirtualKeyCode::A) {
-            let delta_position = -movement * facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            let delta_position = -movement * facing.cross(up);
             position += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::D) {
-            let delta_position = movement * facing.cross(Vec3::new(0.0, 1.0, 0.0));
+            let delta_position = movement * facing.cross(up);
             position += delta_position;
         }
 
