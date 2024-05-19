@@ -122,7 +122,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     let sampler = material_data.add_sampler(super::material::Sampler {
         mag_filter: MagFilter::Linear,
         min_filter: MinFilter::LinearMipMapLinear,
-        wrap_s: Wrap::MirroredRepeat,
+        wrap_s: Wrap::Repeat,
         wrap_t: Wrap::Repeat,
     });
     for texture in &textures {
