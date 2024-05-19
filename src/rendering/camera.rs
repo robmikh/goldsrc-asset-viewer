@@ -87,13 +87,12 @@ impl Camera {
             }
         }
 
-        let old_pitch = self.pitch;
+        //let old_pitch = self.pitch;
         let min = 0.1;
         self.pitch = self.pitch.clamp((std::f32::consts::PI / -2.0) + min, (std::f32::consts::PI / 2.0) - min);
-        //self.pitch = old_pitch;
-        println!("{} -> {}", old_pitch, self.pitch);
-        println!("facing: {:?}", self.facing());
-        println!("");
+        //println!("{} -> {}", old_pitch, self.pitch);
+        //println!("facing: {:?}", self.facing());
+        //println!("");
         
         // TODO: Roll validation
 
@@ -114,18 +113,14 @@ impl Camera {
 
     pub fn facing(&self) -> Vec3 {
         let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
-        //let quat = quat_from_euler(self.yaw_pitch_roll().yxz());
-        //let new_facing = transform * self.facing.extend(0.0);
         let new_facing = transform * Vec4::new(0.0, 0.0, 1.0, 0.0);
         new_facing.xyz().normalize()
     }
 
     pub fn up(&self) -> Vec3 {
         let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
-        //let quat = quat_from_euler(self.yaw_pitch_roll().yxz());
-        //let new_facing = transform * self.facing.extend(0.0);
-        let new_facing = transform * Vec4::new(0.0, 1.0, 0.0, 0.0);
-        new_facing.xyz().normalize()
+        let new_up = transform * Vec4::new(0.0, 1.0, 0.0, 0.0);
+        new_up.xyz().normalize()
     }
 
     pub fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
