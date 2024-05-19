@@ -608,12 +608,10 @@ fn load_renderer(
                 read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
 
                 let textures = read_textures(&file.reader, &wad_resources);
-                let model = gltf::bsp::convert(&file.reader, &textures);
                 let map_models = gltf::bsp::convert_models(&file.reader, &textures);
 
                 let renderer = BspRenderer::new(
                     &file.reader,
-                    &model,
                     &map_models,
                     &textures,
                     device,

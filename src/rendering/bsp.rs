@@ -45,7 +45,6 @@ impl GpuVertex {
 }
 
 pub struct BspRenderer {
-    map_model: GpuModel,
     map_models: Vec<GpuModel>,
     textures: Vec<(wgpu::Texture, wgpu::TextureView, wgpu::BindGroup)>,
     sampler: wgpu::Sampler,
@@ -77,7 +76,6 @@ pub struct BspRenderer {
 impl BspRenderer {
     pub fn new(
         reader: &BspReader,
-        loaded_model: &Model<ModelVertex>,
         loaded_map_models: &[Model<ModelVertex>],
         loaded_textures: &[TextureInfo],
         device: &wgpu::Device,
@@ -268,7 +266,6 @@ impl BspRenderer {
             ],
         }];
 
-        let map_model = create_gpu_model_for_model(loaded_model, device);
         let map_models = loaded_map_models
             .iter()
             .map(|x| create_gpu_model_for_model(x, device))
@@ -303,7 +300,6 @@ impl BspRenderer {
         });
 
         Self {
-            map_model,
             map_models,
             textures,
             sampler,
@@ -386,8 +382,6 @@ impl Renderer for BspRenderer {
 
             render_pass.insert_debug_marker("Draw!");
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
-            self.render_model(&mut render_pass, &self.map_model);
-
             for model in &self.map_models {
                 self.render_model(&mut render_pass, model);
             }

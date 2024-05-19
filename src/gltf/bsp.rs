@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Write,
     path::{Path, PathBuf},
 };
@@ -249,7 +249,7 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     textures
 }
 
-pub fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
+fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
@@ -277,15 +277,8 @@ pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model
     let bsp_models = reader.read_models();
 
     let mut models = Vec::with_capacity(bsp_models.len());
-    let mut skipped_first = false;
     for bsp_model in bsp_models {
         let node_index = bsp_model.head_nodes[0] as i16;
-        if node_index == 0 {
-            assert!(models.is_empty());
-            assert!(!skipped_first);
-            skipped_first = true;
-            continue;
-        }
         let mut indices = Vec::new();
         let mut vertices = Vec::new();
         let mut meshes = Vec::new();
@@ -294,7 +287,7 @@ pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model
             reader,
             reader.read_nodes(),
             node_index,
-            false,
+            node_index == 0,
             &mut indices,
             &mut vertices,
             &mut vertex_map,
@@ -308,7 +301,6 @@ pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model
             meshes,
         });
     }
-    assert!(skipped_first);
 
     models
 }
