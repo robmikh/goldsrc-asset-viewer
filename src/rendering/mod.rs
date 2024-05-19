@@ -1,7 +1,10 @@
 use std::{collections::HashSet, time::Duration};
 
 use glam::{Vec2, Vec3};
+use gsparser::bsp::BspReader;
 use winit::event::VirtualKeyCode;
+
+use crate::FileInfo;
 
 pub mod bsp;
 mod camera;
@@ -30,6 +33,8 @@ pub trait Renderer {
         delta: Duration,
         down_keys: &HashSet<VirtualKeyCode>,
         mouse_delta: Option<Vec2>,
+        // TODO: remove
+        file_info: &Option<FileInfo>,
     );
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);

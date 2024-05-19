@@ -9,10 +9,14 @@ use gsparser::bsp::{BspEntity, BspReader};
 use wgpu::util::DeviceExt;
 use winit::event::VirtualKeyCode;
 
-use crate::gltf::{
-    bsp::{ModelVertex, TextureInfo},
-    coordinates::convert_coordinates,
-    Mesh, Model,
+use crate::{
+    gltf::{
+        bsp::{ModelVertex, TextureInfo},
+        coordinates::convert_coordinates,
+        Mesh, Model,
+    },
+    hittest::hittest_clip_node,
+    FileInfo,
 };
 
 use super::{camera::Camera, debug::create_debug_point, Renderer};
@@ -456,6 +460,7 @@ impl Renderer for BspRenderer {
         delta: std::time::Duration,
         down_keys: &HashSet<VirtualKeyCode>,
         mouse_delta: Option<Vec2>,
+        file_info: &Option<FileInfo>,
     ) {
         let mut rotation = self.camera.yaw_pitch_roll();
         let old_rotation = rotation;
@@ -489,7 +494,7 @@ impl Renderer for BspRenderer {
             let delta_position = facing;
             direction += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::S) {
-            let delta_position = - facing;
+            let delta_position = -facing;
             direction += delta_position;
         }
 
@@ -503,8 +508,29 @@ impl Renderer for BspRenderer {
 
         if direction != Vec3::ZERO {
             direction = direction.normalize();
-            let position = direction * (MAX_RUN_SPEED * delta.as_secs_f32());
-            self.camera.set_position(position + self.camera.position());
+            let mut position =
+                self.camera.position() + (direction * (MAX_RUN_SPEED * delta.as_secs_f32()));
+
+            let reader = match file_info.as_ref().unwrap() {
+                FileInfo::BspFile(file) => &file.reader,
+                _ => panic!(),
+            };
+            let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+            if let Some((intersection, _leaf)) =
+                hittest_clip_node(reader, clip_node_index, self.camera.position(), position)
+            {
+                //println!("hit! {:?}, {}", intersection, _leaf);
+
+                // TODO: A better way to not stick to walls
+                let temp_start = self.camera.position() + (direction * 0.1);
+                if let Some((_, _)) =
+                    hittest_clip_node(reader, clip_node_index, temp_start, position)
+                {
+                    position = intersection;
+                }
+            }
+
+            self.camera.set_position(position);
         }
         self.camera.update(queue);
 

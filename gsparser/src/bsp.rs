@@ -182,6 +182,13 @@ pub struct BspModel {
     pub faces: i32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct BspClipNode {
+    pub plane_index: i32,
+    pub children: [i16; 2],
+}
+
 // TODO: Borrow data
 pub struct BspReader {
     header: BspHeader,
@@ -262,6 +269,10 @@ impl BspReader {
         self.read_lump(LUMP_MODELS)
     }
 
+    pub fn read_clip_nodes(&self) -> &[BspClipNode] {
+        self.read_lump(LUMP_CLIPNODES)
+    }
+
     fn read_lump_raw(&self, index: usize) -> &[u8] {
         let lump_header = self.header.lumps[index];
         let start = lump_header.offset as usize;
@@ -280,7 +291,7 @@ impl BspReader {
     }
 }
 
-trait FromValue<T: Sized + Copy>: Sized {
+pub trait FromValue<T: Sized + Copy>: Sized {
     fn from_value(value: T) -> Option<Self>;
 }
 

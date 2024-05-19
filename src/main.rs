@@ -443,7 +443,7 @@ fn show_ui(cli: Cli) {
                         mouse_delta
                     };
 
-                    renderer.update(&device, &queue, delta, &down_keys, mouse_delta);
+                    renderer.update(&device, &queue, delta, &down_keys, mouse_delta, &file_info);
                     let (position, direction) = renderer.get_position_and_direction();
                     bsp_viewer.set_position(position, direction);
                     renderer.render(clear_color, &view, &device, &queue);
