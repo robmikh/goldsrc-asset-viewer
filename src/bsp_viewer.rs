@@ -85,6 +85,7 @@ impl BspViewer {
         }
 
         ui.window("Map Info")
+            .position([25.0, 25.0], Condition::FirstUseEver)
             .size([300.0, 400.0], Condition::FirstUseEver)
             .build(|| {
                 ui.text(format!("Path: {}", &file_info.path));
@@ -107,7 +108,7 @@ impl BspViewer {
             });
 
         ui.window("Entities")
-            .position([50.0, 475.0], Condition::FirstUseEver)
+            .position([25.0, 450.0], Condition::FirstUseEver)
             .size([300.0, 400.0], Condition::FirstUseEver)
             .build(|| {
                 ui.text(&self.entities);
