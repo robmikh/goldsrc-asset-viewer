@@ -447,14 +447,27 @@ impl Renderer for BspRenderer {
         mouse_delta: Option<Vec2>,
     ) {
         let movement = 5.0;
+        let mut rotation = self.camera.yaw_pitch_roll();
+        let old_rotation = rotation;
 
         if down_keys.contains(&VirtualKeyCode::Q) {
-            self.camera.rotate(5.0_f32.to_radians());
+            rotation.x += 5.0_f32.to_radians();
         } else if down_keys.contains(&VirtualKeyCode::E) {
-            self.camera.rotate(-5.0_f32.to_radians());
+            rotation.x -= 5.0_f32.to_radians();
+        }
+
+        if down_keys.contains(&VirtualKeyCode::F) {
+            rotation.y += 5.0_f32.to_radians();
+        } else if down_keys.contains(&VirtualKeyCode::R) {
+            rotation.y -= 5.0_f32.to_radians();
+        }
+
+        if rotation != old_rotation {
+            self.camera.set_yaw_pitch_roll(rotation);
         }
 
         let mut position = self.camera.position();
+        let old_position = position;
         let facing = self.camera.facing();
         if down_keys.contains(&VirtualKeyCode::W) {
             let delta_position = movement * facing;
@@ -472,7 +485,9 @@ impl Renderer for BspRenderer {
             position += delta_position;
         }
 
-        self.camera.set_position(position);
+        if position != old_position {
+            self.camera.set_position(position);
+        }
         self.camera.update(queue);
 
         if let Some(new_debug_point) = self.new_debug_point.take() {

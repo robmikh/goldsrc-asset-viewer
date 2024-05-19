@@ -1,12 +1,16 @@
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
 use wgpu::util::DeviceExt;
 
-use crate::numerics::{ToVec3, ToVec4};
+use crate::gltf::transform::quat_from_euler;
 
 pub struct Camera {
     position: Vec3,
     facing: Vec3,
     viewport_size: Vec2,
+
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
 
     dirty: bool,
 
@@ -42,8 +46,12 @@ impl Camera {
 
         Self {
             position,
-            facing,
+            facing: facing.normalize(),
             viewport_size,
+
+            yaw: 0.0,
+            pitch: std::f32::consts::PI / 2.0,
+            roll: 0.0,
 
             dirty: false,
 
@@ -59,11 +67,7 @@ impl Camera {
 
     pub fn update(&mut self, queue: &wgpu::Queue) {
         if self.dirty {
-            let mx_total = generate_matrix(
-                self.viewport_size.x / self.viewport_size.y,
-                self.position,
-                self.facing,
-            );
+            let mx_total = self.generate_matrix();
             let mx_ref: &[f32; 16] = mx_total.as_ref();
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(mx_ref));
 
@@ -76,10 +80,29 @@ impl Camera {
         self.dirty = true;
     }
 
-    pub fn rotate(&mut self, angle_in_radians: f32) {
-        let transform = Mat4::from_rotation_y(angle_in_radians);
-        let new_facing = transform * self.facing.to_vec4();
-        self.facing = new_facing.to_vec3().normalize();
+    pub fn set_yaw_pitch_roll(&mut self, rotation_in_radians: Vec3) {
+        self.yaw = rotation_in_radians.x;
+        self.pitch = rotation_in_radians.y;
+        self.roll = rotation_in_radians.z;
+
+        if self.yaw > 2.0 * std::f32::consts::PI {
+            self.yaw = self.yaw % (2.0 * std::f32::consts::PI);
+        } else {
+            while self.yaw < 0.0 {
+                self.yaw = (2.0 * std::f32::consts::PI) + self.yaw;
+            }
+        }
+
+        //let old_pitch = self.pitch;
+        let min = 2.0 * f32::EPSILON;
+        self.pitch = self.pitch.clamp(min, std::f32::consts::PI - min);
+        //self.pitch = old_pitch;
+        //println!("{} -> {}", old_pitch, self.pitch);
+        //println!("facing: {:?}", self.facing());
+        //println!("");
+        
+        // TODO: Roll validation
+
         self.dirty = true;
     }
 
@@ -91,16 +114,20 @@ impl Camera {
         self.position
     }
 
+    pub fn yaw_pitch_roll(&self) -> Vec3 {
+        Vec3::new(self.yaw, self.pitch, self.roll)
+    }
+
     pub fn facing(&self) -> Vec3 {
-        self.facing
+        let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
+        //let quat = quat_from_euler(self.yaw_pitch_roll().yxz());
+        //let new_facing = transform * self.facing.extend(0.0);
+        let new_facing = transform * Vec4::new(0.0, 1.0, 0.0, 0.0);
+        new_facing.xyz().normalize()
     }
 
     pub fn world_pos_and_ray_from_screen_pos(&self, mut pos: Vec2) -> (Vec3, Vec3) {
-        let (projection, view) = compute_projection_and_view_transforms(
-            self.viewport_size.x / self.viewport_size.y,
-            self.position,
-            self.facing,
-        );
+        let (projection, view) = self.compute_projection_and_view_transforms();
 
         let target_size = self.viewport_size;
         pos.y = target_size.y - pos.y;
@@ -116,6 +143,20 @@ impl Camera {
         let direction = direction.unwrap();
 
         (world_near_plane, direction.normalize())
+    }
+
+    fn compute_projection_and_view_transforms(&self) -> (Mat4, Mat4) {
+        compute_projection_and_view_transforms(
+            self.viewport_size.x / self.viewport_size.y,
+            self.position,
+            self.facing(),
+        )
+    }
+
+    fn generate_matrix(&self) -> Mat4 {
+        let (projection, view) =
+        self.compute_projection_and_view_transforms();
+    projection * view
     }
 }
 
