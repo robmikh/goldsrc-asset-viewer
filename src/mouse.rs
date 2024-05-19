@@ -30,15 +30,17 @@ impl MouseInputController {
         }
     }
 
-    pub fn on_mouse_move(&mut self, window: &Window, new_position: Vec2) {
+    pub fn on_mouse_move(&mut self, new_position: Vec2) {
         self.mouse_position = new_position;
-        if let Some(position) = self.manual_lock.as_ref() {
-            self.mouse_position_delta = Some(self.mouse_position - *position);
-            let position = PhysicalPosition::new(position.x as u32, position.y as u32);
-            window.set_cursor_position(position).unwrap();
-        } else {
-            // TODO: Verify this is true
-            self.mouse_position_delta = Some(new_position);
+    }
+
+    pub fn on_mouse_motion(&mut self, delta: Vec2) {
+        if self.input_mode == MouseInputMode::CameraLook {
+            if let Some(old_delta) = self.mouse_position_delta {
+                self.mouse_position_delta = Some(old_delta + delta);
+            } else {
+                self.mouse_position_delta = Some(delta);
+            }
         }
     }
 
@@ -70,11 +72,11 @@ impl MouseInputController {
                     .unwrap();
                 let size = window.inner_size();
                 let center = Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0);
-                self.manual_lock =
-                    Some(center);
-                    let position = PhysicalPosition::new(center.x as u32, center.y as u32);
-                    window.set_cursor_position(position).unwrap();
-                    self.mouse_position = center;
+                self.manual_lock = Some(center);
+                self.mouse_position = center;
+                self.mouse_position_delta = None;
+                let position = PhysicalPosition::new(center.x as u32, center.y as u32);
+                window.set_cursor_position(position).unwrap();
             } else {
                 self.manual_lock = None;
             }

@@ -12,13 +12,10 @@ use gsparser::{
 use wgpu::util::DeviceExt;
 use winit::event::VirtualKeyCode;
 
-use crate::{
-    gltf::{
-        bsp::{ModelVertex, TextureInfo},
-        coordinates::convert_coordinates,
-        Mesh, Model,
-    },
-    numerics::{ToVec3, ToVec4},
+use crate::gltf::{
+    bsp::{ModelVertex, TextureInfo},
+    coordinates::convert_coordinates,
+    Mesh, Model,
 };
 
 use super::{camera::Camera, debug::create_debug_point, Renderer};
@@ -42,8 +39,8 @@ struct GpuVertex {
 impl GpuVertex {
     fn from(vertex: &ModelVertex) -> Self {
         Self {
-            pos: Vec3::from_array(vertex.pos).to_vec4().to_array(),
-            normal: Vec3::from_array(vertex.normal).to_vec4().to_array(),
+            pos: Vec3::from_array(vertex.pos).extend(1.0).to_array(),
+            normal: Vec3::from_array(vertex.normal).extend(0.0).to_array(),
             uv: vertex.uv,
         }
     }
@@ -207,7 +204,6 @@ impl BspRenderer {
             Vec2::new(config.width as f32, config.height as f32),
             &bind_group_layout,
             &device,
-            &queue,
         );
 
         let vertex_buffers = [wgpu::VertexBufferLayout {
@@ -461,7 +457,7 @@ impl Renderer for BspRenderer {
         }
 
         if let Some(mouse_delta) = mouse_delta {
-            let sensitivity = 0.25;
+            let sensitivity = 0.5;
             rotation.x -= mouse_delta.x.to_radians() * sensitivity;
             rotation.y += mouse_delta.y.to_radians() * sensitivity;
         }

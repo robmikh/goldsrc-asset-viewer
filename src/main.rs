@@ -28,6 +28,7 @@ use rfd::FileDialog;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use winit::event::DeviceEvent;
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, VirtualKeyCode, WindowEvent},
@@ -215,6 +216,7 @@ fn show_ui(cli: Cli) {
         } else {
             ControlFlow::Poll
         };
+        let mut mouse_event = false;
         match event {
             Event::MainEventsCleared => window.request_redraw(),
             Event::WindowEvent {
@@ -304,12 +306,22 @@ fn show_ui(cli: Cli) {
                 ..
             } => {
                 let position = Vec2::new(position.x as f32, position.y as f32);
-                mouse_controller.on_mouse_move(&window, position);
+                mouse_controller.on_mouse_move(position);
+                mouse_event = true;
+            }
+            Event::DeviceEvent {
+                event: DeviceEvent::MouseMotion { delta },
+                ..
+            } => {
+                let delta = Vec2::new(delta.0 as f32, delta.1 as f32);
+                mouse_controller.on_mouse_motion(delta);
+                mouse_event = true;
             }
             Event::WindowEvent {
                 event: WindowEvent::MouseInput { state, button, .. },
                 ..
             } => {
+                mouse_event = true;
                 if mouse_controller.input_mode() == MouseInputMode::Cursor {
                     if state == ElementState::Released && button == winit::event::MouseButton::Left
                     {
@@ -557,7 +569,9 @@ fn show_ui(cli: Cli) {
             }
             _ => (),
         };
-        platform.handle_event(imgui.io_mut(), &window, &event);
+        if mouse_controller.input_mode() == MouseInputMode::Cursor || !mouse_event {
+            platform.handle_event(imgui.io_mut(), &window, &event);
+        }
     });
 }
 

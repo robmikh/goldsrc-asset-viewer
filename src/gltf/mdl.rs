@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
 use gsparser::mdl::{
     null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
     MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
@@ -25,7 +25,7 @@ use crate::{
         material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap},
         transform::quat_from_euler,
     },
-    numerics::{ToVec3, ToVec4},
+    numerics::ToVec4,
 };
 
 use super::{
@@ -488,13 +488,13 @@ fn process_indexed_triangles(
             let pos = {
                 let bone = world_bone_transforms[bone_index as usize];
                 let pos = bone * Vec4::new(pos[0], pos[1], pos[2], 1.0);
-                let pos = pos.to_vec3().to_array();
+                let pos = pos.xyz().to_array();
                 pos
             };
             let normal = {
                 let bone = world_bone_transforms[bone_index as usize];
                 let normal = bone * Vec4::new(normal[0], normal[1], normal[2], 0.0);
-                let normal = normal.to_vec3().normalize().to_array();
+                let normal = normal.xyz().normalize().to_array();
                 normal
             };
 

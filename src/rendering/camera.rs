@@ -20,9 +20,12 @@ impl Camera {
         viewport_size: Vec2,
         bind_group_layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
     ) -> Self {
-        let mx_total = generate_matrix(viewport_size.x / viewport_size.y, position, Vec3::new(0.0, 0.0, 1.0));
+        let mx_total = generate_matrix(
+            viewport_size.x / viewport_size.y,
+            position,
+            Vec3::new(0.0, 0.0, 1.0),
+        );
         let mx_ref: &[f32; 16] = mx_total.as_ref();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Globals Uniform Buffer"),
@@ -89,11 +92,14 @@ impl Camera {
 
         //let old_pitch = self.pitch;
         let min = 0.1;
-        self.pitch = self.pitch.clamp((std::f32::consts::PI / -2.0) + min, (std::f32::consts::PI / 2.0) - min);
+        self.pitch = self.pitch.clamp(
+            (std::f32::consts::PI / -2.0) + min,
+            (std::f32::consts::PI / 2.0) - min,
+        );
         //println!("{} -> {}", old_pitch, self.pitch);
         //println!("facing: {:?}", self.facing());
         //println!("");
-        
+
         // TODO: Roll validation
 
         self.dirty = true;
@@ -151,9 +157,8 @@ impl Camera {
     }
 
     fn generate_matrix(&self) -> Mat4 {
-        let (projection, view) =
-        self.compute_projection_and_view_transforms();
-    projection * view
+        let (projection, view) = self.compute_projection_and_view_transforms();
+        projection * view
     }
 }
 
