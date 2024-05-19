@@ -1,7 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
 use glam::{Vec2, Vec3};
-use gsparser::bsp::BspReader;
 use winit::event::VirtualKeyCode;
 
 use crate::FileInfo;
