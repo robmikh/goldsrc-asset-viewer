@@ -111,7 +111,7 @@ fn show_ui(cli: Cli) {
     env_logger::init();
 
     let mut file_info = None;
-    let mut renderer = None;
+    let mut renderer;
 
     if let Some(path) = &cli.file_path {
         file_info = load_file(path);
@@ -303,7 +303,7 @@ fn show_ui(cli: Cli) {
                                         let mut closest_intersection = None;
                                         for (i, model) in models.iter().enumerate() {
                                             let node_index = model.head_nodes[0] as usize;
-                                            if let Some((intersection_point, leaf_index)) =
+                                            if let Some((intersection_point, _leaf_index)) =
                                                 hittest_node_for_leaf(
                                                     &file_info.reader,
                                                     node_index,
@@ -491,7 +491,6 @@ fn show_ui(cli: Cli) {
                                 &mut queue,
                                 &mut imgui_renderer,
                             ),
-                            _ => todo!(),
                         }
                     }
                 }
