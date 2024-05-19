@@ -69,8 +69,12 @@ impl MouseInputController {
                     .set_cursor_grab(winit::window::CursorGrabMode::Confined)
                     .unwrap();
                 let size = window.inner_size();
+                let center = Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0);
                 self.manual_lock =
-                    Some(Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0));
+                    Some(center);
+                    let position = PhysicalPosition::new(center.x as u32, center.y as u32);
+                    window.set_cursor_position(position).unwrap();
+                    self.mouse_position = center;
             } else {
                 self.manual_lock = None;
             }

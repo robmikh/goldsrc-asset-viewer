@@ -460,6 +460,12 @@ impl Renderer for BspRenderer {
             rotation.y -= 5.0_f32.to_radians();
         }
 
+        if let Some(mouse_delta) = mouse_delta {
+            let sensitivity = 0.25;
+            rotation.x -= mouse_delta.x.to_radians() * sensitivity;
+            rotation.y += mouse_delta.y.to_radians() * sensitivity;
+        }
+
         if rotation != old_rotation {
             self.camera.set_yaw_pitch_roll(rotation);
         }
