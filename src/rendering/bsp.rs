@@ -457,7 +457,6 @@ impl Renderer for BspRenderer {
         down_keys: &HashSet<VirtualKeyCode>,
         mouse_delta: Option<Vec2>,
     ) {
-        let movement = 5.0;
         let mut rotation = self.camera.yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -487,18 +486,18 @@ impl Renderer for BspRenderer {
         let facing = self.camera.facing();
         let up = self.camera.up();
         if down_keys.contains(&VirtualKeyCode::W) {
-            let delta_position = movement * facing;
+            let delta_position = facing;
             direction += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::S) {
-            let delta_position = -movement * facing;
+            let delta_position = - facing;
             direction += delta_position;
         }
 
         if down_keys.contains(&VirtualKeyCode::A) {
-            let delta_position = -movement * facing.cross(up);
+            let delta_position = -facing.cross(up);
             direction += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::D) {
-            let delta_position = movement * facing.cross(up);
+            let delta_position = facing.cross(up);
             direction += delta_position;
         }
 
