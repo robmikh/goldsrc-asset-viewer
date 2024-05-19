@@ -45,6 +45,7 @@ impl GpuVertex {
 }
 
 pub struct BspRenderer {
+    models_to_render: Vec<usize>,
     map_models: Vec<GpuModel>,
     textures: Vec<(wgpu::Texture, wgpu::TextureView, wgpu::BindGroup)>,
     sampler: wgpu::Sampler,
@@ -266,10 +267,28 @@ impl BspRenderer {
             ],
         }];
 
-        let map_models = loaded_map_models
+        let map_models: Vec<GpuModel> = loaded_map_models
             .iter()
             .map(|x| create_gpu_model_for_model(x, device))
             .collect();
+
+        // Record which models to hide
+        // TODO: More robust logic
+        let mut models_to_render: Vec<usize> = (0..map_models.len()).collect();
+        for entity in &entities {
+            if let Some(class_name) = entity.0.get("classname") {
+                if class_name.starts_with("trigger") || class_name.starts_with("func_ladder") {
+                    if let Some(model_value) = entity.0.get("model") {
+                        if model_value.starts_with('*') {
+                            let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
+                            if let Some(position) = models_to_render.iter().position(|x| *x == model_index) {
+                                models_to_render.remove(position);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
@@ -300,6 +319,7 @@ impl BspRenderer {
         });
 
         Self {
+            models_to_render,
             map_models,
             textures,
             sampler,
@@ -382,7 +402,8 @@ impl Renderer for BspRenderer {
 
             render_pass.insert_debug_marker("Draw!");
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
-            for model in &self.map_models {
+            for model_index in &self.models_to_render {
+                let model = &self.map_models[*model_index];
                 self.render_model(&mut render_pass, model);
             }
 
