@@ -51,15 +51,23 @@ impl MouseInputController {
 
     fn set_cursor_lock(&mut self, window: &Window, lock: bool) {
         if lock {
-            if window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_err() {
-                window.set_cursor_grab(winit::window::CursorGrabMode::Confined).unwrap();
+            if window
+                .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+                .is_err()
+            {
+                window
+                    .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                    .unwrap();
                 let size = window.inner_size();
-                self.manual_lock = Some(Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0));
+                self.manual_lock =
+                    Some(Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0));
             } else {
                 self.manual_lock = None;
             }
         } else {
-            window.set_cursor_grab(winit::window::CursorGrabMode::None).unwrap();
+            window
+                .set_cursor_grab(winit::window::CursorGrabMode::None)
+                .unwrap();
             self.manual_lock = None;
         }
         window.set_cursor_visible(!lock);

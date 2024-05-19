@@ -4,10 +4,10 @@ mod gltf;
 mod graphics;
 mod hittest;
 mod mdl_viewer;
+mod mouse;
 mod numerics;
 mod rendering;
 mod wad_viewer;
-mod mouse;
 
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
@@ -61,8 +61,6 @@ enum FileInfo {
     MdlFile(MdlFile),
     BspFile(BspFile),
 }
-
-
 
 fn main() {
     let cli = Cli::parse();
@@ -288,7 +286,10 @@ fn show_ui(cli: Cli) {
                     }
 
                     // TODO: Consolodate keyboard key up/down logic
-                    if keycode == VirtualKeyCode::B && was_down && down_keys.contains(&VirtualKeyCode::LShift) {
+                    if keycode == VirtualKeyCode::B
+                        && was_down
+                        && down_keys.contains(&VirtualKeyCode::LShift)
+                    {
                         let new_input_mode = match mouse_controller.input_mode() {
                             MouseInputMode::Cursor => MouseInputMode::CameraLook,
                             MouseInputMode::CameraLook => MouseInputMode::Cursor,
@@ -310,12 +311,14 @@ fn show_ui(cli: Cli) {
                 ..
             } => {
                 if mouse_controller.input_mode() == MouseInputMode::Cursor {
-                    if state == ElementState::Released && button == winit::event::MouseButton::Left {
+                    if state == ElementState::Released && button == winit::event::MouseButton::Left
+                    {
                         if down_keys.contains(&VirtualKeyCode::LShift) {
                             if let Some(renderer) = renderer.as_mut() {
-                                let (pos, ray) =
-                                    renderer.world_pos_and_ray_from_screen_pos(mouse_controller.mouse_position());
-    
+                                let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                    mouse_controller.mouse_position(),
+                                );
+
                                 println!("pos: {:?}    ray: {:?}", pos, ray);
                                 if let Some(file_info) = file_info.as_ref() {
                                     match file_info {
@@ -351,13 +354,13 @@ fn show_ui(cli: Cli) {
                                                     }
                                                 }
                                             }
-    
+
                                             if let Some((model_index, intersection_point)) =
                                                 closest_intersection
                                             {
                                                 renderer.set_debug_point(intersection_point);
                                                 println!("Hit something... {}", model_index);
-    
+
                                                 let mut found = None;
                                                 let entities = BspEntity::parse_entities(
                                                     file_info.reader.read_entities(),
@@ -378,7 +381,7 @@ fn show_ui(cli: Cli) {
                                                         }
                                                     }
                                                 }
-    
+
                                                 if let Some(entity_index) = found {
                                                     println!("Found entity: {}", entity_index);
                                                     bsp_viewer.select_entity(entity_index as i32);
