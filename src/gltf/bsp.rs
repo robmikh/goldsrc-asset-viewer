@@ -123,7 +123,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
         mag_filter: MagFilter::Linear,
         min_filter: MinFilter::LinearMipMapLinear,
         wrap_s: Wrap::MirroredRepeat,
-        wrap_t: Wrap::MirroredRepeat,
+        wrap_t: Wrap::Repeat,
     });
     for texture in &textures {
         let image = material_data.add_images(Image {
