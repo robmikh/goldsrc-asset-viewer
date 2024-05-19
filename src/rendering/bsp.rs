@@ -5,10 +5,7 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
-use gsparser::{
-    bsp::{BspEntity, BspReader},
-    wad3::MipmapedTextureData,
-};
+use gsparser::bsp::{BspEntity, BspReader};
 use wgpu::util::DeviceExt;
 use winit::event::VirtualKeyCode;
 
@@ -19,6 +16,8 @@ use crate::gltf::{
 };
 
 use super::{camera::Camera, debug::create_debug_point, Renderer};
+
+const MAX_RUN_SPEED: f32 = 320.0;
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -484,28 +483,29 @@ impl Renderer for BspRenderer {
             self.camera.set_yaw_pitch_roll(rotation);
         }
 
-        let mut position = self.camera.position();
-        let old_position = position;
+        let mut direction = Vec3::ZERO;
         let facing = self.camera.facing();
         let up = self.camera.up();
         if down_keys.contains(&VirtualKeyCode::W) {
             let delta_position = movement * facing;
-            position += delta_position;
+            direction += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::S) {
             let delta_position = -movement * facing;
-            position += delta_position;
+            direction += delta_position;
         }
 
         if down_keys.contains(&VirtualKeyCode::A) {
             let delta_position = -movement * facing.cross(up);
-            position += delta_position;
+            direction += delta_position;
         } else if down_keys.contains(&VirtualKeyCode::D) {
             let delta_position = movement * facing.cross(up);
-            position += delta_position;
+            direction += delta_position;
         }
 
-        if position != old_position {
-            self.camera.set_position(position);
+        if direction != Vec3::ZERO {
+            direction = direction.normalize();
+            let position = direction * (MAX_RUN_SPEED * delta.as_secs_f32());
+            self.camera.set_position(position + self.camera.position());
         }
         self.camera.update(queue);
 
