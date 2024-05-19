@@ -163,7 +163,25 @@ impl BspRenderer {
         // Load textures
         let mut textures = Vec::with_capacity(loaded_textures.len());
         for texture in loaded_textures {
-            let (texture, view) = create_texture_and_view(device, queue, &texture.image_data);
+            let (texture, view) = create_texture_and_view(device, queue, &texture.image_data.image);
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &texture_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                }],
+                label: None,
+            });
+            textures.push((texture, view, bind_group));
+        }
+        // Debug texture
+        {
+            let mut image = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(10, 10);
+            for pixel in image.pixels_mut() {
+                *pixel = image::Rgba::<u8>([255, 0, 0, 255]);
+            }
+
+            let (texture, view) = create_texture_and_view(device, queue, &image);
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &texture_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
@@ -492,7 +510,7 @@ impl Renderer for BspRenderer {
         self.camera.update(queue);
 
         if let Some(new_debug_point) = self.new_debug_point.take() {
-            let model = create_debug_point_model(new_debug_point, 0);
+            let model = create_debug_point_model(new_debug_point, self.textures.len() - 1);
             let gpu_model = create_gpu_model_for_model(
                 &model,
                 Vec3::ZERO,
@@ -520,11 +538,11 @@ impl Renderer for BspRenderer {
 fn create_texture_and_view(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    image_data: &MipmapedTextureData,
+    image_data: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
 ) -> (wgpu::Texture, wgpu::TextureView) {
     let texture_extent = wgpu::Extent3d {
-        width: image_data.image_width,
-        height: image_data.image_height,
+        width: image_data.width(),
+        height: image_data.height(),
         depth_or_array_layers: 1,
     };
     let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -540,10 +558,10 @@ fn create_texture_and_view(
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     queue.write_texture(
         texture.as_image_copy(),
-        &image_data.image,
+        &image_data,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: Some(image_data.image_width * 4),
+            bytes_per_row: Some(image_data.width() * 4),
             rows_per_image: None,
         },
         texture_extent,
