@@ -33,6 +33,8 @@ use winit::{
     window::Window,
 };
 
+const WINDOW_TITLE: &str = "goldsrc-asset-viewer";
+
 pub struct MdlFile {
     pub path: String,
     pub file: gsparser::mdl::MdlFile,
@@ -124,7 +126,11 @@ fn show_ui(cli: Cli) {
     let (window, size, surface) = {
         let window = Window::new(&event_loop).unwrap();
         window.set_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
-        window.set_title("goldsrc-asset-viewer");
+        if let Some(path) = &cli.file_path {
+            window.set_title(&format!("{} - {}", WINDOW_TITLE, path.display()));
+        } else {
+            window.set_title(WINDOW_TITLE);
+        }
         let size = window.inner_size();
         let surface = unsafe { instance.create_surface(&window).unwrap() };
         (window, size, surface)
@@ -380,6 +386,7 @@ fn show_ui(cli: Cli) {
 
                 if let Some(new_path) = &pending_path {
                     file_info = load_file(new_path);
+                    window.set_title(&format!("{} - {}", WINDOW_TITLE, new_path.display()));
                     renderer =
                         load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
                     pending_path = None;
