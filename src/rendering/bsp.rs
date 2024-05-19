@@ -1,4 +1,7 @@
-use std::{borrow::Cow, collections::{HashMap, HashSet}};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
@@ -277,14 +280,20 @@ impl BspRenderer {
 
                             let coord = convert_coordinates([hl_x, hl_y, hl_z]);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
-                        } 
+                        }
                     }
 
                     origin
                 };
 
-                create_gpu_model_for_model(model, origin, device, &model_bind_group_layout, &sampler)
-    })
+                create_gpu_model_for_model(
+                    model,
+                    origin,
+                    device,
+                    &model_bind_group_layout,
+                    &sampler,
+                )
+            })
             .collect();
 
         // Record which models to hide
@@ -295,8 +304,11 @@ impl BspRenderer {
                 if class_name.starts_with("trigger") || class_name.starts_with("func_ladder") {
                     if let Some(model_value) = entity.0.get("model") {
                         if model_value.starts_with('*') {
-                            let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
-                            if let Some(position) = models_to_render.iter().position(|x| *x == model_index) {
+                            let model_index: usize =
+                                model_value.trim_start_matches('*').parse().unwrap();
+                            if let Some(position) =
+                                models_to_render.iter().position(|x| *x == model_index)
+                            {
                                 models_to_render.remove(position);
                             }
                         }
@@ -494,9 +506,15 @@ impl Renderer for BspRenderer {
             queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
         }
 
-        if let Some(new_debug_point) = self.new_debug_point.take() {      
+        if let Some(new_debug_point) = self.new_debug_point.take() {
             let model = create_debug_point_model(new_debug_point, 0);
-            let gpu_model = create_gpu_model_for_model(&model, Vec3::ZERO, device, &self.model_bind_group_layout, &self.sampler);
+            let gpu_model = create_gpu_model_for_model(
+                &model,
+                Vec3::ZERO,
+                device,
+                &self.model_bind_group_layout,
+                &self.sampler,
+            );
             self.debug_point = Some(gpu_model);
         }
     }
@@ -621,7 +639,13 @@ fn create_depth_texture(
     (texture, view, sampler)
 }
 
-fn create_gpu_model_for_model(model: &Model<ModelVertex>, origin: Vec3, device: &wgpu::Device, model_bind_group_layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler) -> GpuModel {
+fn create_gpu_model_for_model(
+    model: &Model<ModelVertex>,
+    origin: Vec3,
+    device: &wgpu::Device,
+    model_bind_group_layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+) -> GpuModel {
     let vertices: Vec<GpuVertex> = model.vertices.iter().map(|x| GpuVertex::from(x)).collect();
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
@@ -673,11 +697,9 @@ fn create_debug_point_model(point: Vec3, texture_index: usize) -> Model<ModelVer
     Model {
         indices,
         vertices,
-        meshes: vec![
-            Mesh {
-                texture_index,
-                indices_range,
-            }
-        ]
+        meshes: vec![Mesh {
+            texture_index,
+            indices_range,
+        }],
     }
 }

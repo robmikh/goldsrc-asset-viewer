@@ -610,14 +610,8 @@ fn load_renderer(
                 let textures = read_textures(&file.reader, &wad_resources);
                 let map_models = gltf::bsp::convert_models(&file.reader, &textures);
 
-                let renderer = BspRenderer::new(
-                    &file.reader,
-                    &map_models,
-                    &textures,
-                    device,
-                    queue,
-                    config,
-                );
+                let renderer =
+                    BspRenderer::new(&file.reader, &map_models, &textures, device, queue, config);
 
                 Some(Box::new(renderer))
             }
