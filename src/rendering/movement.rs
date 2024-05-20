@@ -2,8 +2,12 @@ use std::time::Duration;
 
 use glam::Vec3;
 
+// https://www.jwchong.com/hl/movement.html
+
 const MAX_GROUND_SPEED: f32 = 320.0;
 const MAX_GROUND_ACCELERATION: f32 = 10.0 * MAX_GROUND_SPEED;
+
+const STOP_SPEED: f32 = 100.0;
 
 pub struct MovingEntity {
     position: Vec3,
@@ -43,10 +47,42 @@ fn update_velocity_ground(wish_dir: Vec3, velocity: Vec3, delta: Duration) -> Ve
     let add_speed = (MAX_GROUND_SPEED - current_speed)
         .clamp(0.0, MAX_GROUND_ACCELERATION * delta.as_secs_f32());
 
-    velocity + add_speed * wish_dir
+    let new_velocity = velocity + add_speed * wish_dir;
+
+    if new_velocity.length() < 1.0 {
+        Vec3::ZERO
+    } else {
+        new_velocity
+    }
 }
 
 fn friction(velocity: Vec3, delta: Duration) -> Vec3 {
-    // TODO
-    velocity - (velocity * (Vec3::new(10.0, 0.0, 10.0) * delta.as_secs_f32()))
+    let speed = velocity.length();
+
+    if speed < 0.1 {
+        return velocity;
+    }
+
+    let drop = {
+        // Everything says friction is normally 1.0 ???
+        // Am I using time in the wrong units or the wrong scale?
+        let friction = 10.0; // TODO: edge friction
+        let control = if speed < STOP_SPEED {
+            STOP_SPEED
+        } else {
+            speed
+        };
+        control * friction * delta.as_secs_f32()
+    };
+
+    let new_speed = {
+        let new_speed = speed - drop;
+        if new_speed < 0.0 {
+            0.0
+        } else {
+            new_speed
+        }
+    } / speed;
+
+    velocity * new_speed
 }
