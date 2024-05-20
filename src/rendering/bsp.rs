@@ -538,12 +538,30 @@ impl Renderer for BspRenderer {
                 if let Some(intersection) =
                     hittest_clip_node(reader, clip_node_index, start_position, end_position)
                 {
-                    // TODO: A better way to not stick to walls
-                    let temp_start = self.camera.position() + (direction * 0.1);
-                    if let Some(_) =
-                        hittest_clip_node(reader, clip_node_index, temp_start, end_position)
-                    {
-                        position = intersection;
+                    println!("intersection: {}", intersection.position);
+                    println!("temp_end_position: {}", end_position);
+                    let rest = intersection.position - end_position;
+                    let direction = -rest.normalize();
+                    let speed = rest.length();
+                    
+                    let temp = direction.dot(intersection.normal).abs();
+
+                    if speed < 0.001 || temp < 0.001 {
+                        position = start_position;
+                    } else {
+                        let direction = direction - (intersection.normal * direction.dot(intersection.normal));
+                        let direction = direction.normalize();
+
+                        let end_position = (direction * speed) + start_position;
+                        println!("plane_normal: {}", intersection.normal);
+                        println!("direction: {}", direction);
+                        println!("end_position: {}", end_position);
+                        println!();
+                        if end_position.is_nan() {
+                            position = start_position;
+                        } else {
+                            position = end_position;
+                        }
                     }
                 }
             }

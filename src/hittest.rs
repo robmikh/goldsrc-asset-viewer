@@ -20,7 +20,13 @@ pub fn hittest_node_for_leaf(
         p2,
         true,
         &node_resolver,
+        Vec3::new(0.0, 1.0, 0.0),
     )
+}
+
+pub struct IntersectionInfo {
+    pub position: Vec3,
+    pub normal: Vec3,
 }
 
 pub fn hittest_clip_node(
@@ -28,7 +34,7 @@ pub fn hittest_clip_node(
     clip_node_index: usize,
     start: Vec3,
     end: Vec3,
-) -> Option<Vec3> {
+) -> Option<IntersectionInfo> {
     let p1 = start;
     let p2 = end;
     let nodes = reader.read_clip_nodes();
@@ -40,6 +46,7 @@ pub fn hittest_clip_node(
         p2,
         true,
         &clip_node_resolver,
+        Vec3::new(0.0, 1.0, 0.0),
     )
 }
 
@@ -71,7 +78,7 @@ impl RaycastNode for BspClipNode {
 fn hittest_node_for_leaf_impl<
     T: RaycastNode,
     V,
-    F: Fn(&BspReader, i16, bool, Vec3) -> ResolvedNode<V>,
+    F: Fn(&BspReader, i16, bool, Vec3, Vec3) -> ResolvedNode<V>,
 >(
     reader: &BspReader,
     nodes: &[T],
@@ -80,8 +87,9 @@ fn hittest_node_for_leaf_impl<
     p2: Vec3,
     allow_zero: bool,
     node_resolver: &F,
+    normal: Vec3,
 ) -> Option<V> {
-    let node_index = match node_resolver(reader, node_index, allow_zero, p1) {
+    let node_index = match node_resolver(reader, node_index, allow_zero, p1, normal) {
         ResolvedNode::NodeIndex(node_index) => node_index,
         ResolvedNode::Leaf(result) => return result,
     };
@@ -106,7 +114,7 @@ fn hittest_node_for_leaf_impl<
     };
 
     if let Some(child) = child {
-        return hittest_node_for_leaf_impl(reader, nodes, child, p1, p2, false, node_resolver);
+        return hittest_node_for_leaf_impl(reader, nodes, child, p1, p2, false, node_resolver, plane_normal);
     }
 
     let frac = t1 / (t1 - t2);
@@ -125,6 +133,7 @@ fn hittest_node_for_leaf_impl<
         mid,
         false,
         node_resolver,
+        plane_normal
     ) {
         return Some(hit);
     }
@@ -138,6 +147,7 @@ fn hittest_node_for_leaf_impl<
         p2,
         false,
         node_resolver,
+        plane_normal
     )
 }
 
@@ -151,6 +161,7 @@ fn node_resolver(
     node_index: i16,
     allow_zero: bool,
     p1: Vec3,
+    _normal: Vec3,
 ) -> ResolvedNode<(Vec3, usize)> {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
@@ -171,13 +182,17 @@ fn clip_node_resolver(
     node_index: i16,
     allow_zero: bool,
     p1: Vec3,
-) -> ResolvedNode<Vec3> {
+    normal: Vec3,
+) -> ResolvedNode<IntersectionInfo> {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
     } else {
         let contents = BspContents::from_value(node_index as i32).unwrap();
         if contents == BspContents::Solid {
-            return ResolvedNode::Leaf(Some(p1));
+            return ResolvedNode::Leaf(Some(IntersectionInfo {
+                position: p1,
+            normal,
+        }));
         } else {
             return ResolvedNode::Leaf(None);
         }
