@@ -16,6 +16,7 @@ use crate::{
         Mesh, Model,
     },
     hittest::hittest_clip_node,
+    rendering::movement::MovingEntity,
     FileInfo,
 };
 
@@ -69,6 +70,7 @@ pub struct BspRenderer {
     render_pipeline: wgpu::RenderPipeline,
 
     camera: Camera,
+    player: MovingEntity,
 
     new_debug_point: Option<Vec3>,
     debug_point: Option<GpuModel>,
@@ -218,6 +220,7 @@ impl BspRenderer {
             Vec3::from_array(coord)
         };
         println!("Start position: {:?}", camera_start);
+        let player = MovingEntity::new(camera_start);
 
         // Create camera
         let camera = Camera::new(
@@ -364,6 +367,7 @@ impl BspRenderer {
             render_pipeline,
 
             camera,
+            player,
 
             new_debug_point: None,
             debug_point: None,
@@ -507,10 +511,23 @@ impl Renderer for BspRenderer {
             direction += delta_position;
         }
 
-        if direction != Vec3::ZERO {
+        let wish_dir = if direction != Vec3::ZERO {
             direction = direction.normalize();
-            let mut position =
-                self.camera.position() + (direction * (MAX_RUN_SPEED * delta.as_secs_f32()));
+
+            let mut wish_dir = direction;
+            wish_dir.y = 0.0;
+            wish_dir.normalize()
+        } else {
+            Vec3::ZERO
+        };
+
+        {
+            self.player.update_velocity_ground(wish_dir, delta);
+            let velocity = self.player.velocity();
+            let start_position = self.player.position();
+            let end_position = start_position + (velocity * delta.as_secs_f32());
+
+            let mut position = end_position;
 
             if !noclip {
                 let reader = match file_info.as_ref().unwrap() {
@@ -519,12 +536,12 @@ impl Renderer for BspRenderer {
                 };
                 let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
                 if let Some(intersection) =
-                    hittest_clip_node(reader, clip_node_index, self.camera.position(), position)
+                    hittest_clip_node(reader, clip_node_index, start_position, end_position)
                 {
                     // TODO: A better way to not stick to walls
                     let temp_start = self.camera.position() + (direction * 0.1);
                     if let Some(_) =
-                        hittest_clip_node(reader, clip_node_index, temp_start, position)
+                        hittest_clip_node(reader, clip_node_index, temp_start, end_position)
                     {
                         position = intersection;
                     }
@@ -532,7 +549,9 @@ impl Renderer for BspRenderer {
             }
 
             self.camera.set_position(position);
+            self.player.set_position(position);
         }
+
         self.camera.update(queue);
 
         if let Some(new_debug_point) = self.new_debug_point.take() {

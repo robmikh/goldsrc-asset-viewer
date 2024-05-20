@@ -8,6 +8,7 @@ use crate::FileInfo;
 pub mod bsp;
 mod camera;
 mod debug;
+mod movement;
 
 pub trait Renderer {
     fn render(
