@@ -24,6 +24,7 @@ pub fn hittest_node_for_leaf(
     )
 }
 
+#[derive(Debug)]
 pub struct IntersectionInfo {
     pub position: Vec3,
     pub normal: Vec3,
@@ -97,24 +98,33 @@ fn hittest_node_for_leaf_impl<
     let current_node = &nodes[node_index];
     let planes = reader.read_planes();
     let plane = &planes[current_node.plane() as usize];
-    let plane_normal = Vec3::from_array(convert_coordinates(plane.normal));
+    let plane_normal = Vec3::from_array(convert_coordinates(plane.normal)).normalize();
     let plane_dist = plane.dist;
 
     let t1 = plane_normal.dot(p1) - plane_dist;
     let t2 = plane_normal.dot(p2) - plane_dist;
 
-    let child = if t1 >= 0.0 && t2 >= 0.0 {
-        let child = current_node.children()[0];
-        Some(child)
+    let side = if t1 >= 0.0 && t2 >= 0.0 {
+        Some(0)
     } else if t1 < 0.0 && t2 < 0.0 {
-        let child = current_node.children()[1];
-        Some(child)
+        Some(1)
     } else {
         None
     };
 
-    if let Some(child) = child {
-        return hittest_node_for_leaf_impl(reader, nodes, child, p1, p2, false, node_resolver, plane_normal);
+    if let Some(side) = side {
+        let child = current_node.children()[side];
+        let normal = if side == 0 { plane_normal } else { -plane_normal };
+        return hittest_node_for_leaf_impl(
+            reader,
+            nodes,
+            child,
+            p1,
+            p2,
+            false,
+            node_resolver,
+            normal,
+        );
     }
 
     let frac = t1 / (t1 - t2);
@@ -124,6 +134,7 @@ fn hittest_node_for_leaf_impl<
         p1.z + frac * (p2.z - p1.z),
     );
     let side = if t1 >= 0.0 { 0 } else { 1 };
+    let normal = if side == 0 { plane_normal } else { -plane_normal };
 
     if let Some(hit) = hittest_node_for_leaf_impl(
         reader,
@@ -133,12 +144,13 @@ fn hittest_node_for_leaf_impl<
         mid,
         false,
         node_resolver,
-        plane_normal
+        normal,
     ) {
         return Some(hit);
     }
 
     let side = 1 - side;
+    let normal = if side == 0 { plane_normal } else { -plane_normal };
     hittest_node_for_leaf_impl(
         reader,
         nodes,
@@ -147,7 +159,7 @@ fn hittest_node_for_leaf_impl<
         p2,
         false,
         node_resolver,
-        plane_normal
+        normal,
     )
 }
 
@@ -191,8 +203,8 @@ fn clip_node_resolver(
         if contents == BspContents::Solid {
             return ResolvedNode::Leaf(Some(IntersectionInfo {
                 position: p1,
-            normal,
-        }));
+                normal,
+            }));
         } else {
             return ResolvedNode::Leaf(None);
         }

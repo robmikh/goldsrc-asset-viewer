@@ -37,6 +37,10 @@ impl MovingEntity {
     pub fn set_position(&mut self, position: Vec3) {
         self.position = position;
     }
+
+    pub fn set_velocity(&mut self, velocity: Vec3) {
+        self.velocity = velocity;
+    }
 }
 
 // https://www.youtube.com/watch?v=v3zT3Z5apaM

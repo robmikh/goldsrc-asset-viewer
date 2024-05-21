@@ -18,7 +18,7 @@ use glam::Vec2;
 use gltf::bsp::{read_textures, read_wad_resources, WadCollection};
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
-use hittest::hittest_node_for_leaf;
+use hittest::{hittest_clip_node, hittest_node_for_leaf};
 use imgui::*;
 use imgui_wgpu::RendererConfig;
 use mouse::{MouseInputController, MouseInputMode};
@@ -403,6 +403,33 @@ fn show_ui(cli: Cli) {
                                         }
                                         _ => (),
                                     }
+                                }
+                            }
+                        }
+                    } else if state == ElementState::Released
+                        && button == winit::event::MouseButton::Right
+                    {
+                        if down_keys.contains(&VirtualKeyCode::LShift) {
+                            if let Some(renderer) = renderer.as_mut() {
+                                let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                    mouse_controller.mouse_position(),
+                                );
+                                println!("pos: {:?}    ray: {:?}", pos, ray);
+
+                                let reader = match file_info.as_ref().unwrap() {
+                                    FileInfo::BspFile(file) => &file.reader,
+                                    _ => panic!(),
+                                };
+                                let clip_node_index =
+                                    reader.read_models()[0].head_nodes[1] as usize;
+                                if let Some(intersection) = hittest_clip_node(
+                                    reader,
+                                    clip_node_index,
+                                    pos,
+                                    pos + (ray * 10000.0),
+                                ) {
+                                    println!("intersection: {:?}", intersection);
+                                    renderer.set_debug_point(intersection.position);
                                 }
                             }
                         }

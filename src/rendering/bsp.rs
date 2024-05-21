@@ -529,7 +529,7 @@ impl Renderer for BspRenderer {
 
             let mut position = end_position;
 
-            if !noclip {
+            if !noclip && velocity.length() > 0.0 {
                 let reader = match file_info.as_ref().unwrap() {
                     FileInfo::BspFile(file) => &file.reader,
                     _ => panic!(),
@@ -538,31 +538,23 @@ impl Renderer for BspRenderer {
                 if let Some(intersection) =
                     hittest_clip_node(reader, clip_node_index, start_position, end_position)
                 {
-                    println!("intersection: {}", intersection.position);
-                    println!("temp_end_position: {}", end_position);
-                    let rest = intersection.position - end_position;
-                    let direction = -rest.normalize();
-                    let speed = rest.length();
-                    
-                    let temp = direction.dot(intersection.normal).abs();
-
-                    if speed < 0.001 || temp < 0.001 {
+                    let direction = velocity.normalize();
+                    println!("normal: {}", intersection.normal);
+                    if direction.dot(intersection.normal) == -1.0 {
+                        self.player.set_velocity(Vec3::ZERO);
                         position = start_position;
                     } else {
-                        let direction = direction - (intersection.normal * direction.dot(intersection.normal));
-                        let direction = direction.normalize();
+                        let v1 = direction.cross(intersection.normal).normalize();
+                        let surface_dir = -v1.cross(intersection.normal).normalize();
 
-                        let end_position = (direction * speed) + start_position;
-                        println!("plane_normal: {}", intersection.normal);
-                        println!("direction: {}", direction);
-                        println!("end_position: {}", end_position);
-                        println!();
-                        if end_position.is_nan() {
-                            position = start_position;
-                        } else {
-                            position = end_position;
-                        }
+                        let rest = intersection.position - end_position;
+                        let rest_length = rest.length();
+                        let new_vector = surface_dir * rest_length;
+                        let new_velocity = velocity.length() * surface_dir;
+                        self.player.set_velocity(new_velocity);
+                        position = intersection.position + new_vector;
                     }
+                    //println!()
                 }
             }
 
