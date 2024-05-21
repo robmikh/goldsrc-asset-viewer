@@ -22,8 +22,6 @@ use crate::{
 
 use super::{camera::Camera, debug::create_debug_point, Renderer};
 
-const MAX_RUN_SPEED: f32 = 320.0;
-
 struct GpuModel {
     index_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
@@ -183,7 +181,7 @@ impl BspRenderer {
         {
             let mut image = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(10, 10);
             for pixel in image.pixels_mut() {
-                *pixel = image::Rgba::<u8>([255, 0, 0, 255]);
+                *pixel = image::Rgba::<u8>([255, 0, 0, 128]);
             }
 
             let (texture, view) = create_texture_and_view(device, queue, &image);
@@ -319,6 +317,20 @@ impl BspRenderer {
             }
         }
 
+        let mut target: wgpu::ColorTargetState = config.format.into();
+        target.blend = Some(wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+        });
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
@@ -330,7 +342,7 @@ impl BspRenderer {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Some(config.format.into())],
+                targets: &[Some(target)],
             }),
             primitive: wgpu::PrimitiveState {
                 cull_mode: Some(wgpu::Face::Back),
