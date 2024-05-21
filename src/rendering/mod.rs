@@ -43,4 +43,5 @@ pub trait Renderer {
     fn get_position_and_direction(&self) -> (Vec3, Vec3);
 
     fn set_debug_point(&mut self, point: Vec3);
+    fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3);
 }

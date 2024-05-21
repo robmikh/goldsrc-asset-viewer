@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use glam::Vec3;
+use glam::{Mat3, Mat4, Vec3};
 
 use crate::gltf::{add_and_get_index, bsp::ModelVertex};
 
@@ -24,6 +24,18 @@ pub fn create_debug_point(
     create_primitive(&mins, &maxs, indices, vertices)
 }
 
+pub fn create_debug_pyramid(
+    pos: Vec3,
+    dir: Vec3,
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<ModelVertex>,
+) -> Range<usize> {
+    let start = indices.len();
+    add_pointing_triangle(pos, dir, indices, vertices);
+    let end = indices.len();
+    start..end
+}
+
 pub fn create_primitive(
     mins: &[i16; 3],
     maxs: &[i16; 3],
@@ -34,6 +46,80 @@ pub fn create_primitive(
     add_rect_prism(mins, maxs, indices, vertices);
     let end = indices.len();
     start..end
+}
+
+fn add_pointing_triangle(
+    point: Vec3,
+    dir: Vec3,
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<ModelVertex>,
+) {
+    let size = 5.0;
+    let mut positions = [
+        Vec3::new(point.x - size, point.y + size, point.z),
+        Vec3::new(point.x + size, point.y + size, point.z),
+        Vec3::new(point.x - size, point.y - size, point.z),
+        Vec3::new(point.x + size, point.y - size, point.z),
+        Vec3::new(point.x, point.y, point.z + size),
+    ];
+    let default_dir = Vec3::new(0.0, 0.0, 1.0);
+
+    if dir != default_dir {
+        let axis = dir.cross(default_dir).abs().normalize();
+        let angle = dir.angle_between(default_dir);
+        println!("axis: {:?}", axis);
+        println!("angle: {}", angle);
+        let transform = 
+            Mat4::from_translation(point) *
+            Mat4::from_axis_angle(axis, angle) *
+            Mat4::from_translation(-point);
+        for position in &mut positions {
+            *position = transform.transform_point3(*position);
+        }
+    }
+
+    let top_left = add_and_get_index(
+        vertices,
+        ModelVertex {
+            pos: positions[0].to_array(),
+            ..Default::default()
+        },
+    ) as u32;
+    let top_right = add_and_get_index(
+        vertices,
+        ModelVertex {
+            pos: positions[1].to_array(),
+            ..Default::default()
+        },
+    ) as u32;
+    let bottom_left = add_and_get_index(
+        vertices,
+        ModelVertex {
+            pos: positions[2].to_array(),
+            ..Default::default()
+        },
+    ) as u32;
+    let bottom_right = add_and_get_index(
+        vertices,
+        ModelVertex {
+            pos: positions[3].to_array(),
+            ..Default::default()
+        },
+    ) as u32;
+    let front = add_and_get_index(
+        vertices,
+        ModelVertex {
+            pos: positions[4].to_array(),
+            ..Default::default()
+        },
+    ) as u32;
+
+    append_quad(top_left, top_right, bottom_left, bottom_right, indices);
+    append_quad(top_right, top_left, bottom_right, bottom_left, indices);
+    append_triangle(top_right, top_left, front, indices);
+    append_triangle(bottom_right, top_right, front, indices);
+    append_triangle(bottom_left, bottom_right, front, indices);
+    append_triangle(top_left, bottom_left, front, indices);
 }
 
 fn add_rect_prism(

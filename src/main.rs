@@ -429,7 +429,7 @@ fn show_ui(cli: Cli) {
                                     pos + (ray * 10000.0),
                                 ) {
                                     println!("intersection: {:?}", intersection);
-                                    renderer.set_debug_point(intersection.position);
+                                    renderer.set_debug_pyramid(intersection.position, intersection.normal);
                                 }
                             }
                         }

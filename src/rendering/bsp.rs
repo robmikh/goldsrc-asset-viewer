@@ -20,7 +20,7 @@ use crate::{
     FileInfo,
 };
 
-use super::{camera::Camera, debug::create_debug_point, Renderer};
+use super::{camera::Camera, debug::{create_debug_point, create_debug_pyramid}, Renderer};
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -72,6 +72,8 @@ pub struct BspRenderer {
 
     new_debug_point: Option<Vec3>,
     debug_point: Option<GpuModel>,
+    new_debug_pyramid_location: Option<(Vec3, Vec3)>,
+    debug_pyramid: Option<GpuModel>,
 }
 
 impl BspRenderer {
@@ -383,6 +385,8 @@ impl BspRenderer {
 
             new_debug_point: None,
             debug_point: None,
+            new_debug_pyramid_location: None,
+            debug_pyramid: None,
         }
     }
 
@@ -445,6 +449,10 @@ impl Renderer for BspRenderer {
             }
 
             if let Some(model) = self.debug_point.as_ref() {
+                self.render_model(&mut render_pass, model);
+            }
+
+            if let Some(model) = self.debug_pyramid.as_ref() {
                 self.render_model(&mut render_pass, model);
             }
 
@@ -587,6 +595,18 @@ impl Renderer for BspRenderer {
             );
             self.debug_point = Some(gpu_model);
         }
+
+        if let Some((pos, dir)) = self.new_debug_pyramid_location.take() {
+            let model = create_debug_pyramid_model(pos, dir, self.textures.len() - 1);
+            let gpu_model = create_gpu_model_for_model(
+                &model,
+                Vec3::ZERO,
+                device,
+                &self.model_bind_group_layout,
+                &self.sampler,
+            );
+            self.debug_pyramid = Some(gpu_model);
+        }
     }
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
@@ -599,6 +619,10 @@ impl Renderer for BspRenderer {
 
     fn set_debug_point(&mut self, point: Vec3) {
         self.new_debug_point = Some(point);
+    }
+    
+    fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3) {
+        self.new_debug_pyramid_location = Some((point, dir));
     }
 }
 
@@ -724,6 +748,20 @@ fn create_debug_point_model(point: Vec3, texture_index: usize) -> Model<ModelVer
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let indices_range = create_debug_point(point, &mut indices, &mut vertices);
+    Model {
+        indices,
+        vertices,
+        meshes: vec![Mesh {
+            texture_index,
+            indices_range,
+        }],
+    }
+}
+
+fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> Model<ModelVertex> {
+    let mut indices = Vec::new();
+    let mut vertices = Vec::new();
+    let indices_range = create_debug_pyramid(point, dir,&mut indices, &mut vertices);
     Model {
         indices,
         vertices,
