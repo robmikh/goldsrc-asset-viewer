@@ -65,9 +65,16 @@ pub fn hittest_clip_node_2(
     let nodes = reader.read_clip_nodes();
     
     let mut trace = QuakeTrace::default();
+    trace.all_solid = true;
+    trace.intersection = p2;
     if !trace_hull(reader, nodes, clip_node_index as i16, p1, p2, &mut trace) {
+        let intersection = if trace.all_solid || trace.start_solid {
+            p1
+        } else {
+            trace.intersection
+        };
         Some(IntersectionInfo {
-            position: convert_vec3_to_gltf(trace.intersection),
+            position: convert_vec3_to_gltf(intersection),
             normal: convert_vec3_to_gltf(trace.plane.normal),
         })
     } else {
@@ -247,6 +254,10 @@ struct QuakePlane {
 struct QuakeTrace {
     plane: QuakePlane,
     intersection: Vec3,
+    all_solid: bool,
+    start_solid: bool,
+    in_open: bool,
+    in_water: bool,
 }
 
 fn trace_hull(
@@ -258,7 +269,27 @@ fn trace_hull(
     trace: &mut QuakeTrace,
 ) -> bool {
     if node_index < 0 {
-        // TODO: Interpret contents enum
+        let contents = BspContents::from_value(node_index as i32).unwrap();
+        match contents {
+            BspContents::Empty => {
+                trace.in_open = true;
+                trace.all_solid = false;
+            },
+            BspContents::Solid => trace.start_solid = true,
+            BspContents::Water => todo!(),
+            BspContents::Slime => todo!(),
+            BspContents::Lava => todo!(),
+            BspContents::Sky => todo!(),
+            BspContents::Origin => todo!(),
+            BspContents::Clip => todo!(),
+            BspContents::Current0 => todo!(),
+            BspContents::Current90 => todo!(),
+            BspContents::Current180 => todo!(),
+            BspContents::Current270 => todo!(),
+            BspContents::CurrentUp => todo!(),
+            BspContents::CurrentDown => todo!(),
+            BspContents::Translucent => todo!(),
+        }
         return true;
     }
 
@@ -297,7 +328,9 @@ fn trace_hull(
         return trace_hull(reader, nodes, child, mid, p2, trace);
     }
 
-    // TODO: start and end in solid
+    if trace.all_solid {
+        return false;
+    }
 
     if side == 0 {
         trace.plane.normal = plane_normal;

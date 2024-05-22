@@ -15,7 +15,7 @@ use crate::{
         coordinates::convert_coordinates,
         Mesh, Model,
     },
-    hittest::hittest_clip_node,
+    hittest::{hittest_clip_node, hittest_clip_node_2},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -556,13 +556,19 @@ impl Renderer for BspRenderer {
                 };
                 let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
                 if let Some(intersection) =
-                    hittest_clip_node(reader, clip_node_index, start_position, end_position)
+                    hittest_clip_node_2(reader, clip_node_index, start_position, end_position)
                 {
+                    println!("start: {}", start_position);
+                    println!("end: {}", end_position);
+                    println!("intersection: {}", intersection.position);
                     let direction = velocity.normalize();
                     println!("normal: {}", intersection.normal);
-                    if direction.dot(intersection.normal) == -1.0 {
+                    let dot = direction.dot(intersection.normal);
+                    println!("dot: {}", dot);
+                    if dot == -1.0 || intersection.normal.length() == 0.0 {
                         self.player.set_velocity(Vec3::ZERO);
                         position = start_position;
+                        println!("zap");
                     } else {
                         let v1 = direction.cross(intersection.normal).normalize();
                         let surface_dir = -v1.cross(intersection.normal).normalize();
@@ -574,7 +580,7 @@ impl Renderer for BspRenderer {
                         self.player.set_velocity(new_velocity);
                         position = intersection.position + new_vector;
                     }
-                    //println!()
+                    println!()
                 }
             }
 

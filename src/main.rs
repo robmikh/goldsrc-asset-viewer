@@ -9,6 +9,7 @@ mod numerics;
 mod rendering;
 mod wad_viewer;
 
+use crate::hittest::hittest_clip_node_2;
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use bsp_viewer::BspViewer;
@@ -422,7 +423,7 @@ fn show_ui(cli: Cli) {
                                 };
                                 let clip_node_index =
                                     reader.read_models()[0].head_nodes[1] as usize;
-                                if let Some(intersection) = hittest_clip_node(
+                                if let Some(intersection) = hittest_clip_node_2(
                                     reader,
                                     clip_node_index,
                                     pos,

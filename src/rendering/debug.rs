@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use glam::{Mat3, Mat4, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3};
 
 use crate::gltf::{add_and_get_index, bsp::ModelVertex};
 
@@ -65,13 +65,22 @@ fn add_pointing_triangle(
     let default_dir = Vec3::new(0.0, 0.0, 1.0);
 
     if dir != default_dir {
-        let axis = dir.cross(default_dir).abs().normalize();
+        let axis = {
+            let mut axis = dir.cross(default_dir).abs().normalize();
+            if axis.is_nan() {
+                // Just pick one
+                axis = Vec3::new(0.0, 1.0, 0.0);
+            }
+            axis
+        };
         let angle = dir.angle_between(default_dir);
+        let quat = Quat::from_rotation_arc(default_dir, dir);
         println!("axis: {:?}", axis);
         println!("angle: {}", angle);
         let transform = 
             Mat4::from_translation(point) *
-            Mat4::from_axis_angle(axis, angle) *
+            //Mat4::from_axis_angle(axis, angle) *
+            Mat4::from_quat(quat) *
             Mat4::from_translation(-point);
         for position in &mut positions {
             *position = transform.transform_point3(*position);
