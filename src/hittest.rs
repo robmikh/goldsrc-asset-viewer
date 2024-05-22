@@ -54,6 +54,27 @@ pub fn hittest_clip_node(
     })
 }
 
+pub fn hittest_clip_node_2(
+    reader: &BspReader,
+    clip_node_index: usize,
+    start: Vec3,
+    end: Vec3,
+) -> Option<IntersectionInfo> {
+    let p1 = convert_vec3_to_half_life(start);
+    let p2 = convert_vec3_to_half_life(end);
+    let nodes = reader.read_clip_nodes();
+    
+    let mut trace = QuakeTrace::default();
+    if !trace_hull(reader, nodes, clip_node_index as i16, p1, p2, &mut trace) {
+        Some(IntersectionInfo {
+            position: convert_vec3_to_gltf(trace.intersection),
+            normal: convert_vec3_to_gltf(trace.plane.normal),
+        })
+    } else {
+        None
+    }
+}
+
 trait RaycastNode {
     fn plane(&self) -> u32;
     fn children(&self) -> &[i16; 2];
@@ -214,4 +235,95 @@ fn clip_node_resolver(
         }
     };
     ResolvedNode::NodeIndex(node_index)
+}
+
+#[derive(Default)]
+struct QuakePlane {
+    normal: Vec3,
+    dist: f32,
+}
+
+#[derive(Default)]
+struct QuakeTrace {
+    plane: QuakePlane,
+    intersection: Vec3,
+}
+
+fn trace_hull(
+    reader: &BspReader,
+    nodes: &[BspClipNode],
+    node_index: i16,
+    p1: Vec3,
+    p2: Vec3,
+    trace: &mut QuakeTrace,
+) -> bool {
+    if node_index < 0 {
+        // TODO: Interpret contents enum
+        return true;
+    }
+
+    let node = &nodes[node_index as usize];
+    let plane = &reader.read_planes()[node.plane() as usize];
+    let plane_normal = Vec3::from_array(plane.normal);
+    
+    // Distances
+    let t1 = plane_normal.dot(p1) - plane.dist;
+    let t2 = plane_normal.dot(p2) - plane.dist;
+
+    if t1 >= 0.0 && t2 >= 0.0 {
+        let child = node.children[0];
+        return trace_hull(reader, nodes, child, p1, p2, trace);
+    }
+    if t1 < 0.0 && t2 < 0.0 {
+        let child = node.children[1];
+        return trace_hull(reader, nodes, child, p1, p2, trace);
+    }
+
+    let frac = t1 / (t1 - t2);
+    let mid = Vec3::new(
+        p1.x + frac * (p2.x - p1.x),
+        p1.y + frac * (p2.y - p1.y),
+        p1.z + frac * (p2.z - p1.z),
+    );
+    let side = if t1 >= 0.0 { 0 } else { 1 };
+
+    let child = node.children[side];
+    if !trace_hull(reader, nodes, child, p1, mid, trace) {
+        return false;
+    }
+
+    let child = node.children[1 - side];
+    if hull_point_contents(reader, nodes, child, mid) != BspContents::Solid as i16 {
+        return trace_hull(reader, nodes, child, mid, p2, trace);
+    }
+
+    // TODO: start and end in solid
+
+    if side == 0 {
+        trace.plane.normal = plane_normal;
+        trace.plane.dist = plane.dist;
+    } else {
+        trace.plane.normal = -plane_normal;
+        trace.plane.dist = -plane.dist;
+    }
+
+    trace.intersection = mid;
+
+    return false;
+}
+
+fn hull_point_contents(reader: &BspReader, nodes: &[BspClipNode], mut node_index: i16, point: Vec3) -> i16 {
+    while node_index >= 0 {
+        let node = nodes[node_index as usize];
+        let plane = &reader.read_planes()[node.plane() as usize];
+        let plane_normal = Vec3::from_array(plane.normal);
+
+        let dist = plane_normal.dot(point) - plane.dist;
+        if dist < 0.0 {
+            node_index = node.children[1];
+        } else {
+            node_index = node.children[0];
+        }
+    }
+    node_index
 }
