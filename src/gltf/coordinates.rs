@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Vec3, Vec3Swizzles};
 use gsparser::mdl::VectorChannel;
 
 // Half-Life's coordinate system uses:
@@ -13,6 +13,13 @@ use gsparser::mdl::VectorChannel;
 //    (https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units)
 pub fn convert_coordinates<T: Copy>(half_life_xyz: [T; 3]) -> [T; 3] {
     [half_life_xyz[1], half_life_xyz[2], half_life_xyz[0]]
+}
+
+pub fn convert_vec3_to_gltf(half_life_vec: Vec3) -> Vec3 {
+    half_life_vec.yzx()
+}
+pub fn convert_vec3_to_half_life(gltf_vec: Vec3) -> Vec3 {
+    gltf_vec.zxy()
 }
 
 pub fn write_and_convert_channel(base: &mut Vec3, channel: VectorChannel, value: f32) {

@@ -1,7 +1,7 @@
 use glam::Vec3;
 use gsparser::bsp::{BspClipNode, BspContents, BspNode, BspReader, FromValue};
 
-use crate::gltf::coordinates::convert_coordinates;
+use crate::gltf::coordinates::{convert_vec3_to_gltf, convert_vec3_to_half_life};
 
 pub fn hittest_node_for_leaf(
     reader: &BspReader,
@@ -16,12 +16,12 @@ pub fn hittest_node_for_leaf(
         reader,
         nodes,
         node_index as i16,
-        p1,
-        p2,
+        convert_vec3_to_half_life(p1),
+        convert_vec3_to_half_life(p2),
         true,
         &node_resolver,
         Vec3::new(0.0, 1.0, 0.0),
-    )
+    ).map(|(pos, index)| (convert_vec3_to_gltf(pos), index))
 }
 
 #[derive(Debug)]
@@ -43,12 +43,15 @@ pub fn hittest_clip_node(
         reader,
         nodes,
         clip_node_index as i16,
-        p1,
-        p2,
+        convert_vec3_to_half_life(p1),
+        convert_vec3_to_half_life(p2),
         true,
         &clip_node_resolver,
-        Vec3::new(0.0, 1.0, 0.0),
-    )
+        Vec3::new(0.0, 0.0, 0.0),
+    ).map(|x| IntersectionInfo {
+        position: convert_vec3_to_gltf(x.position),
+        normal: convert_vec3_to_gltf(x.normal),
+    })
 }
 
 trait RaycastNode {
@@ -98,7 +101,7 @@ fn hittest_node_for_leaf_impl<
     let current_node = &nodes[node_index];
     let planes = reader.read_planes();
     let plane = &planes[current_node.plane() as usize];
-    let plane_normal = Vec3::from_array(convert_coordinates(plane.normal)).normalize();
+    let plane_normal = Vec3::from_array(plane.normal);
     let plane_dist = plane.dist;
 
     let t1 = plane_normal.dot(p1) - plane_dist;
@@ -114,7 +117,8 @@ fn hittest_node_for_leaf_impl<
 
     if let Some(side) = side {
         let child = current_node.children()[side];
-        let normal = if side == 0 { plane_normal } else { -plane_normal };
+        //let plane_normal = normal;
+        //let normal = if side == 0 { plane_normal } else { -plane_normal };
         return hittest_node_for_leaf_impl(
             reader,
             nodes,
