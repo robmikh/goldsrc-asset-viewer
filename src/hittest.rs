@@ -244,6 +244,8 @@ fn clip_node_resolver(
     ResolvedNode::NodeIndex(node_index)
 }
 
+const DIST_EPSILON: f32 = 0.03125;
+
 #[derive(Default)]
 struct QuakePlane {
     normal: Vec3,
@@ -298,8 +300,15 @@ fn trace_hull(
     let plane_normal = Vec3::from_array(plane.normal);
     
     // Distances
-    let t1 = plane_normal.dot(p1) - plane.dist;
-    let t2 = plane_normal.dot(p2) - plane.dist;
+    let (t1, t2) = if plane.ty < 3 { 
+        let t1 = p1.to_array()[plane.ty as usize] - plane.dist;
+        let t2 = p2.to_array()[plane.ty as usize] - plane.dist;
+        (t1, t2)
+    } else {
+        let t1 = plane_normal.dot(p1) - plane.dist;
+        let t2 = plane_normal.dot(p2) - plane.dist;
+        (t1, t2)
+    };
 
     if t1 >= 0.0 && t2 >= 0.0 {
         let child = node.children[0];
@@ -310,12 +319,12 @@ fn trace_hull(
         return trace_hull(reader, nodes, child, p1, p2, trace);
     }
 
-    let frac = t1 / (t1 - t2);
-    let mid = Vec3::new(
-        p1.x + frac * (p2.x - p1.x),
-        p1.y + frac * (p2.y - p1.y),
-        p1.z + frac * (p2.z - p1.z),
-    );
+    let frac = if t1 < 0.0 {
+        (t1 + DIST_EPSILON) / (t1 - t2)
+    } else {
+        (t1 - DIST_EPSILON) / (t1 - t2)
+    }.clamp(0.0, 1.0);
+    let mid = p1 + frac * (p2 - p1);
     let side = if t1 >= 0.0 { 0 } else { 1 };
 
     let child = node.children[side];
@@ -329,6 +338,8 @@ fn trace_hull(
     }
 
     if trace.all_solid {
+        trace.plane.normal = Vec3::ZERO;
+        trace.plane.dist = 0.0;
         return false;
     }
 
@@ -339,6 +350,11 @@ fn trace_hull(
         trace.plane.normal = -plane_normal;
         trace.plane.dist = -plane.dist;
     }
+
+    // TODO: Don't hard code
+    let clip_node_root = 0;
+    let contents = BspContents::from_value(hull_point_contents(reader, nodes, clip_node_root, mid) as i32).unwrap();
+    assert_ne!(contents, BspContents::Solid);
 
     trace.intersection = mid;
 
@@ -351,7 +367,11 @@ fn hull_point_contents(reader: &BspReader, nodes: &[BspClipNode], mut node_index
         let plane = &reader.read_planes()[node.plane() as usize];
         let plane_normal = Vec3::from_array(plane.normal);
 
-        let dist = plane_normal.dot(point) - plane.dist;
+        let dist = if plane.ty < 3 {
+            point.to_array()[plane.ty as usize] - plane.dist
+        } else {
+            plane_normal.dot(point) - plane.dist
+        };
         if dist < 0.0 {
             node_index = node.children[1];
         } else {

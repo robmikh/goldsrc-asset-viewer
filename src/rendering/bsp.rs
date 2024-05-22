@@ -555,32 +555,61 @@ impl Renderer for BspRenderer {
                     _ => panic!(),
                 };
                 let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-                if let Some(intersection) =
-                    hittest_clip_node_2(reader, clip_node_index, start_position, end_position)
-                {
-                    println!("start: {}", start_position);
-                    println!("end: {}", end_position);
-                    println!("intersection: {}", intersection.position);
-                    let direction = velocity.normalize();
-                    println!("normal: {}", intersection.normal);
-                    let dot = direction.dot(intersection.normal);
-                    println!("dot: {}", dot);
-                    if dot == -1.0 || intersection.normal.length() == 0.0 {
-                        self.player.set_velocity(Vec3::ZERO);
-                        position = start_position;
-                        println!("zap");
-                    } else {
-                        let v1 = direction.cross(intersection.normal).normalize();
-                        let surface_dir = -v1.cross(intersection.normal).normalize();
 
-                        let rest = intersection.position - end_position;
-                        let rest_length = rest.length();
-                        let new_vector = surface_dir * rest_length;
-                        let new_velocity = velocity.length() * surface_dir;
-                        self.player.set_velocity(new_velocity);
-                        position = intersection.position + new_vector;
+                let mut distance = start_position.distance(end_position);
+                let mut start_position = start_position;
+                let mut end_position = end_position;
+                while distance > 0.0 {
+                    if end_position.is_nan() {
+                        panic!("Unexpected! distance:{}     velocity:{}", distance, velocity);
                     }
-                    println!()
+
+                    if let Some(intersection) =
+                        hittest_clip_node_2(reader, clip_node_index, start_position, end_position)
+                    {
+                        println!("start: {}", start_position);
+                        println!("end: {}", end_position);
+                        println!("intersection: {}", intersection.position);
+                        let direction = velocity.normalize();
+                        println!("normal: {}", intersection.normal);
+                        let dot = direction.dot(intersection.normal);
+                        println!("dot: {}", dot);
+                        println!("current distance: {}", distance);
+                        if dot == -1.0 || intersection.normal.length() == 0.0 {
+                            self.player.set_velocity(Vec3::ZERO);
+                            position = start_position;
+                            println!("zap");
+                            break;
+                        } else {
+                            // Calc our new position
+                            let v1 = direction.cross(intersection.normal).normalize();
+                            let surface_dir = -v1.cross(intersection.normal).normalize();
+
+                            let dist = start_position.distance(intersection.position);
+                            //if dist <= 0.0 {
+                            //    println!("dist: {}", dist);
+                            //    position = intersection.position;
+                            //    break;
+                            //}
+                            distance -= dist;
+
+                            if distance <= 0.0 {
+                                position = intersection.position;
+                                break;
+                            }
+
+                            let new_vector = surface_dir * distance;
+                            let new_velocity = velocity.length() * surface_dir;
+                            self.player.set_velocity(new_velocity);
+
+                            start_position = intersection.position;
+                            end_position = intersection.position + new_vector;
+                            position = end_position;
+                        }
+                        println!()
+                    } else {
+                        break;
+                    }
                 }
             }
 
