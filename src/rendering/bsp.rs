@@ -543,7 +543,9 @@ impl Renderer for BspRenderer {
 
         {
             self.player.update_velocity_ground(wish_dir, delta);
-            let velocity = self.player.velocity();
+            // Add gravity
+            let velocity = self.player.velocity() + (Vec3::new(0.0, -800.0, 0.0) * delta.as_secs_f32());
+            self.player.set_velocity(velocity);
             let start_position = self.player.position();
             let end_position = start_position + (velocity * delta.as_secs_f32());
 
