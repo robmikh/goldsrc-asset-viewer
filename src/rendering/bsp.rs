@@ -612,23 +612,34 @@ impl Renderer for BspRenderer {
 
         {
             self.player.update_velocity_ground(wish_dir, delta);
-            // Add gravity
-            //let velocity = self.player.velocity() + (Vec3::new(0.0, -800.0, 0.0) * delta.as_secs_f32());
-            //self.player.set_velocity(velocity);
             let mut velocity = self.player.velocity();
             let start_position = self.player.position();
             let end_position = start_position + (velocity * delta.as_secs_f32());
 
             let mut position = end_position;
 
-            if !noclip && velocity.length() > 0.0 {
+            if !noclip {
                 let reader = match file_info.as_ref().unwrap() {
                     FileInfo::BspFile(file) => &file.reader,
                     _ => panic!(),
                 };
-                let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, velocity);
-                position = new_position;
-                velocity = new_velocity;
+                if velocity.length() > 0.0 {
+                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, velocity);
+                    position = new_position;
+                    velocity = new_velocity;
+                }
+
+                {
+                    // Apply gravity
+                    let gravity_velocity = Vec3::new(0.0, velocity.y + (-800.0 * delta.as_secs_f32()), 0.0);
+                    let start_position = position;
+                    let end_position = start_position + (gravity_velocity * delta.as_secs_f32());
+                    
+                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, gravity_velocity);
+                    position = new_position;
+                    velocity = Vec3::new(velocity.x, new_velocity.y, velocity.z);
+                }
+
             }
 
             self.camera.set_position(position);
