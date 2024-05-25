@@ -13,6 +13,7 @@ pub struct MovingEntity {
     position: Vec3,
     velocity: Vec3,
     velocity_from_gravity: Vec3,
+    is_on_ground: bool,
 }
 
 impl MovingEntity {
@@ -21,6 +22,7 @@ impl MovingEntity {
             position,
             velocity: Vec3::ZERO,
             velocity_from_gravity: Vec3::ZERO,
+            is_on_ground: true,
         }
     }
 
@@ -34,6 +36,10 @@ impl MovingEntity {
 
     pub fn velocity_from_gravity(&self) -> Vec3 {
         self.velocity_from_gravity
+    }
+
+    pub fn is_on_ground(&self) -> bool {
+        self.is_on_ground
     }
 
     pub fn update_velocity_ground(&mut self, wish_dir: Vec3, delta: Duration) {
@@ -50,6 +56,10 @@ impl MovingEntity {
 
     pub fn set_velocity_from_gravity(&mut self, velocity_from_gravity: Vec3) {
         self.velocity_from_gravity = velocity_from_gravity;
+    }
+
+    pub fn set_is_on_ground(&mut self, is_on_ground: bool) {
+        self.is_on_ground = is_on_ground;
     }
 }
 

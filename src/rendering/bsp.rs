@@ -419,7 +419,7 @@ impl BspRenderer {
         end_position: Vec3,
         mut velocity: Vec3,
         project_collision: bool,
-    ) -> (Vec3, Vec3) {
+    ) -> (Vec3, Vec3, bool) {
         let mut position = end_position;
         let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
 
@@ -485,7 +485,7 @@ impl BspRenderer {
                 break;
             }
         }
-        (position, velocity)
+        (position, velocity, collisions > 0)
     }
 }
 
@@ -623,6 +623,14 @@ impl Renderer for BspRenderer {
             Vec3::ZERO
         };
 
+        // TODO: On release
+        if down_keys.contains(&VirtualKeyCode::Space) && self.player.is_on_ground() {
+            // https://www.jwchong.com/hl/duckjump.html#jumping
+            let jump_impulse = (2.0f32 * 800.0 * 45.0).sqrt();
+            self.player.set_velocity_from_gravity(Vec3::new(0.0, jump_impulse, 0.0));
+            self.player.set_is_on_ground(false);
+        }
+
         {
             // On c1a0, we start at -166 and fall to -179.96875 without adjustments
             const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
@@ -662,7 +670,7 @@ impl Renderer for BspRenderer {
                     }
 
                     let end_position = start_position + (velocity * delta.as_secs_f32());
-                    let (new_position, new_velocity) =
+                    let (new_position, new_velocity, _) =
                         self.process_movement(reader, start_position, end_position, velocity, true);
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
@@ -675,7 +683,7 @@ impl Renderer for BspRenderer {
                     let start_position = position;
                     let end_position = start_position + (gravity_velocity * delta.as_secs_f32());
 
-                    let (new_position, new_velocity) = self.process_movement(
+                    let (new_position, new_velocity, collision) = self.process_movement(
                         reader,
                         start_position,
                         end_position,
@@ -684,6 +692,9 @@ impl Renderer for BspRenderer {
                     );
                     position = new_position;
                     self.player.set_velocity_from_gravity(new_velocity);
+                    if collision {
+                        self.player.set_is_on_ground(true);
+                    }
                 }
             }
 
