@@ -69,6 +69,7 @@ pub struct BspRenderer {
 
     camera: Camera,
     player: MovingEntity,
+    gravity: bool,
 
     new_debug_point: Option<Vec3>,
     debug_point: Option<GpuModel>,
@@ -382,6 +383,7 @@ impl BspRenderer {
 
             camera,
             player,
+            gravity: true,
 
             new_debug_point: None,
             debug_point: None,
@@ -406,7 +408,14 @@ impl BspRenderer {
         }
     }
 
-    fn process_movement(&mut self, reader: &BspReader, start_position: Vec3, end_position: Vec3, mut velocity: Vec3) -> (Vec3, Vec3) {
+    fn process_movement(
+        &mut self, 
+        reader: &BspReader, 
+        start_position: Vec3, 
+        end_position: Vec3, 
+        mut velocity: Vec3,
+        project_collision: bool,
+    ) -> (Vec3, Vec3) {
         let mut position = end_position;
         let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
 
@@ -441,7 +450,7 @@ impl BspRenderer {
                 //println!("normal: {}", intersection.normal);
                 //println!("dot: {}", dot);
                 //println!("current distance: {}", distance);
-                if dot == -1.0 || intersection.normal.length() == 0.0 {
+                if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
                     velocity = Vec3::ZERO;
                     position = start_position;
                     //println!("zap");
@@ -612,7 +621,7 @@ impl Renderer for BspRenderer {
 
         {
             // On c1a0, we start at -166 and fall to -179.96875 without adjustments
-            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
+            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 14.0 /*13.97*/, 0.0);
 
             self.player.update_velocity_ground(wish_dir, delta);
             let mut velocity = self.player.velocity();
@@ -628,18 +637,18 @@ impl Renderer for BspRenderer {
                 };
                 if velocity.length() > 0.0 {
                     let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
-                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, horizontal_velocity);
+                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, horizontal_velocity, true);
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
                 } 
 
-                {
+                if self.gravity {
                     // Apply gravity
                     let gravity_velocity = Vec3::new(0.0, velocity.y + (-800.0 * delta.as_secs_f32()), 0.0);
                     let start_position = position;
                     let end_position = start_position + (gravity_velocity * delta.as_secs_f32());
                     
-                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, gravity_velocity);
+                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, gravity_velocity, false);
                     position = new_position;
                     velocity = Vec3::new(velocity.x, new_velocity.y, velocity.z);
                 }
@@ -694,6 +703,10 @@ impl Renderer for BspRenderer {
     
     fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3) {
         self.new_debug_pyramid_location = Some((point, dir));
+    }
+    
+    fn set_gravity(&mut self, gravity: bool) {
+        self.gravity = gravity;
     }
 }
 

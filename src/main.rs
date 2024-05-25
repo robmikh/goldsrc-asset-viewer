@@ -212,6 +212,7 @@ fn show_ui(cli: Cli) {
     let mut mouse_controller = MouseInputController::new();
     let mut down_keys = HashSet::<VirtualKeyCode>::new();
     let mut noclip = false;
+    let mut gravity = true;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
             ControlFlow::Exit
@@ -552,6 +553,13 @@ fn show_ui(cli: Cli) {
                         ui.menu("Game", || {
                             if ui.menu_item_config("Noclip").selected(noclip).build() {
                                 noclip = !noclip;
+                            }
+
+                            if ui.menu_item_config("Gravity").selected(gravity).build() {
+                                gravity = !gravity;
+                                if let Some(renderer) = renderer.as_mut() {
+                                    renderer.set_gravity(gravity);
+                                }
                             }
                         })
                     });
