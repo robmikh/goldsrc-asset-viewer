@@ -611,9 +611,12 @@ impl Renderer for BspRenderer {
         };
 
         {
+            // On c1a0, we start at -166 and fall to -179.96875 without adjustments
+            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
+
             self.player.update_velocity_ground(wish_dir, delta);
             let mut velocity = self.player.velocity();
-            let start_position = self.player.position();
+            let start_position = self.player.position() - CROUCH_HEIGHT;
             let end_position = start_position + (velocity * delta.as_secs_f32());
 
             let mut position = end_position;
@@ -624,10 +627,11 @@ impl Renderer for BspRenderer {
                     _ => panic!(),
                 };
                 if velocity.length() > 0.0 {
-                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, velocity);
+                    let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
+                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, horizontal_velocity);
                     position = new_position;
-                    velocity = new_velocity;
-                }
+                    velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
+                } 
 
                 {
                     // Apply gravity
@@ -641,6 +645,8 @@ impl Renderer for BspRenderer {
                 }
 
             }
+
+            position = position + CROUCH_HEIGHT;
 
             self.camera.set_position(position);
             self.player.set_velocity(velocity);
