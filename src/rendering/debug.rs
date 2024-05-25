@@ -77,8 +77,7 @@ fn add_pointing_triangle(
         let quat = Quat::from_rotation_arc(default_dir, dir);
         println!("axis: {:?}", axis);
         println!("angle: {}", angle);
-        let transform = 
-            Mat4::from_translation(point) *
+        let transform = Mat4::from_translation(point) *
             //Mat4::from_axis_angle(axis, angle) *
             Mat4::from_quat(quat) *
             Mat4::from_translation(-point);

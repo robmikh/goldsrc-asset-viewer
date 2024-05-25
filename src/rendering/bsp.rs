@@ -20,7 +20,11 @@ use crate::{
     FileInfo,
 };
 
-use super::{camera::Camera, debug::{create_debug_point, create_debug_pyramid}, Renderer};
+use super::{
+    camera::Camera,
+    debug::{create_debug_point, create_debug_pyramid},
+    Renderer,
+};
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -409,10 +413,10 @@ impl BspRenderer {
     }
 
     fn process_movement(
-        &mut self, 
-        reader: &BspReader, 
-        start_position: Vec3, 
-        end_position: Vec3, 
+        &mut self,
+        reader: &BspReader,
+        start_position: Vec3,
+        end_position: Vec3,
         mut velocity: Vec3,
         project_collision: bool,
     ) -> (Vec3, Vec3) {
@@ -463,7 +467,7 @@ impl BspRenderer {
                     let dist = start_position.distance(intersection.position);
                     distance -= dist;
 
-                    if distance <= 0.0 || (dist <= 0.0 && distance/full_distance != 1.0) {
+                    if distance <= 0.0 || (dist <= 0.0 && distance / full_distance != 1.0) {
                         position = intersection.position;
                         break;
                     }
@@ -621,14 +625,13 @@ impl Renderer for BspRenderer {
 
         {
             // On c1a0, we start at -166 and fall to -179.96875 without adjustments
-            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 14.0 /*13.97*/, 0.0);
+            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
 
             self.player.update_velocity_ground(wish_dir, delta);
             let mut velocity = self.player.velocity();
             let start_position = self.player.position() - CROUCH_HEIGHT;
-            let end_position = start_position + (velocity * delta.as_secs_f32());
 
-            let mut position = end_position;
+            let mut position = start_position;
 
             if !noclip {
                 let reader = match file_info.as_ref().unwrap() {
@@ -636,23 +639,52 @@ impl Renderer for BspRenderer {
                     _ => panic!(),
                 };
                 if velocity.length() > 0.0 {
-                    let horizontal_velocity = Vec3::new(velocity.x, 0.0, velocity.z);
-                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, horizontal_velocity, true);
+                    let direction = velocity.normalize();
+
+                    // This is an attempt to allow vertical movement on a ramp to overcome the
+                    // differences in floor height. Otherwise we get stuck at the top of ramps. 
+                    // Unfortunately, you can still get stuck if you're moving mostly parallel to the
+                    // level geometry.
+                    let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+                    if let Some(intersection) = hittest_clip_node_2(
+                        reader,
+                        clip_node_index,
+                        start_position,
+                        start_position - CROUCH_HEIGHT * 2.0,
+                    ) {
+                        if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
+                            //println!("woop: {}", intersection.normal);
+                            let new_direction = (direction
+                                - intersection.normal * direction.dot(intersection.normal))
+                            .normalize();
+                            velocity = new_direction * velocity.length();
+                        }
+                    }
+
+                    let end_position = start_position + (velocity * delta.as_secs_f32());
+                    let (new_position, new_velocity) =
+                        self.process_movement(reader, start_position, end_position, velocity, true);
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
-                } 
+                }
 
                 if self.gravity {
                     // Apply gravity
-                    let gravity_velocity = Vec3::new(0.0, velocity.y + (-800.0 * delta.as_secs_f32()), 0.0);
+                    let gravity_velocity = self.player.velocity_from_gravity()
+                        + (Vec3::new(0.0, -800.0, 0.0) * delta.as_secs_f32());
                     let start_position = position;
                     let end_position = start_position + (gravity_velocity * delta.as_secs_f32());
-                    
-                    let (new_position, new_velocity) = self.process_movement(reader, start_position, end_position, gravity_velocity, false);
-                    position = new_position;
-                    velocity = Vec3::new(velocity.x, new_velocity.y, velocity.z);
-                }
 
+                    let (new_position, new_velocity) = self.process_movement(
+                        reader,
+                        start_position,
+                        end_position,
+                        gravity_velocity,
+                        false,
+                    );
+                    position = new_position;
+                    self.player.set_velocity_from_gravity(new_velocity);
+                }
             }
 
             position = position + CROUCH_HEIGHT;
@@ -700,11 +732,11 @@ impl Renderer for BspRenderer {
     fn set_debug_point(&mut self, point: Vec3) {
         self.new_debug_point = Some(point);
     }
-    
+
     fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3) {
         self.new_debug_pyramid_location = Some((point, dir));
     }
-    
+
     fn set_gravity(&mut self, gravity: bool) {
         self.gravity = gravity;
     }
@@ -845,7 +877,7 @@ fn create_debug_point_model(point: Vec3, texture_index: usize) -> Model<ModelVer
 fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
-    let indices_range = create_debug_pyramid(point, dir,&mut indices, &mut vertices);
+    let indices_range = create_debug_pyramid(point, dir, &mut indices, &mut vertices);
     Model {
         indices,
         vertices,

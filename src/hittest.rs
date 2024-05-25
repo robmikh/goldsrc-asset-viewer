@@ -21,7 +21,8 @@ pub fn hittest_node_for_leaf(
         true,
         &node_resolver,
         Vec3::new(0.0, 1.0, 0.0),
-    ).map(|(pos, index)| (convert_vec3_to_gltf(pos), index))
+    )
+    .map(|(pos, index)| (convert_vec3_to_gltf(pos), index))
 }
 
 #[derive(Debug)]
@@ -48,7 +49,8 @@ pub fn hittest_clip_node(
         true,
         &clip_node_resolver,
         Vec3::new(0.0, 0.0, 0.0),
-    ).map(|x| IntersectionInfo {
+    )
+    .map(|x| IntersectionInfo {
         position: convert_vec3_to_gltf(x.position),
         normal: convert_vec3_to_gltf(x.normal),
     })
@@ -63,7 +65,7 @@ pub fn hittest_clip_node_2(
     let p1 = convert_vec3_to_half_life(start);
     let p2 = convert_vec3_to_half_life(end);
     let nodes = reader.read_clip_nodes();
-    
+
     let mut trace = QuakeTrace::default();
     trace.all_solid = true;
     trace.intersection = p2;
@@ -166,7 +168,11 @@ fn hittest_node_for_leaf_impl<
         p1.z + frac * (p2.z - p1.z),
     );
     let side = if t1 >= 0.0 { 0 } else { 1 };
-    let normal = if side == 0 { plane_normal } else { -plane_normal };
+    let normal = if side == 0 {
+        plane_normal
+    } else {
+        -plane_normal
+    };
 
     if let Some(hit) = hittest_node_for_leaf_impl(
         reader,
@@ -182,7 +188,11 @@ fn hittest_node_for_leaf_impl<
     }
 
     let side = 1 - side;
-    let normal = if side == 0 { plane_normal } else { -plane_normal };
+    let normal = if side == 0 {
+        plane_normal
+    } else {
+        -plane_normal
+    };
     hittest_node_for_leaf_impl(
         reader,
         nodes,
@@ -276,7 +286,7 @@ fn trace_hull(
             BspContents::Empty => {
                 trace.in_open = true;
                 trace.all_solid = false;
-            },
+            }
             BspContents::Solid => trace.start_solid = true,
             BspContents::Water => todo!(),
             BspContents::Slime => todo!(),
@@ -298,9 +308,9 @@ fn trace_hull(
     let node = &nodes[node_index as usize];
     let plane = &reader.read_planes()[node.plane() as usize];
     let plane_normal = Vec3::from_array(plane.normal);
-    
+
     // Distances
-    let (t1, t2) = if plane.ty < 3 { 
+    let (t1, t2) = if plane.ty < 3 {
         let t1 = p1.to_array()[plane.ty as usize] - plane.dist;
         let t2 = p2.to_array()[plane.ty as usize] - plane.dist;
         (t1, t2)
@@ -323,7 +333,8 @@ fn trace_hull(
         (t1 + DIST_EPSILON) / (t1 - t2)
     } else {
         (t1 - DIST_EPSILON) / (t1 - t2)
-    }.clamp(0.0, 1.0);
+    }
+    .clamp(0.0, 1.0);
     let mid = p1 + frac * (p2 - p1);
     let side = if t1 >= 0.0 { 0 } else { 1 };
 
@@ -353,7 +364,9 @@ fn trace_hull(
 
     // TODO: Don't hard code
     let clip_node_root = 0;
-    let contents = BspContents::from_value(hull_point_contents(reader, nodes, clip_node_root, mid) as i32).unwrap();
+    let contents =
+        BspContents::from_value(hull_point_contents(reader, nodes, clip_node_root, mid) as i32)
+            .unwrap();
     assert_ne!(contents, BspContents::Solid);
 
     trace.intersection = mid;
@@ -361,7 +374,12 @@ fn trace_hull(
     return false;
 }
 
-fn hull_point_contents(reader: &BspReader, nodes: &[BspClipNode], mut node_index: i16, point: Vec3) -> i16 {
+fn hull_point_contents(
+    reader: &BspReader,
+    nodes: &[BspClipNode],
+    mut node_index: i16,
+    point: Vec3,
+) -> i16 {
     while node_index >= 0 {
         let node = nodes[node_index as usize];
         let plane = &reader.read_planes()[node.plane() as usize];

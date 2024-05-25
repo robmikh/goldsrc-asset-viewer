@@ -12,6 +12,7 @@ const STOP_SPEED: f32 = 100.0;
 pub struct MovingEntity {
     position: Vec3,
     velocity: Vec3,
+    velocity_from_gravity: Vec3,
 }
 
 impl MovingEntity {
@@ -19,6 +20,7 @@ impl MovingEntity {
         Self {
             position,
             velocity: Vec3::ZERO,
+            velocity_from_gravity: Vec3::ZERO,
         }
     }
 
@@ -28,6 +30,10 @@ impl MovingEntity {
 
     pub fn velocity(&self) -> Vec3 {
         self.velocity
+    }
+
+    pub fn velocity_from_gravity(&self) -> Vec3 {
+        self.velocity_from_gravity
     }
 
     pub fn update_velocity_ground(&mut self, wish_dir: Vec3, delta: Duration) {
@@ -40,6 +46,10 @@ impl MovingEntity {
 
     pub fn set_velocity(&mut self, velocity: Vec3) {
         self.velocity = velocity;
+    }
+
+    pub fn set_velocity_from_gravity(&mut self, velocity_from_gravity: Vec3) {
+        self.velocity_from_gravity = velocity_from_gravity;
     }
 }
 
