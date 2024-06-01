@@ -634,6 +634,7 @@ impl Renderer for BspRenderer {
         {
             // On c1a0, we start at -166 and fall to -179.96875 without adjustments
             const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
+            const AUTO_STEP_HEIGHT: f32 = 9.0;
 
             self.player.update_velocity_ground(wish_dir, delta);
             let mut velocity = self.player.velocity();
@@ -669,11 +670,26 @@ impl Renderer for BspRenderer {
                         }
                     }
 
+                    let previous_velocity = velocity;
                     let end_position = start_position + (velocity * delta.as_secs_f32());
-                    let (new_position, new_velocity, _) =
+                    let (new_position, new_velocity, colided) =
                         self.process_movement(reader, start_position, end_position, velocity, true);
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
+
+                    if colided {
+                        let start_position = start_position + Vec3::new(0.0, AUTO_STEP_HEIGHT, 0.0);
+                        let end_position = start_position + (previous_velocity * delta.as_secs_f32());
+                        if hittest_clip_node_2(
+                            reader,
+                            clip_node_index,
+                            start_position,
+                            end_position,
+                        ).is_none() {
+                            position = end_position;
+                            println!("nudged!");
+                        }
+                    }
                 }
 
                 if self.gravity {
