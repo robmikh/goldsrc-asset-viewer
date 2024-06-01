@@ -5,6 +5,7 @@ use std::{
 };
 
 use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
+use gltf::{animation::{Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget}, buffer::BufferWriter, export::write_gltf, material::{BaseColorTexture, Image, MagFilter, Material, MaterialData, MinFilter, PbrMetallicRoughness, Texture, Wrap}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, vertex_def, Mesh, Model};
 use gsparser::mdl::{
     null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
     MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
@@ -14,93 +15,15 @@ use id_tree::{
     TreeBuilder,
 };
 
-use crate::{
-    gltf::{
-        animation::{
-            Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget,
-            Sampler,
-        },
-        coordinates::{convert_coordinates, write_and_convert_channel},
-        export::write_gltf,
-        material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap},
-        transform::quat_from_euler,
-    },
-    numerics::ToVec4,
-};
+use crate::export::{coordinates::{convert_coordinates, write_and_convert_channel}, transform::quat_from_euler};
 
-use super::{
-    buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter},
-    node::{MeshIndex, Node, NodeIndex, Nodes},
-    skin::{Skin, SkinIndex, Skins},
-    transform::ComponentTransform,
-    Mesh, Model, Vertex, VertexAttributesSource,
-};
-
-struct SkinnedVertex {
-    pos: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
-    joints: [u8; 4],
-    weights: [f32; 4],
-}
-
-impl Vertex for SkinnedVertex {
-    fn write_slices(
-        writer: &mut BufferWriter,
-        vertices: &[Self],
-    ) -> Box<dyn VertexAttributesSource> {
-        // Split out the vertex data
-        let mut positions = Vec::with_capacity(vertices.len());
-        let mut normals = Vec::with_capacity(vertices.len());
-        let mut uvs = Vec::with_capacity(vertices.len());
-        let mut joints = Vec::with_capacity(vertices.len());
-        let mut weights = Vec::with_capacity(vertices.len());
-        for vertex in vertices {
-            positions.push(vertex.pos);
-            normals.push(vertex.normal);
-            uvs.push(vertex.uv);
-            joints.push(vertex.joints);
-            weights.push(vertex.weights);
-        }
-
-        let vertex_positions_pair = writer
-            .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_normals_pair = writer
-            .create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_uvs_pair =
-            writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_joints_pair = writer
-            .create_view_and_accessor_with_min_max(&joints, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_weights_pair = writer
-            .create_view_and_accessor_with_min_max(&weights, Some(BufferViewTarget::ArrayBuffer));
-
-        Box::new(SkinnedVertexAttributes {
-            positions: vertex_positions_pair,
-            normals: vertex_normals_pair,
-            uvs: vertex_uvs_pair,
-            joints: vertex_joints_pair,
-            weights: vertex_weights_pair,
-        })
-    }
-}
-
-struct SkinnedVertexAttributes {
-    positions: BufferViewAndAccessorPair,
-    normals: BufferViewAndAccessorPair,
-    uvs: BufferViewAndAccessorPair,
-    joints: BufferViewAndAccessorPair,
-    weights: BufferViewAndAccessorPair,
-}
-
-impl VertexAttributesSource for SkinnedVertexAttributes {
-    fn attribute_pairs(&self) -> Vec<(&'static str, usize)> {
-        vec![
-            ("POSITION", self.positions.accessor.0),
-            ("NORMAL", self.normals.accessor.0),
-            ("TEXCOORD_0", self.uvs.accessor.0),
-            ("JOINTS_0", self.joints.accessor.0),
-            ("WEIGHTS_0", self.weights.accessor.0),
-        ]
+vertex_def! {
+    SkinnedVertex {
+        ("POSITION") pos: [f32; 3],
+        ("NORMAL") normal: [f32; 3],
+        ("TEXCOORD_0") uv: [f32; 2],
+        ("JOINTS_0") joints: [u8; 4],
+        ("WEIGHTS_0") weights: [f32; 4],
     }
 }
 
@@ -198,7 +121,7 @@ pub fn export<P: AsRef<Path>>(
     let mut bone_to_node: HashMap<usize, NodeIndex> = HashMap::new();
     let mesh_node = nodes.add_node(Node {
         mesh: Some(MeshIndex(0)),
-        skin: Some(SkinIndex(0)),
+        skin: Some(SkinIndex::default()),
         ..Default::default()
     });
     for node_id in bone_tree
@@ -219,7 +142,7 @@ pub fn export<P: AsRef<Path>>(
         let node_index = nodes.add_node(Node {
             name: Some(bone_names[bone_index].clone()),
             translation: Some(component_transform.translation),
-            rotation: Some(rotation.to_vec4()),
+            rotation: Some(Vec4::from_array(rotation.to_array())),
             children: children,
             ..Default::default()
         });
@@ -241,7 +164,7 @@ pub fn export<P: AsRef<Path>>(
     // Build animations
     let mut animations = Animations::new(file.animations.len());
     for gs_animation in &file.animations {
-        let mut animation = Animation::new(gs_animation.name.clone());
+        let mut animation = gltf::animation::Animation::new(gs_animation.name.clone());
         let mut should_add = false;
         for bone_animation in &gs_animation.bone_animations {
             let target_bone = bone_animation.target;
@@ -274,7 +197,7 @@ pub fn export<P: AsRef<Path>>(
                 AnimationTarget::Translation,
                 &translate_animations,
                 &bone_animation.channels,
-                target_node.0,
+                target_node,
                 gs_animation.fps,
             ) {
                 should_add = true;
@@ -286,7 +209,7 @@ pub fn export<P: AsRef<Path>>(
                 AnimationTarget::Rotation,
                 &rotation_animations,
                 &bone_animation.channels,
-                target_node.0,
+                target_node,
                 gs_animation.fps,
             ) {
                 should_add = true;
@@ -378,7 +301,7 @@ pub fn export<P: AsRef<Path>>(
 
     // Create materials, textures, and images
     let mut material_data = MaterialData::new();
-    let sampler = material_data.add_sampler(super::material::Sampler {
+    let sampler = material_data.add_sampler(gltf::material::Sampler {
         mag_filter: MagFilter::Linear,
         min_filter: MinFilter::LinearMipMapLinear,
         wrap_s: Wrap::MirroredRepeat,
@@ -393,10 +316,12 @@ pub fn export<P: AsRef<Path>>(
             source: image,
         });
         material_data.add_material(Material {
-            base_color_texture: Some(texture),
-            metallic_factor: 0.0,
-            roughness_factor: 1.0,
-            ..Default::default()
+            pbr_metallic_roughness: PbrMetallicRoughness {
+                base_color_texture: Some(BaseColorTexture::new(texture)),
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                ..Default::default()
+            },
         });
     }
 
@@ -420,7 +345,7 @@ pub fn export<P: AsRef<Path>>(
 
     let buffer_name = "data.bin";
     let gltf_text = write_gltf(
-        buffer_name,
+        gltf::document::BufferSource::Uri(buffer_name),
         &mut buffer_writer,
         &converted_model,
         &material_data,
@@ -535,7 +460,7 @@ fn process_animation(
     target: AnimationTarget,
     animations: &[(VectorChannel, usize)],
     channels: &[BoneChannelAnimation],
-    target_node: usize,
+    target_node: NodeIndex,
     fps: f32,
 ) -> bool {
     if !animations.is_empty() {
@@ -576,14 +501,14 @@ fn process_animation(
             AnimationTarget::Rotation => {
                 let quats: Vec<_> = new_keyframes
                     .iter()
-                    .map(|x| quat_from_euler(*x).to_vec4())
+                    .map(|x| Vec4::from_array(quat_from_euler(*x).to_array()))
                     .collect();
                 let pair = buffer_writer.create_view_and_accessor(&quats, None);
                 pair.accessor
             }
         };
 
-        let sampler = animation.add_sampler(Sampler {
+        let sampler = animation.add_sampler(gltf::animation::Sampler {
             input,
             output,
             interpolation: AnimationInterpolation::Linear,
@@ -592,7 +517,7 @@ fn process_animation(
         animation.add_channel(Channel {
             sampler,
             target: ChannelTarget {
-                node: NodeIndex(target_node),
+                node: target_node,
                 path: target,
             },
         });

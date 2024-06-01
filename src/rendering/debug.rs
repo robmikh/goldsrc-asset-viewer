@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use glam::{Mat3, Mat4, Quat, Vec3};
-
-use crate::gltf::{add_and_get_index, bsp::ModelVertex};
+use gltf::add_and_get_index;
+use crate::export::bsp::ModelVertex;
 
 pub fn create_debug_point(
     pos: Vec3,
