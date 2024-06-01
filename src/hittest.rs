@@ -1,7 +1,7 @@
 use glam::Vec3;
 use gsparser::bsp::{BspClipNode, BspContents, BspNode, BspReader, FromValue};
 
-use crate::gltf::coordinates::convert_coordinates;
+use crate::export::coordinates::convert_coordinates;
 
 pub fn hittest_node_for_leaf(
     reader: &BspReader,

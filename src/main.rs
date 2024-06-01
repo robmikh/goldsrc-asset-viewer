@@ -1,6 +1,6 @@
 mod bsp_viewer;
 mod cli;
-mod gltf;
+mod export;
 mod graphics;
 mod hittest;
 mod mdl_viewer;
@@ -15,7 +15,7 @@ use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
 use glam::Vec2;
-use gltf::bsp::{read_textures, read_wad_resources, WadCollection};
+use export::bsp::{read_textures, read_wad_resources, WadCollection};
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
 use hittest::hittest_node_for_leaf;
@@ -86,7 +86,7 @@ fn main() {
 
 fn export_mdl(mdl_file: &MdlFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
-    gltf::mdl::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
+    export::mdl::export(&mdl_file.file, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -96,7 +96,7 @@ fn export_bsp(file: &BspFile, export_file_path: &PathBuf, log: bool) {
     let mut log = if log { Some(String::new()) } else { None };
     let path = PathBuf::from(&file.path).canonicalize().unwrap();
     let game_root_path = get_game_root_path(&path).unwrap();
-    gltf::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
+    export::bsp::export(game_root_path, &file.reader, export_file_path, log.as_mut()).unwrap();
     if let Some(log) = log {
         std::fs::write("log.txt", log).unwrap();
     }
@@ -509,7 +509,7 @@ fn show_ui(cli: Cli) {
                                         panic!()
                                     };
                                     let mut log = if cli.log { Some(String::new()) } else { None };
-                                    gltf::mdl::export(&mdl_file.file, new_path, log.as_mut())
+                                    export::mdl::export(&mdl_file.file, new_path, log.as_mut())
                                         .unwrap();
                                     if let Some(log) = log {
                                         std::fs::write("log.txt", log).unwrap();
@@ -676,7 +676,7 @@ fn load_renderer(
                 read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
 
                 let textures = read_textures(&file.reader, &wad_resources);
-                let map_models = gltf::bsp::convert_models(&file.reader, &textures);
+                let map_models = export::bsp::convert_models(&file.reader, &textures);
 
                 let renderer =
                     BspRenderer::new(&file.reader, &map_models, &textures, device, queue, config);

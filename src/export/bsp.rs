@@ -4,8 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
+use gltf::{animation::Animations, buffer::BufferWriter, export::write_gltf, material::{Image, MagFilter, Material, MaterialData, MinFilter, PbrMetallicRoughness, Texture, Wrap}, node::{MeshIndex, Node, Nodes}, skin::Skins, vertex_def, Mesh, Model};
 use gsparser::{
     bsp::{
         BspEdge, BspEntity, BspFace, BspLeaf, BspNode, BspReader, BspSurfaceEdge, BspTextureInfo,
@@ -14,70 +14,15 @@ use gsparser::{
     wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
 
-use super::{
-    animation::Animations,
-    buffer::{BufferViewAndAccessorPair, BufferViewTarget, BufferWriter},
-    coordinates::convert_coordinates,
-    export::write_gltf,
-    material::{Image, MagFilter, Material, MaterialData, MinFilter, Texture, Wrap},
-    node::{MeshIndex, Node, Nodes},
-    skin::Skins,
-    Mesh, Model, Vertex, VertexAttributesSource,
-};
+use crate::export::coordinates::convert_coordinates;
 
 const QUIVER_PREFIX: &'static str = "\\quiver\\";
 
-#[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
-pub struct ModelVertex {
-    pub pos: [f32; 3],
-    pub normal: [f32; 3],
-    pub uv: [f32; 2],
-}
-
-impl Vertex for ModelVertex {
-    fn write_slices(
-        writer: &mut super::buffer::BufferWriter,
-        vertices: &[Self],
-    ) -> Box<dyn super::VertexAttributesSource> {
-        // Split out the vertex data
-        let mut positions = Vec::with_capacity(vertices.len());
-        let mut normals = Vec::with_capacity(vertices.len());
-        let mut uvs = Vec::with_capacity(vertices.len());
-        for vertex in vertices {
-            positions.push(vertex.pos);
-            normals.push(vertex.normal);
-            uvs.push(vertex.uv);
-        }
-
-        let vertex_positions_pair = writer
-            .create_view_and_accessor_with_min_max(&positions, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_normals_pair = writer
-            .create_view_and_accessor_with_min_max(&normals, Some(BufferViewTarget::ArrayBuffer));
-        let vertex_uvs_pair =
-            writer.create_view_and_accessor_with_min_max(&uvs, Some(BufferViewTarget::ArrayBuffer));
-
-        Box::new(DebugVertexAttributes {
-            positions: vertex_positions_pair,
-            normals: vertex_normals_pair,
-            uvs: vertex_uvs_pair,
-        })
-    }
-}
-
-struct DebugVertexAttributes {
-    positions: BufferViewAndAccessorPair,
-    normals: BufferViewAndAccessorPair,
-    uvs: BufferViewAndAccessorPair,
-}
-
-impl VertexAttributesSource for DebugVertexAttributes {
-    fn attribute_pairs(&self) -> Vec<(&'static str, usize)> {
-        vec![
-            ("POSITION", self.positions.accessor.0),
-            ("NORMAL", self.normals.accessor.0),
-            ("TEXCOORD_0", self.uvs.accessor.0),
-        ]
+vertex_def!{
+    ModelVertex {
+        ("POSITION") pos: [f32; 3],
+        ("NORMAL") normal: [f32; 3],
+        ("TEXCOORD_0") uv: [f32; 2],
     }
 }
 
@@ -119,7 +64,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     let mut buffer_writer = BufferWriter::new();
 
     let mut material_data = MaterialData::new();
-    let sampler = material_data.add_sampler(super::material::Sampler {
+    let sampler = material_data.add_sampler(gltf::material::Sampler {
         mag_filter: MagFilter::Linear,
         min_filter: MinFilter::LinearMipMapLinear,
         wrap_s: Wrap::Repeat,
@@ -134,9 +79,12 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
             source: image,
         });
         material_data.add_material(Material {
-            base_color_texture: Some(texture),
-            metallic_factor: 0.0,
-            roughness_factor: 1.0,
+            pbr_metallic_roughness: PbrMetallicRoughness {
+                base_color_texture: Some(gltf::material::BaseColorTexture { index: texture }),
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+                ..Default::default()
+            },
             ..Default::default()
         });
     }
@@ -151,7 +99,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
 
     let buffer_name = "data.bin";
     let gltf_text = write_gltf(
-        buffer_name,
+        gltf::document::BufferSource::Uri(buffer_name),
         &mut buffer_writer,
         &model,
         &material_data,

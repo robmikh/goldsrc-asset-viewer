@@ -5,15 +5,15 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
+use gltf::{Mesh, Model};
 use gsparser::bsp::{BspEntity, BspReader};
 use wgpu::util::DeviceExt;
 use winit::event::VirtualKeyCode;
 
 use crate::{
-    gltf::{
+    export::{
         bsp::{ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
-        Mesh, Model,
     },
     hittest::hittest_clip_node,
     rendering::movement::MovingEntity,

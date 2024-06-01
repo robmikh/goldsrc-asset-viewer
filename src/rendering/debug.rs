@@ -1,8 +1,9 @@
 use std::ops::Range;
 
 use glam::Vec3;
+use gltf::add_and_get_index;
 
-use crate::gltf::{add_and_get_index, bsp::ModelVertex};
+use crate::export::bsp::ModelVertex;
 
 pub fn create_debug_point(
     pos: Vec3,
