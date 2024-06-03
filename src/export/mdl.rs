@@ -5,7 +5,21 @@ use std::{
 };
 
 use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
-use gltf::{animation::{Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget}, buffer::BufferWriter, export::write_gltf, material::{BaseColorTexture, Image, MagFilter, Material, MaterialData, MinFilter, PbrMetallicRoughness, Texture, Wrap}, node::{MeshIndex, Node, NodeIndex, Nodes}, skin::{Skin, SkinIndex, Skins}, transform::ComponentTransform, vertex_def, Mesh, Model};
+use gltf::{
+    animation::{
+        Animation, AnimationInterpolation, AnimationTarget, Animations, Channel, ChannelTarget,
+    },
+    buffer::BufferWriter,
+    export::write_gltf,
+    material::{
+        BaseColorTexture, Image, MagFilter, Material, MaterialData, MinFilter,
+        PbrMetallicRoughness, Texture, Wrap,
+    },
+    node::{MeshIndex, Node, NodeIndex, Nodes},
+    skin::{Skin, SkinIndex, Skins},
+    transform::ComponentTransform,
+    vertex_def, Mesh, Model,
+};
 use gsparser::mdl::{
     null_terminated_bytes_to_str, BoneChannelAnimation, ComponentTransformTarget, MdlFile,
     MdlMeshSequenceType, MdlMeshVertex, MdlModel, VectorChannel,
@@ -15,7 +29,10 @@ use id_tree::{
     TreeBuilder,
 };
 
-use crate::export::{coordinates::{convert_coordinates, write_and_convert_channel}, transform::quat_from_euler};
+use crate::export::{
+    coordinates::{convert_coordinates, write_and_convert_channel},
+    transform::quat_from_euler,
+};
 
 vertex_def! {
     SkinnedVertex {

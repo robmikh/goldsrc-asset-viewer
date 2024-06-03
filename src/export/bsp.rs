@@ -5,7 +5,17 @@ use std::{
 };
 
 use glam::Vec3;
-use gltf::{animation::Animations, buffer::BufferWriter, export::write_gltf, material::{Image, MagFilter, Material, MaterialData, MinFilter, PbrMetallicRoughness, Texture, Wrap}, node::{MeshIndex, Node, Nodes}, skin::Skins, vertex_def, Mesh, Model};
+use gltf::{
+    animation::Animations,
+    buffer::BufferWriter,
+    export::write_gltf,
+    material::{
+        Image, MagFilter, Material, MaterialData, MinFilter, PbrMetallicRoughness, Texture, Wrap,
+    },
+    node::{MeshIndex, Node, Nodes},
+    skin::Skins,
+    vertex_def, Mesh, Model,
+};
 use gsparser::{
     bsp::{
         BspEdge, BspEntity, BspFace, BspLeaf, BspNode, BspReader, BspSurfaceEdge, BspTextureInfo,
@@ -18,7 +28,7 @@ use crate::export::coordinates::convert_coordinates;
 
 const QUIVER_PREFIX: &'static str = "\\quiver\\";
 
-vertex_def!{
+vertex_def! {
     ModelVertex {
         ("POSITION") pos: [f32; 3],
         ("NORMAL") normal: [f32; 3],

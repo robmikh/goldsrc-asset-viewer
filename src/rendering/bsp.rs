@@ -627,7 +627,8 @@ impl Renderer for BspRenderer {
         if down_keys.contains(&VirtualKeyCode::Space) && self.player.is_on_ground() {
             // https://www.jwchong.com/hl/duckjump.html#jumping
             let jump_impulse = (2.0f32 * 800.0 * 45.0).sqrt();
-            self.player.set_velocity_from_gravity(Vec3::new(0.0, jump_impulse, 0.0));
+            self.player
+                .set_velocity_from_gravity(Vec3::new(0.0, jump_impulse, 0.0));
             self.player.set_is_on_ground(false);
         }
 
@@ -656,12 +657,10 @@ impl Renderer for BspRenderer {
                         clip_node_index,
                         start_position,
                         start_position - Vec3::new(0.0, 1.0, 0.0),
-                    ).is_some();
+                    )
+                    .is_some();
 
-                    // This is an attempt to allow vertical movement on a ramp to overcome the
-                    // differences in floor height. Otherwise we get stuck at the top of ramps. 
-                    // Unfortunately, you can still get stuck if you're moving mostly parallel to the
-                    // level geometry.
+                    // Project our movement along the surface we're standing on
                     let surface_normal = if let Some(intersection) = hittest_clip_node_2(
                         reader,
                         clip_node_index,
@@ -687,40 +686,52 @@ impl Renderer for BspRenderer {
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
 
+                    // If we've collided with something, check to see if we can move without a collision
+                    // if we were a bit higher. This is an attempt to allow movement over small bumps.
                     if colided {
-                        let nudged_start_position = start_position + (surface_normal * AUTO_STEP_HEIGHT);
-                        let nudged_end_position = nudged_start_position + (previous_velocity * delta.as_secs_f32());
+                        let nudged_start_position =
+                            start_position + (surface_normal * AUTO_STEP_HEIGHT);
+                        let nudged_end_position =
+                            nudged_start_position + (previous_velocity * delta.as_secs_f32());
                         if hittest_clip_node_2(
                             reader,
                             clip_node_index,
                             nudged_start_position,
                             nudged_end_position,
-                        ).is_none() {
+                        )
+                        .is_none()
+                        {
                             position = nudged_end_position;
                             velocity = previous_velocity;
 
                             if is_touching_ground {
-                                if let Some(intersection) = hittest_clip_node_2(reader, clip_node_index, nudged_end_position, nudged_end_position - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0)) {
+                                if let Some(intersection) = hittest_clip_node_2(
+                                    reader,
+                                    clip_node_index,
+                                    nudged_end_position,
+                                    nudged_end_position
+                                        - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                                ) {
                                     position = intersection.position;
                                 }
                             }
 
-                            let was_touching_ground = is_touching_ground;
-                            let is_touching_ground = hittest_clip_node_2(
-                                reader,
-                                clip_node_index,
-                                position,
-                                position - Vec3::new(0.0, 1.0, 0.0),
-                            ).is_some();
+                            //let was_touching_ground = is_touching_ground;
+                            //let is_touching_ground = hittest_clip_node_2(
+                            //    reader,
+                            //    clip_node_index,
+                            //    position,
+                            //    position - Vec3::new(0.0, 1.0, 0.0),
+                            //).is_some();
 
-                            println!("nudged!");
-                            println!("  start:        {}", start_position);
-                            println!("  end:          {}", end_position);
-                            println!("  nudged start: {}", nudged_start_position);
-                            println!("  nudged end:   {}", nudged_end_position);
-                            println!("  was grounded: {}", was_touching_ground);
-                            println!("  is grounded:  {}", is_touching_ground);
-                            println!();
+                            //println!("nudged!");
+                            //println!("  start:        {}", start_position);
+                            //println!("  end:          {}", end_position);
+                            //println!("  nudged start: {}", nudged_start_position);
+                            //println!("  nudged end:   {}", nudged_end_position);
+                            //println!("  was grounded: {}", was_touching_ground);
+                            //println!("  is grounded:  {}", is_touching_ground);
+                            //println!();
                         }
                     }
                 }
