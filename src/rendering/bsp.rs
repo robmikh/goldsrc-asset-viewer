@@ -15,7 +15,7 @@ use crate::{
         bsp::{ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
-    hittest::{hittest_clip_node, hittest_clip_node_2},
+    hittest::hittest_clip_node,
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -438,7 +438,7 @@ impl BspRenderer {
             }
 
             if let Some(intersection) =
-                hittest_clip_node_2(reader, clip_node_index, start_position, end_position)
+                hittest_clip_node(reader, clip_node_index, start_position, end_position)
             {
                 collisions += 1;
                 if collisions > 4 {
@@ -652,7 +652,7 @@ impl Renderer for BspRenderer {
                     let direction = velocity.normalize();
                     let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
 
-                    let is_touching_ground = hittest_clip_node_2(
+                    let is_touching_ground = hittest_clip_node(
                         reader,
                         clip_node_index,
                         start_position,
@@ -661,7 +661,7 @@ impl Renderer for BspRenderer {
                     .is_some();
 
                     // Project our movement along the surface we're standing on
-                    let surface_normal = if let Some(intersection) = hittest_clip_node_2(
+                    let surface_normal = if let Some(intersection) = hittest_clip_node(
                         reader,
                         clip_node_index,
                         start_position,
@@ -693,7 +693,7 @@ impl Renderer for BspRenderer {
                             start_position + (surface_normal * AUTO_STEP_HEIGHT);
                         let nudged_end_position =
                             nudged_start_position + (previous_velocity * delta.as_secs_f32());
-                        if hittest_clip_node_2(
+                        if hittest_clip_node(
                             reader,
                             clip_node_index,
                             nudged_start_position,
@@ -705,7 +705,7 @@ impl Renderer for BspRenderer {
                             velocity = previous_velocity;
 
                             if is_touching_ground {
-                                if let Some(intersection) = hittest_clip_node_2(
+                                if let Some(intersection) = hittest_clip_node(
                                     reader,
                                     clip_node_index,
                                     nudged_end_position,

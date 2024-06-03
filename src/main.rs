@@ -9,7 +9,7 @@ mod numerics;
 mod rendering;
 mod wad_viewer;
 
-use crate::hittest::hittest_clip_node_2;
+use crate::hittest::hittest_clip_node;
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
 use bsp_viewer::BspViewer;
@@ -19,7 +19,7 @@ use export::bsp::{read_textures, read_wad_resources, WadCollection};
 use glam::Vec2;
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
-use hittest::{hittest_clip_node, hittest_node_for_leaf};
+use hittest::hittest_node_for_leaf;
 use imgui::*;
 use imgui_wgpu::RendererConfig;
 use mouse::{MouseInputController, MouseInputMode};
@@ -424,7 +424,7 @@ fn show_ui(cli: Cli) {
                                 };
                                 let clip_node_index =
                                     reader.read_models()[0].head_nodes[1] as usize;
-                                if let Some(intersection) = hittest_clip_node_2(
+                                if let Some(intersection) = hittest_clip_node(
                                     reader,
                                     clip_node_index,
                                     pos,

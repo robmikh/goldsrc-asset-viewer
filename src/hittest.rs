@@ -1,9 +1,7 @@
 use glam::Vec3;
 use gsparser::bsp::{BspClipNode, BspContents, BspNode, BspReader, FromValue};
 
-use crate::export::coordinates::{
-    convert_coordinates, convert_vec3_to_gltf, convert_vec3_to_half_life,
-};
+use crate::export::coordinates::{convert_vec3_to_gltf, convert_vec3_to_half_life};
 
 pub fn hittest_node_for_leaf(
     reader: &BspReader,
@@ -34,31 +32,6 @@ pub struct IntersectionInfo {
 }
 
 pub fn hittest_clip_node(
-    reader: &BspReader,
-    clip_node_index: usize,
-    start: Vec3,
-    end: Vec3,
-) -> Option<IntersectionInfo> {
-    let p1 = start;
-    let p2 = end;
-    let nodes = reader.read_clip_nodes();
-    hittest_node_for_leaf_impl(
-        reader,
-        nodes,
-        clip_node_index as i16,
-        convert_vec3_to_half_life(p1),
-        convert_vec3_to_half_life(p2),
-        true,
-        &clip_node_resolver,
-        Vec3::new(0.0, 0.0, 0.0),
-    )
-    .map(|x| IntersectionInfo {
-        position: convert_vec3_to_gltf(x.position),
-        normal: convert_vec3_to_gltf(x.normal),
-    })
-}
-
-pub fn hittest_clip_node_2(
     reader: &BspReader,
     clip_node_index: usize,
     start: Vec3,
@@ -226,29 +199,6 @@ fn node_resolver(
         let leaf = &reader.read_leaves()[leaf_index as usize];
         if leaf.contents() == BspContents::Solid {
             return ResolvedNode::Leaf(Some((p1, leaf_index as usize)));
-        } else {
-            return ResolvedNode::Leaf(None);
-        }
-    };
-    ResolvedNode::NodeIndex(node_index)
-}
-
-fn clip_node_resolver(
-    _reader: &BspReader,
-    node_index: i16,
-    allow_zero: bool,
-    p1: Vec3,
-    normal: Vec3,
-) -> ResolvedNode<IntersectionInfo> {
-    let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
-        node_index as usize
-    } else {
-        let contents = BspContents::from_value(node_index as i32).unwrap();
-        if contents == BspContents::Solid {
-            return ResolvedNode::Leaf(Some(IntersectionInfo {
-                position: p1,
-                normal,
-            }));
         } else {
             return ResolvedNode::Leaf(None);
         }
