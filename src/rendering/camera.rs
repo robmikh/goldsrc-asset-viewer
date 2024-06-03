@@ -90,15 +90,11 @@ impl Camera {
             }
         }
 
-        //let old_pitch = self.pitch;
         let min = 0.1;
         self.pitch = self.pitch.clamp(
             (std::f32::consts::PI / -2.0) + min,
             (std::f32::consts::PI / 2.0) - min,
         );
-        //println!("{} -> {}", old_pitch, self.pitch);
-        //println!("facing: {:?}", self.facing());
-        //println!("");
 
         // TODO: Roll validation
 

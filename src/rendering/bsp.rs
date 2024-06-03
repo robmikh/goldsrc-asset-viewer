@@ -427,11 +427,9 @@ impl BspRenderer {
         let full_distance = distance;
         let mut start_position = start_position;
         let mut end_position = end_position;
-        //println!("Direction: {}", velocity.normalize());
         let mut collisions = 0;
         while distance > 0.0 {
             if end_position.is_nan() {
-                //panic!("Unexpected! distance:{}     velocity:{}", distance, velocity);
                 position = start_position;
                 velocity = Vec3::ZERO;
                 break;
@@ -448,16 +446,9 @@ impl BspRenderer {
 
                 let direction = velocity.normalize();
                 let dot = direction.dot(intersection.normal);
-                //println!("start: {}", start_position);
-                //println!("end: {}", end_position);
-                //println!("intersection: {}", intersection.position);
-                //println!("normal: {}", intersection.normal);
-                //println!("dot: {}", dot);
-                //println!("current distance: {}", distance);
                 if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
                     velocity = Vec3::ZERO;
                     position = start_position;
-                    //println!("zap");
                     break;
                 } else {
                     // Calc our new position
@@ -480,7 +471,6 @@ impl BspRenderer {
                     end_position = intersection.position + new_vector;
                     position = end_position;
                 }
-                //println!()
             } else {
                 break;
             }
@@ -548,7 +538,7 @@ impl Renderer for BspRenderer {
         &mut self,
         config: &wgpu::SurfaceConfiguration,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _queue: &wgpu::Queue,
     ) {
         let (depth_texture, depth_view, depth_sampler) = create_depth_texture(device, config);
         self.depth_texture = depth_texture;
@@ -668,7 +658,6 @@ impl Renderer for BspRenderer {
                         start_position - CROUCH_HEIGHT * 2.0,
                     ) {
                         if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
-                            //println!("woop: {}", intersection.normal);
                             let new_direction = (direction
                                 - intersection.normal * direction.dot(intersection.normal))
                             .normalize();
@@ -715,23 +704,6 @@ impl Renderer for BspRenderer {
                                     position = intersection.position;
                                 }
                             }
-
-                            //let was_touching_ground = is_touching_ground;
-                            //let is_touching_ground = hittest_clip_node_2(
-                            //    reader,
-                            //    clip_node_index,
-                            //    position,
-                            //    position - Vec3::new(0.0, 1.0, 0.0),
-                            //).is_some();
-
-                            //println!("nudged!");
-                            //println!("  start:        {}", start_position);
-                            //println!("  end:          {}", end_position);
-                            //println!("  nudged start: {}", nudged_start_position);
-                            //println!("  nudged end:   {}", nudged_end_position);
-                            //println!("  was grounded: {}", was_touching_ground);
-                            //println!("  is grounded:  {}", is_touching_ground);
-                            //println!();
                         }
                     }
                 }
