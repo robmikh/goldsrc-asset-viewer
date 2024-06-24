@@ -630,3 +630,36 @@ fn log_bsp(reader: &BspReader, log: &mut String) {
         writeln!(log, "    faces: {}", model.faces).unwrap();
     }
 }
+
+pub fn export_light_data<P: AsRef<Path>>(reader: &BspReader, export_path: P) -> std::io::Result<()> {
+    let export_path = export_path.as_ref();
+    
+    let data = reader.read_lighting_data();
+    std::fs::write(export_path, data)?;
+
+    let mut export_path = export_path.to_owned();
+    export_path.set_extension("txt");
+
+    let faces = reader.read_faces();
+    let mut offsets = Vec::with_capacity(faces.len());
+    for face in faces {
+        offsets.push(face.lightmap_offset.to_string());
+    }
+    let offsets = offsets.join("\n");
+    std::fs::write(&export_path, &offsets)?;
+
+    let mut slices = Vec::with_capacity(faces.len());
+    for pair in faces.windows(2) {
+        let start = pair[0].lightmap_offset as usize;
+        let end = pair[1].lightmap_offset as usize;
+
+        let slice = &data[start..end];
+        slices.push(slice);
+    }
+    for (i, slice) in slices.iter().enumerate() {
+        export_path.set_file_name(format!("{}.bin", i));
+        std::fs::write(&export_path, *slice)?;
+    }
+
+    Ok(())
+}

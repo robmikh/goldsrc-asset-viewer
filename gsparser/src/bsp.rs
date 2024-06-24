@@ -273,6 +273,10 @@ impl BspReader {
         self.read_lump(LUMP_CLIPNODES)
     }
 
+    pub fn read_lighting_data(&self) -> &[u8] {
+        self.read_lump_raw(LUMP_LIGHTING)
+    }
+
     fn read_lump_raw(&self, index: usize) -> &[u8] {
         let lump_header = self.header.lumps[index];
         let start = lump_header.offset as usize;

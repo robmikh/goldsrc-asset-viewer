@@ -548,6 +548,31 @@ fn show_ui(cli: Cli) {
                                     }
                                 }
                             }
+                            let is_bsp = if let Some(file_info) = file_info.as_ref() {
+                                match file_info {
+                                    FileInfo::BspFile(_) => true,
+                                    _ => false,
+                                }
+                            } else {
+                                false
+                            };
+                            if ui.menu_item_config("Export light data").enabled(is_bsp).build() {
+                                if let Some(new_path) = FileDialog::new()
+                                    .add_filter("Binary Data", &["bin"])
+                                    .set_directory("/")
+                                    .save_file()
+                                {
+                                    let bsp_file = if let Some(file_info) = file_info.as_ref() {
+                                        match file_info {
+                                            FileInfo::BspFile(file) => file,
+                                            _ => panic!(),
+                                        }
+                                    } else {
+                                        panic!()
+                                    };
+                                    export::bsp::export_light_data(&bsp_file.reader, new_path).unwrap();
+                                }
+                            }
                             if ui.menu_item("Exit") {
                                 *control_flow = ControlFlow::Exit;
                             }
