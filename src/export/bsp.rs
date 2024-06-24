@@ -667,26 +667,6 @@ pub fn export_light_data<P: AsRef<Path>>(
     export_path.set_extension("txt");
 
     let faces = reader.read_faces();
-    let mut offsets = Vec::with_capacity(faces.len());
-    for face in faces {
-        offsets.push(face.lightmap_offset.to_string());
-    }
-    let offsets = offsets.join("\n");
-    std::fs::write(&export_path, &offsets)?;
-
-    let mut slices = Vec::with_capacity(faces.len());
-    for pair in faces.windows(2) {
-        let start = pair[0].lightmap_offset as usize;
-        let end = pair[1].lightmap_offset as usize;
-
-        let slice = &data[start..end];
-        slices.push(slice);
-    }
-    for (i, slice) in slices.iter().enumerate() {
-        export_path.set_file_name(format!("{}.bin", i));
-        std::fs::write(&export_path, *slice)?;
-    }
-
     let texture_infos = reader.read_texture_infos();
     let surface_edges = reader.read_surface_edges();
     let edges = reader.read_edges();
@@ -744,13 +724,14 @@ pub fn export_light_data<P: AsRef<Path>>(
         let width = imaxs[0] - imins[0] + 1;
         let height = imaxs[1] - imins[1] + 1;
 
-        let face_lightmap = if let Some(data) = slices.get(i) {
-            *data
-        } else {
-            &data[face.lightmap_offset as usize..]
-        };
+        let data_start = face.lightmap_offset as usize;
+        let data_end = data_start + (width * height * 3) as usize;
+        let face_lightmap = &data[data_start..data_end];
 
-        export_path.set_file_name(format!("{}_{}x{}.bin", i, width, height));
+        export_path.set_file_name(format!(
+            "{}_{}_{}x{}.bin",
+            i, face.lightmap_offset, width, height
+        ));
         std::fs::write(&export_path, face_lightmap)?;
     }
 
