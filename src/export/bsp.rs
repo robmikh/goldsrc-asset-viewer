@@ -59,8 +59,10 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     export_file_path: P,
     mut log: Option<&mut String>,
 ) -> std::io::Result<()> {
+    let export_file_path = export_file_path.as_ref();
     if let Some(log) = &mut log {
-        log_bsp(reader, log);
+        writeln!(log, "Export path: {}", export_file_path.display()).unwrap();
+        log_bsp(reader, log).unwrap();
     }
 
     let game_root = game_root.as_ref();
@@ -119,7 +121,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
         &animations,
     );
 
-    let path = export_file_path.as_ref();
+    let path = export_file_path;
     let data_path = if let Some(parent_path) = path.parent() {
         let mut data_path = parent_path.to_owned();
         data_path.push(buffer_name);
@@ -464,52 +466,47 @@ fn convert_leaf(
     }
 }
 
-fn log_bsp(reader: &BspReader, log: &mut String) {
-    writeln!(log, "Nodes:").unwrap();
+fn log_bsp(reader: &BspReader, log: &mut String) -> std::fmt::Result {
+    writeln!(log, "Nodes:")?;
     for (i, node) in reader.read_nodes().iter().enumerate() {
-        writeln!(log, "  Node {}", i).unwrap();
-        writeln!(log, "    plane: {}", node.plane).unwrap();
+        writeln!(log, "  Node {}", i)?;
+        writeln!(log, "    plane: {}", node.plane)?;
         writeln!(
             log,
             "    children: [ {}, {} ]",
             node.children[0], node.children[1]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    mins: [ {}, {}, {} ]",
             node.mins[0], node.mins[1], node.mins[2]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    maxs: [ {}, {}, {} ]",
             node.maxs[0], node.maxs[1], node.maxs[2]
-        )
-        .unwrap();
-        writeln!(log, "    first_face: {}", node.first_face).unwrap();
-        writeln!(log, "    faces: {}", node.faces).unwrap();
+        )?;
+        writeln!(log, "    first_face: {}", node.first_face)?;
+        writeln!(log, "    faces: {}", node.faces)?;
     }
 
-    writeln!(log, "Leaves:").unwrap();
+    writeln!(log, "Leaves:")?;
     for (i, leaf) in reader.read_leaves().iter().enumerate() {
-        writeln!(log, "  Leaf {}", i).unwrap();
-        writeln!(log, "    contents: {:?}", leaf.contents).unwrap();
-        writeln!(log, "    vis_offset: {}", leaf.vis_offset).unwrap();
+        writeln!(log, "  Leaf {}", i)?;
+        writeln!(log, "    contents: {:?}", leaf.contents)?;
+        writeln!(log, "    vis_offset: {}", leaf.vis_offset)?;
         writeln!(
             log,
             "    mins: [ {}, {}, {} ]",
             leaf.mins[0], leaf.mins[1], leaf.mins[2]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    maxs: [ {}, {}, {} ]",
             leaf.maxs[0], leaf.maxs[1], leaf.maxs[2]
-        )
-        .unwrap();
-        writeln!(log, "    first_mark_surface: {}", leaf.first_mark_surface).unwrap();
-        writeln!(log, "    mark_surfaces: {}", leaf.mark_surfaces).unwrap();
+        )?;
+        writeln!(log, "    first_mark_surface: {}", leaf.first_mark_surface)?;
+        writeln!(log, "    mark_surfaces: {}", leaf.mark_surfaces)?;
         writeln!(
             log,
             "    ambient_levels: [ {}, {}, {}, {} ]",
@@ -517,62 +514,58 @@ fn log_bsp(reader: &BspReader, log: &mut String) {
             leaf.ambient_levels[1],
             leaf.ambient_levels[2],
             leaf.ambient_levels[3]
-        )
-        .unwrap();
+        )?;
     }
 
-    writeln!(log, "Mark Surfaces:").unwrap();
+    writeln!(log, "Mark Surfaces:")?;
     for (i, surface) in reader.read_mark_surfaces().iter().enumerate() {
-        writeln!(log, "  Mark Surface {}", i).unwrap();
-        writeln!(log, "    index: {}", surface.0).unwrap();
+        writeln!(log, "  Mark Surface {}", i)?;
+        writeln!(log, "    index: {}", surface.0)?;
     }
 
-    writeln!(log, "Surface Edges:").unwrap();
+    writeln!(log, "Surface Edges:")?;
     for (i, edge) in reader.read_surface_edges().iter().enumerate() {
-        writeln!(log, "  Surface Edge {}", i).unwrap();
-        writeln!(log, "    index: {}", edge.0).unwrap();
+        writeln!(log, "  Surface Edge {}", i)?;
+        writeln!(log, "    index: {}", edge.0)?;
     }
 
-    writeln!(log, "Faces:").unwrap();
+    writeln!(log, "Faces:")?;
     for (i, face) in reader.read_faces().iter().enumerate() {
-        writeln!(log, "  Face {}", i).unwrap();
-        writeln!(log, "    plane: {}", face.plane).unwrap();
-        writeln!(log, "    plane_side: {}", face.plane_side).unwrap();
-        writeln!(log, "    first_edge: {}", face.first_edge).unwrap();
-        writeln!(log, "    edges: {}", face.edges).unwrap();
-        writeln!(log, "    texture_info: {}", face.texture_info).unwrap();
+        writeln!(log, "  Face {}", i)?;
+        writeln!(log, "    plane: {}", face.plane)?;
+        writeln!(log, "    plane_side: {}", face.plane_side)?;
+        writeln!(log, "    first_edge: {}", face.first_edge)?;
+        writeln!(log, "    edges: {}", face.edges)?;
+        writeln!(log, "    texture_info: {}", face.texture_info)?;
         writeln!(
             log,
             "    styles: [ {}, {}, {}, {} ]",
             face.styles[0], face.styles[1], face.styles[2], face.styles[3]
-        )
-        .unwrap();
-        writeln!(log, "    lightmap_offset: {}", face.lightmap_offset).unwrap();
+        )?;
+        writeln!(log, "    lightmap_offset: {}", face.lightmap_offset)?;
     }
 
-    writeln!(log, "Edges:").unwrap();
+    writeln!(log, "Edges:")?;
     for (i, edge) in reader.read_edges().iter().enumerate() {
-        writeln!(log, "  Edge {}", i).unwrap();
+        writeln!(log, "  Edge {}", i)?;
         writeln!(
             log,
             "    vertices: [ {}, {} ]",
             edge.vertices[0], edge.vertices[1]
-        )
-        .unwrap();
+        )?;
     }
 
-    writeln!(log, "Vertices:").unwrap();
+    writeln!(log, "Vertices:")?;
     for (i, vertex) in reader.read_vertices().iter().enumerate() {
-        writeln!(log, "  Vertex {}", i).unwrap();
+        writeln!(log, "  Vertex {}", i)?;
         writeln!(
             log,
             "    vertices: [ {}, {}, {} ]",
             vertex.x, vertex.y, vertex.z
-        )
-        .unwrap();
+        )?;
     }
 
-    writeln!(log, "Textures:").unwrap();
+    writeln!(log, "Textures:")?;
     let texture_reader = reader.read_textures();
     for i in 0..texture_reader.len() {
         let reader = texture_reader.get(i).unwrap();
@@ -583,57 +576,76 @@ fn log_bsp(reader: &BspReader, log: &mut String) {
             i,
             name,
             reader.has_local_image_data()
-        )
-        .unwrap();
+        )?;
     }
 
     let entities = reader.read_entities();
     let entities = BspEntity::parse_entities(entities);
-    writeln!(log, "Entities:").unwrap();
+    writeln!(log, "Entities:")?;
     for (i, entity) in entities.iter().enumerate() {
-        writeln!(log, "  Entity {}", i).unwrap();
+        writeln!(log, "  Entity {}", i)?;
         for (key, value) in &entity.0 {
-            writeln!(log, "    {}: {}", key, value).unwrap();
+            writeln!(log, "    {}: {}", key, value)?;
         }
     }
 
-    writeln!(log, "Models:").unwrap();
+    writeln!(log, "Models:")?;
     let models = reader.read_models();
     for (i, model) in models.iter().enumerate() {
-        writeln!(log, "  Model {}", i).unwrap();
+        writeln!(log, "  Model {}", i)?;
         writeln!(
             log,
             "    mins: [ {}, {}, {} ]",
             model.mins[0], model.mins[1], model.mins[2]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    maxs: [ {}, {}, {} ]",
             model.maxs[0], model.maxs[1], model.maxs[2]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    origin: [ {}, {}, {} ]",
             model.origin[0], model.origin[1], model.origin[2]
-        )
-        .unwrap();
+        )?;
         writeln!(
             log,
             "    head_nodes: [ {}, {}, {}, {} ]",
             model.head_nodes[0], model.head_nodes[1], model.head_nodes[2], model.head_nodes[3]
-        )
-        .unwrap();
-        writeln!(log, "    vis_leaves: {}", model.vis_leaves).unwrap();
-        writeln!(log, "    first_face: {}", model.first_face).unwrap();
-        writeln!(log, "    faces: {}", model.faces).unwrap();
+        )?;
+        writeln!(log, "    vis_leaves: {}", model.vis_leaves)?;
+        writeln!(log, "    first_face: {}", model.first_face)?;
+        writeln!(log, "    faces: {}", model.faces)?;
     }
+
+    writeln!(log, "Texture Infos:")?;
+    let texture_infos = reader.read_texture_infos();
+    for (i, info) in texture_infos.iter().enumerate() {
+        writeln!(log, "  Texture Info {}", i)?;
+        writeln!(
+            log,
+            "    s: [ {}, {}, {} ]",
+            info.s[0], info.s[1], info.s[2]
+        )?;
+        writeln!(log, "    s_shift: {}", info.s_shift)?;
+        writeln!(
+            log,
+            "    t: [ {}, {}, {} ]",
+            info.t[0], info.t[1], info.t[2]
+        )?;
+        writeln!(log, "    t_shift: {}", info.t_shift)?;
+        writeln!(log, "    texture_index: {}", info.texture_index)?;
+        writeln!(log, "    flags: {}", info.flags)?;
+    }
+    Ok(())
 }
 
-pub fn export_light_data<P: AsRef<Path>>(reader: &BspReader, export_path: P) -> std::io::Result<()> {
+pub fn export_light_data<P: AsRef<Path>>(
+    reader: &BspReader,
+    export_path: P,
+) -> std::io::Result<()> {
     let export_path = export_path.as_ref();
-    
+
     let data = reader.read_lighting_data();
     std::fs::write(export_path, data)?;
 

@@ -556,7 +556,11 @@ fn show_ui(cli: Cli) {
                             } else {
                                 false
                             };
-                            if ui.menu_item_config("Export light data").enabled(is_bsp).build() {
+                            if ui
+                                .menu_item_config("Export light data")
+                                .enabled(is_bsp)
+                                .build()
+                            {
                                 if let Some(new_path) = FileDialog::new()
                                     .add_filter("Binary Data", &["bin"])
                                     .set_directory("/")
@@ -570,7 +574,8 @@ fn show_ui(cli: Cli) {
                                     } else {
                                         panic!()
                                     };
-                                    export::bsp::export_light_data(&bsp_file.reader, new_path).unwrap();
+                                    export::bsp::export_light_data(&bsp_file.reader, new_path)
+                                        .unwrap();
                                 }
                             }
                             if ui.menu_item("Exit") {
