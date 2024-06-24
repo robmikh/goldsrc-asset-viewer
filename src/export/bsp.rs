@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -687,37 +687,12 @@ pub fn export_light_data<P: AsRef<Path>>(
         std::fs::write(&export_path, *slice)?;
     }
 
-    let planes = reader.read_planes();
     let texture_infos = reader.read_texture_infos();
     let surface_edges = reader.read_surface_edges();
     let edges = reader.read_edges();
     let vertices = reader.read_vertices();
     for (i, face) in faces.iter().enumerate() {
-        let plane = &planes[face.plane as usize];
-        let (dist, normal) = if face.plane_side > 0 {
-            (-plane.dist, (-Vec3::from_array(plane.normal)).to_array())
-        } else {
-            (plane.dist, plane.normal)
-        };
         let texture_info = &texture_infos[face.texture_info as usize];
-
-        let world_transform = {
-            let transform = Mat4::IDENTITY.transpose();
-            let mut transform_data = transform.to_cols_array();
-
-            for i in 0..3 {
-                transform_data[i * 4 + 0] = texture_info.s[i];
-                transform_data[i * 4 + 1] = texture_info.t[i];
-                transform_data[i * 4 + 2] = normal[i];
-            }
-
-            transform_data[3 * 4 + 0] = texture_info.s_shift;
-            transform_data[3 * 4 + 1] = texture_info.t_shift;
-            transform_data[3 * 4 + 2] = -dist;
-
-            Mat4::from_cols_array(&transform_data).transpose()
-        };
-        let inverse = world_transform.inverse();
 
         // Collect the vertices
         let mut face_vertices = Vec::new();
@@ -726,17 +701,15 @@ pub fn export_light_data<P: AsRef<Path>>(
             let edge_index = surface_edge.0.abs();
             let edge = &edges[edge_index as usize];
 
-            let vertex_index = if surface_edge.0 >= 0 { edge.vertices[0] } else { edge.vertices[1] };
+            let vertex_index = if surface_edge.0 >= 0 {
+                edge.vertices[0]
+            } else {
+                edge.vertices[1]
+            };
             let vertex = &vertices[vertex_index as usize];
 
             face_vertices.push(Vec3::new(vertex.x, vertex.y, vertex.z));
         }
-
-        // Transform vertices
-        //for vertex in &mut face_vertices {
-        //    *vertex = inverse.transform_point3(*vertex);
-        //    vertex.z = 0.0;
-        //}
 
         let mut uvs = Vec::new();
         for vertex in &face_vertices {
@@ -760,12 +733,12 @@ pub fn export_light_data<P: AsRef<Path>>(
             }
         }
 
-        const TEXTURE_STEP: usize = 16;
+        const LIGHTMAP_SCALE: usize = 16;
         let mut imaxs = [0i32, 0];
         let mut imins = [0i32, 0];
         for k in 0..2 {
-            imins[k] = (mins[k] / TEXTURE_STEP as f32).floor() as i32;
-            imaxs[k] = (maxs[k] / TEXTURE_STEP as f32).ceil() as i32;
+            imins[k] = (mins[k] / LIGHTMAP_SCALE as f32).floor() as i32;
+            imaxs[k] = (maxs[k] / LIGHTMAP_SCALE as f32).ceil() as i32;
         }
 
         let width = imaxs[0] - imins[0] + 1;
