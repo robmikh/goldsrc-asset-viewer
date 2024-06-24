@@ -637,6 +637,20 @@ fn log_bsp(reader: &BspReader, log: &mut String) -> std::fmt::Result {
         writeln!(log, "    texture_index: {}", info.texture_index)?;
         writeln!(log, "    flags: {}", info.flags)?;
     }
+
+    writeln!(log, "Planes:")?;
+    let planes = reader.read_planes();
+    for (i, plane) in planes.iter().enumerate() {
+        writeln!(log, "  Plane {}", i)?;
+        writeln!(
+            log,
+            "    normal: [ {}, {}, {} ]",
+            plane.normal[0], plane.normal[1], plane.normal[2]
+        )?;
+        writeln!(log, "    dist: {}", plane.dist)?;
+        writeln!(log, "    ty: {}", plane.ty)?;
+    }
+
     Ok(())
 }
 
