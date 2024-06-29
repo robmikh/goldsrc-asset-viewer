@@ -666,12 +666,36 @@ pub fn export_light_data<P: AsRef<Path>>(
     let mut export_path = export_path.to_owned();
     export_path.set_extension("txt");
 
+    let face_datas = decode_lightmap_atlas(reader);
+    for (i, face_data) in face_datas.iter().enumerate() {
+        export_path.set_file_name(format!(
+            "{}_{}x{}.bin",
+            i, face_data.width, face_data.height
+        ));
+        std::fs::write(&export_path, face_data.data)?;
+    }
+
+    Ok(())
+}
+
+struct LightmapFaceData<'a> {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    data: &'a [u8],
+}
+
+fn decode_lightmap_atlas<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
+    let data = reader.read_lighting_data();
     let faces = reader.read_faces();
+    let mut lightmap_face_data = Vec::with_capacity(faces.len());
+
     let texture_infos = reader.read_texture_infos();
     let surface_edges = reader.read_surface_edges();
     let edges = reader.read_edges();
     let vertices = reader.read_vertices();
-    for (i, face) in faces.iter().enumerate() {
+    for face in faces {
         let texture_info = &texture_infos[face.texture_info as usize];
 
         // Collect the vertices
@@ -728,12 +752,14 @@ pub fn export_light_data<P: AsRef<Path>>(
         let data_end = data_start + (width * height * 3) as usize;
         let face_lightmap = &data[data_start..data_end];
 
-        export_path.set_file_name(format!(
-            "{}_{}_{}x{}.bin",
-            i, face.lightmap_offset, width, height
-        ));
-        std::fs::write(&export_path, face_lightmap)?;
+        lightmap_face_data.push(LightmapFaceData {
+            x: 0,
+            y: 0,
+            width: width as u32,
+            height: height as u32,
+            data: face_lightmap,
+        });
     }
 
-    Ok(())
+    lightmap_face_data
 }
