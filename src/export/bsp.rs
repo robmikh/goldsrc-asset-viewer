@@ -667,13 +667,58 @@ pub fn export_light_data<P: AsRef<Path>>(
     export_path.set_extension("txt");
 
     let face_datas = decode_lightmap_atlas(reader);
+    // Allocate atlas
+    let (atlas_width, atlas_height) = {
+        let width = (face_datas.len() as f64).sqrt() as usize;
+        let remaining = face_datas.len() - (width * width);
+        let extra_whole_rows = remaining / width;
+        let extras = remaining % width;
+        let height = if remaining > 0 {
+            let extra_row = if extras > 0 {
+                1
+            } else {
+                0
+            };
+            width + extra_whole_rows + extra_row
+        } else {
+            width
+        };
+        (width, height)
+    };
+    assert!((atlas_width * atlas_height) >= face_datas.len(), "Failed: ({} x {}) >= {}", atlas_width, atlas_height, face_datas.len());
+    let atlas_image_stride = 16 * 3;
+    let atlas_image_len = atlas_image_stride * 16;
+    let atlas_stride = atlas_width * atlas_image_stride;
+    let atlas_len = atlas_stride * (atlas_height * 16);
+    let mut atlas_data = vec![0u8; atlas_len];
+    // Build the atlas
     for (i, face_data) in face_datas.iter().enumerate() {
+        let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
+
+        let data_stride = face_data.width as usize * 3;
+        let rows = face_data.height as usize;
+        for row in 0..rows {
+            let atlas_row_start = atlas_offset + (row * atlas_stride);
+            let atlas_row_end = atlas_row_start + data_stride;
+            let dest = &mut atlas_data[atlas_row_start..atlas_row_end];
+            let source_start = row * data_stride;
+            let source_end = source_start + data_stride;
+            let source = &face_data.data[source_start..source_end];
+            dest.copy_from_slice(source);
+        }
+
         export_path.set_file_name(format!(
             "{}_{}x{}.bin",
             i, face_data.width, face_data.height
         ));
         std::fs::write(&export_path, face_data.data)?;
     }
+
+    export_path.set_file_name("atlas.png");
+    let atlas_pixel_width = atlas_width * 16;
+    let atlas_pixel_height = atlas_height * 16;
+    let pixel_data = image::RgbImage::from_vec(atlas_pixel_width as u32, atlas_pixel_height as u32, atlas_data).unwrap();
+    pixel_data.save_with_format(export_path, image::ImageFormat::Png).unwrap();
 
     Ok(())
 }
