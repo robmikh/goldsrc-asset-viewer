@@ -12,7 +12,7 @@ use winit::event::VirtualKeyCode;
 
 use crate::{
     export::{
-        bsp::{ModelVertex, TextureInfo},
+        bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
     hittest::hittest_clip_node,
@@ -40,6 +40,7 @@ struct GpuVertex {
     pos: [f32; 4],
     normal: [f32; 4],
     uv: [f32; 2],
+    lightmap_uv: [f32; 2],
 }
 
 impl GpuVertex {
@@ -48,6 +49,7 @@ impl GpuVertex {
             pos: Vec3::from_array(vertex.pos).extend(1.0).to_array(),
             normal: Vec3::from_array(vertex.normal).extend(0.0).to_array(),
             uv: vertex.uv,
+            lightmap_uv: vertex.lightmap_uv,
         }
     }
 }
@@ -70,6 +72,9 @@ pub struct BspRenderer {
     _texture_bind_group_layout: wgpu::BindGroupLayout,
     _pipeline_layout: wgpu::PipelineLayout,
     render_pipeline: wgpu::RenderPipeline,
+
+    lightmap_texture: wgpu::Texture,
+    lightmap_view: wgpu::TextureView,
 
     camera: Camera,
     player: MovingEntity,
@@ -132,6 +137,16 @@ impl BspRenderer {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
                         count: None,
                     },
                 ],
@@ -203,6 +218,18 @@ impl BspRenderer {
             textures.push((texture, view, bind_group));
         }
 
+        // Create lightmap atlas
+        let lightmap_atlas = decode_atlas(reader);
+        let (lightmap_texture, lightmap_view) = {
+            let mut image = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(lightmap_atlas.width() * 16, lightmap_atlas.height() * 16);
+            for (pixel, source_pixel) in image.pixels_mut().zip(lightmap_atlas.data().windows(3)) {
+                *pixel = image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
+            }
+
+            let (texture, view) = create_texture_and_view(device, queue, &image);
+            (texture, view)
+        };
+
         // Find the "info_player_start" entity
         let entities = BspEntity::parse_entities(reader.read_entities());
         let mut player_start_entity = None;
@@ -254,6 +281,11 @@ impl BspRenderer {
                     offset: 8 * 4,
                     shader_location: 2,
                 },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: 10 * 4,
+                    shader_location: 3,
+                },
             ],
         }];
 
@@ -299,6 +331,7 @@ impl BspRenderer {
                     device,
                     &model_bind_group_layout,
                     &sampler,
+                    &lightmap_view,
                 )
             })
             .collect();
@@ -384,6 +417,9 @@ impl BspRenderer {
             _texture_bind_group_layout: texture_bind_group_layout,
             _pipeline_layout: pipeline_layout,
             render_pipeline,
+
+            lightmap_texture,
+            lightmap_view,
 
             camera,
             player,
@@ -575,7 +611,7 @@ impl Renderer for BspRenderer {
         }
 
         if let Some(mouse_delta) = mouse_delta {
-            let sensitivity = 0.5;
+            let sensitivity = 0.3;
             rotation.x -= mouse_delta.x.to_radians() * sensitivity;
             rotation.y += mouse_delta.y.to_radians() * sensitivity;
         }
@@ -747,6 +783,7 @@ impl Renderer for BspRenderer {
                 device,
                 &self.model_bind_group_layout,
                 &self.sampler,
+                &self.lightmap_view,
             );
             self.debug_point = Some(gpu_model);
         }
@@ -759,6 +796,7 @@ impl Renderer for BspRenderer {
                 device,
                 &self.model_bind_group_layout,
                 &self.sampler,
+                &self.lightmap_view,
             );
             self.debug_pyramid = Some(gpu_model);
         }
@@ -858,6 +896,7 @@ fn create_gpu_model_for_model(
     device: &wgpu::Device,
     model_bind_group_layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
+    lightmap_view: &wgpu::TextureView,
 ) -> GpuModel {
     let vertices: Vec<GpuVertex> = model.vertices.iter().map(|x| GpuVertex::from(x)).collect();
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -889,6 +928,10 @@ fn create_gpu_model_for_model(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(lightmap_view),
             },
         ],
         label: None,

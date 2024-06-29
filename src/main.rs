@@ -15,7 +15,7 @@ use crate::wad_viewer::{load_wad_archive, WadViewer};
 use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
-use export::bsp::{read_textures, read_wad_resources, WadCollection};
+use export::bsp::{decode_atlas, read_textures, read_wad_resources, WadCollection};
 use glam::Vec2;
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
@@ -745,7 +745,8 @@ fn load_renderer(
                 read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
 
                 let textures = read_textures(&file.reader, &wad_resources);
-                let map_models = export::bsp::convert_models(&file.reader, &textures);
+                let lightmap_atlas = decode_atlas(&file.reader);
+                let map_models = export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
 
                 let renderer =
                     BspRenderer::new(&file.reader, &map_models, &textures, device, queue, config);

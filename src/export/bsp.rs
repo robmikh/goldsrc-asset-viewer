@@ -33,6 +33,7 @@ vertex_def! {
         ("POSITION") pos: [f32; 3],
         ("NORMAL") normal: [f32; 3],
         ("TEXCOORD_0") uv: [f32; 2],
+        ("TEXCOORD_1") lightmap_uv: [f32; 2],
     }
 }
 
@@ -71,7 +72,8 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     read_wad_resources(reader, game_root, &mut wad_resources);
 
     let textures = read_textures(reader, &wad_resources);
-    let model = convert(reader, &textures);
+    let lightmap_atlas = decode_atlas(reader);
+    let model = convert(reader, &textures, &lightmap_atlas);
 
     let mut buffer_writer = BufferWriter::new();
 
@@ -209,7 +211,7 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     textures
 }
 
-fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
+fn convert(reader: &BspReader, textures: &[TextureInfo], lightmap_atlas: &LightmapAtlas) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
@@ -223,7 +225,8 @@ fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
         &mut vertices,
         &mut vertex_map,
         &mut meshes,
-        &textures,
+        textures,
+        lightmap_atlas,
     );
 
     Model {
@@ -233,7 +236,7 @@ fn convert(reader: &BspReader, textures: &[TextureInfo]) -> Model<ModelVertex> {
     }
 }
 
-pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model<ModelVertex>> {
+pub fn convert_models(reader: &BspReader, textures: &[TextureInfo], lightmap_atlas: &LightmapAtlas) -> Vec<Model<ModelVertex>> {
     let bsp_models = reader.read_models();
 
     let mut models = Vec::with_capacity(bsp_models.len());
@@ -252,7 +255,8 @@ pub fn convert_models(reader: &BspReader, textures: &[TextureInfo]) -> Vec<Model
             &mut vertices,
             &mut vertex_map,
             &mut meshes,
-            &textures,
+            textures,
+            lightmap_atlas,
         );
 
         models.push(Model {
@@ -275,6 +279,8 @@ fn process_indexed_triangles(
     indices: &mut Vec<u32>,
     vertices: &mut Vec<ModelVertex>,
     vertex_map: &mut HashMap<SharedVertex, usize>,
+    lightmap_atlas: &LightmapAtlas,
+    lightmap_index: usize,
 ) {
     assert!(
         triangle_list.len() % 3 == 0,
@@ -298,13 +304,18 @@ fn process_indexed_triangles(
 
             let normal = convert_coordinates(normal);
 
+            let lightmap_image = &lightmap_atlas.images[lightmap_index];
+            let lightmap_uv = [
+                ((lightmap_image.x as f32) / (lightmap_atlas.width * 16) as f32) + (uv[0] / (lightmap_atlas.width * 16) as f32),
+                ((lightmap_image.y as f32) / (lightmap_atlas.height * 16) as f32) + (uv[1] / (lightmap_atlas.height * 16) as f32),
+            ];
             let uv = [
                 uv[0] / texture.image_width as f32,
                 uv[1] / texture.image_height as f32,
             ];
 
             let index = vertices.len();
-            vertices.push(ModelVertex { pos, normal, uv });
+            vertices.push(ModelVertex { pos, normal, uv, lightmap_uv });
             vertex_map.insert(*trivert, index);
             index
         };
@@ -356,6 +367,7 @@ fn convert_node(
     vertex_map: &mut HashMap<SharedVertex, usize>,
     meshes: &mut Vec<Mesh>,
     textures: &[TextureInfo],
+    lightmap_atlas: &LightmapAtlas,
 ) {
     let node_index = if node_index > 0 || (node_index == 0 && allow_zero) {
         node_index as usize
@@ -363,7 +375,7 @@ fn convert_node(
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
         convert_leaf(
-            reader, leaf, indices, vertices, vertex_map, meshes, textures,
+            reader, leaf, indices, vertices, vertex_map, meshes, textures, lightmap_atlas
         );
         return;
     };
@@ -379,6 +391,7 @@ fn convert_node(
         vertex_map,
         meshes,
         textures,
+        lightmap_atlas,
     );
     convert_node(
         reader,
@@ -390,6 +403,7 @@ fn convert_node(
         vertex_map,
         meshes,
         textures,
+        lightmap_atlas,
     );
 }
 
@@ -401,6 +415,7 @@ fn convert_leaf(
     vertex_map: &mut HashMap<SharedVertex, usize>,
     meshes: &mut Vec<Mesh>,
     textures: &[TextureInfo],
+    lightmap_atlas: &LightmapAtlas,
 ) {
     let bsp_vertices = reader.read_vertices();
     let texture_infos = reader.read_texture_infos();
@@ -413,7 +428,8 @@ fn convert_leaf(
     let mark_surfaces_range = leaf.first_mark_surface..leaf.first_mark_surface + leaf.mark_surfaces;
     for mark_surface_index in mark_surfaces_range {
         let mark_surface = &mark_surfaces[mark_surface_index as usize];
-        let face = &faces[mark_surface.0 as usize];
+        let face_index = mark_surface.0 as usize;
+        let face = &faces[face_index];
 
         if face.texture_info == 0 {
             continue;
@@ -456,6 +472,8 @@ fn convert_leaf(
             indices,
             vertices,
             vertex_map,
+            lightmap_atlas,
+            face_index,
         );
         let end = indices.len();
 
@@ -663,75 +681,31 @@ pub fn export_light_data<P: AsRef<Path>>(
     let data = reader.read_lighting_data();
     std::fs::write(export_path, data)?;
 
+    let atlas = decode_atlas(reader);
+    
     let mut export_path = export_path.to_owned();
-    export_path.set_extension("txt");
-
-    let face_datas = decode_lightmap_atlas(reader);
-    // Allocate atlas
-    let (atlas_width, atlas_height) = {
-        let width = (face_datas.len() as f64).sqrt() as usize;
-        let remaining = face_datas.len() - (width * width);
-        let extra_whole_rows = remaining / width;
-        let extras = remaining % width;
-        let height = if remaining > 0 {
-            let extra_row = if extras > 0 {
-                1
-            } else {
-                0
-            };
-            width + extra_whole_rows + extra_row
-        } else {
-            width
-        };
-        (width, height)
-    };
-    assert!((atlas_width * atlas_height) >= face_datas.len(), "Failed: ({} x {}) >= {}", atlas_width, atlas_height, face_datas.len());
-    let atlas_image_stride = 16 * 3;
-    let atlas_image_len = atlas_image_stride * 16;
-    let atlas_stride = atlas_width * atlas_image_stride;
-    let atlas_len = atlas_stride * (atlas_height * 16);
-    let mut atlas_data = vec![0u8; atlas_len];
-    // Build the atlas
-    for (i, face_data) in face_datas.iter().enumerate() {
-        let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
-
-        let data_stride = face_data.width as usize * 3;
-        let rows = face_data.height as usize;
-        for row in 0..rows {
-            let atlas_row_start = atlas_offset + (row * atlas_stride);
-            let atlas_row_end = atlas_row_start + data_stride;
-            let dest = &mut atlas_data[atlas_row_start..atlas_row_end];
-            let source_start = row * data_stride;
-            let source_end = source_start + data_stride;
-            let source = &face_data.data[source_start..source_end];
-            dest.copy_from_slice(source);
-        }
-
-        export_path.set_file_name(format!(
-            "{}_{}x{}.bin",
-            i, face_data.width, face_data.height
-        ));
-        std::fs::write(&export_path, face_data.data)?;
-    }
-
     export_path.set_file_name("atlas.png");
-    let atlas_pixel_width = atlas_width * 16;
-    let atlas_pixel_height = atlas_height * 16;
-    let pixel_data = image::RgbImage::from_vec(atlas_pixel_width as u32, atlas_pixel_height as u32, atlas_data).unwrap();
+    let atlas_pixel_width = atlas.width * 16;
+    let atlas_pixel_height = atlas.height * 16;
+    let pixel_data = image::RgbImage::from_vec(atlas_pixel_width, atlas_pixel_height, atlas.data).unwrap();
     pixel_data.save_with_format(export_path, image::ImageFormat::Png).unwrap();
 
     Ok(())
 }
 
+pub fn decode_atlas(reader: &BspReader) -> LightmapAtlas {
+    let face_datas = decode_face_lightmaps(reader);
+    let atlas = construct_atlas(&face_datas);
+    atlas
+}
+
 struct LightmapFaceData<'a> {
-    x: u32,
-    y: u32,
     width: u32,
     height: u32,
     data: &'a [u8],
 }
 
-fn decode_lightmap_atlas<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
+fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
     let data = reader.read_lighting_data();
     let faces = reader.read_faces();
     let mut lightmap_face_data = Vec::with_capacity(faces.len());
@@ -798,8 +772,6 @@ fn decode_lightmap_atlas<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
         let face_lightmap = &data[data_start..data_end];
 
         lightmap_face_data.push(LightmapFaceData {
-            x: 0,
-            y: 0,
             width: width as u32,
             height: height as u32,
             data: face_lightmap,
@@ -807,4 +779,91 @@ fn decode_lightmap_atlas<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
     }
 
     lightmap_face_data
+}
+
+struct LightmapAtlasImage {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+pub struct LightmapAtlas {
+    width: u32,
+    height: u32,
+    data: Vec<u8>,
+    images: Vec<LightmapAtlasImage>,
+}
+
+fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
+    // Allocate atlas
+    let (atlas_width, atlas_height) = {
+        let width = (face_datas.len() as f64).sqrt() as usize;
+        let remaining = face_datas.len() - (width * width);
+        let extra_whole_rows = remaining / width;
+        let extras = remaining % width;
+        let height = if remaining > 0 {
+            let extra_row = if extras > 0 {
+                1
+            } else {
+                0
+            };
+            width + extra_whole_rows + extra_row
+        } else {
+            width
+        };
+        (width, height)
+    };
+    assert!((atlas_width * atlas_height) >= face_datas.len(), "Failed: ({} x {}) >= {}", atlas_width, atlas_height, face_datas.len());
+    let atlas_image_stride = 16 * 3;
+    let atlas_stride = atlas_width * atlas_image_stride;
+    let atlas_len = atlas_stride * (atlas_height * 16);
+    let mut atlas_data = vec![0u8; atlas_len];
+
+    let mut images = Vec::with_capacity(face_datas.len());
+
+    // Build the atlas
+    for (i, face_data) in face_datas.iter().enumerate() {
+        let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
+
+        let data_stride = face_data.width as usize * 3;
+        let rows = face_data.height as usize;
+        for row in 0..rows {
+            let atlas_row_start = atlas_offset + (row * atlas_stride);
+            let atlas_row_end = atlas_row_start + data_stride;
+            let dest = &mut atlas_data[atlas_row_start..atlas_row_end];
+            let source_start = row * data_stride;
+            let source_end = source_start + data_stride;
+            let source = &face_data.data[source_start..source_end];
+            dest.copy_from_slice(source);
+        }
+
+        images.push(LightmapAtlasImage {
+            x: ((i % atlas_width) * atlas_image_stride) as u32,
+            y: (i / atlas_width) as u32,
+            width: face_data.width,
+            height: face_data.height,
+        })
+    }
+
+    LightmapAtlas {
+        width: atlas_width as u32,
+        height: atlas_height as u32,
+        data: atlas_data,
+        images,
+    }
+}
+
+impl LightmapAtlas {
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
 }
