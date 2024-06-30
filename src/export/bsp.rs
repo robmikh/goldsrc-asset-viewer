@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec2Swizzles, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -325,12 +325,13 @@ fn process_indexed_triangles(
 
             let normal = convert_coordinates(normal);
 
+            let lightmap_image = &lightmap_atlas.images[lightmap_index];
+            let lightmap_local_uv = ((Vec2::from_array(uv) / LIGHTMAP_SCALE as f32) % (Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32))).abs();
             let lightmap_atlas_size =
                 Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32)
                     * Vec2::new(16.0, 16.0);
-            let lightmap_image = &lightmap_atlas.images[lightmap_index];
             let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
-            let lightmap_uv = (Vec2::from_array(uv) / LIGHTMAP_SCALE as f32) + lightmap_offset;
+            let lightmap_uv = lightmap_local_uv + lightmap_offset;
             let lightmap_uv = (lightmap_uv / lightmap_atlas_size).to_array();
             //let lightmap_uv = [lightmap_uv[1], lightmap_uv[0]];
             let uv = [
@@ -338,13 +339,20 @@ fn process_indexed_triangles(
                 uv[1] / texture.image_height as f32,
             ];
 
-            let index = vertices.len();
-            vertices.push(ModelVertex {
+            let vertex = ModelVertex {
                 pos,
                 normal,
                 uv,
                 lightmap_uv,
-            });
+            };
+            if lightmap_index == 2715 {
+                println!("lightmap_local_uv: {}", lightmap_local_uv);
+                println!("{:#?}", vertex);
+                println!("");
+            }
+
+            let index = vertices.len();
+            vertices.push(vertex);
             vertex_map.insert(*trivert, index);
             index
         };
@@ -709,6 +717,14 @@ fn log_bsp(reader: &BspReader, log: &mut String) -> std::fmt::Result {
     Ok(())
 }
 
+fn log_lightmap_image(log: &mut String, image: &LightmapAtlasImage) -> std::fmt::Result {
+    writeln!(log, "x: {}", image.x)?;
+    writeln!(log, "x: {}", image.y)?;
+    writeln!(log, "width: {}", image.width)?;
+    writeln!(log, "height: {}", image.height)?;
+    Ok(())
+}
+
 pub fn export_light_data<P: AsRef<Path>>(
     reader: &BspReader,
     export_path: P,
@@ -721,6 +737,13 @@ pub fn export_light_data<P: AsRef<Path>>(
     let atlas = decode_atlas(reader);
 
     let mut export_path = export_path.to_owned();
+    export_path.set_file_name("temp.txt");
+    let mut temp = String::new();
+    if let Some(image) = atlas.images.get(2715) {
+        log_lightmap_image(&mut temp, image).unwrap();
+    } 
+    std::fs::write(&export_path, temp)?;
+
     export_path.set_file_name("atlas.png");
     let atlas_pixel_width = atlas.width * 16;
     let atlas_pixel_height = atlas.height * 16;

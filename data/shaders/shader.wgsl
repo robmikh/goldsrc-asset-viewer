@@ -51,10 +51,14 @@ var r_texture: texture_2d<f32>;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var tex_color: vec4<f32>;
-    //tex_color = textureSample(r_texture, r_sampler, in.tex_coord);
-    tex_color = textureSample(r_atlas, r_sampler, in.lightmap_tex_coord);
+    tex_color = textureSample(r_texture, r_sampler, in.tex_coord);
+    var lightmap_color: vec4<f32>;
+    lightmap_color = textureSample(r_atlas, r_sampler, in.lightmap_tex_coord);
     if tex_color.w == 0.0 {
         discard;
     }
+    tex_color.x = lightmap_color.x;
+    tex_color.y = lightmap_color.y;
+    tex_color.z = lightmap_color.z;
     return tex_color;
 }
