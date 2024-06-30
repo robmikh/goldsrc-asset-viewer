@@ -1,5 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
+use bsp::DrawMode;
 use glam::{Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
@@ -45,4 +46,6 @@ pub trait Renderer {
     fn set_debug_point(&mut self, point: Vec3);
     fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3);
     fn set_gravity(&mut self, gravity: bool);
+    fn set_draw_mode(&mut self, draw_mode: DrawMode);
+    fn get_draw_mode(&self) -> DrawMode;
 }

@@ -23,7 +23,7 @@ use hittest::hittest_node_for_leaf;
 use imgui::*;
 use imgui_wgpu::RendererConfig;
 use mouse::{MouseInputController, MouseInputMode};
-use rendering::bsp::BspRenderer;
+use rendering::bsp::{BspRenderer, DrawMode};
 use rendering::Renderer;
 use rfd::FileDialog;
 use std::collections::{HashMap, HashSet};
@@ -583,6 +583,29 @@ fn show_ui(cli: Cli) {
                             }
                         });
 
+                        if let Some(renderer) = renderer.as_mut() {
+                            ui.menu("View", || {
+                                ui.menu("Draw mode", || {
+                                    let mut draw_mode = renderer.get_draw_mode();
+                                    if ui
+                                        .menu_item_config("Texture")
+                                        .selected(draw_mode == DrawMode::Texture)
+                                        .build()
+                                    {
+                                        draw_mode = DrawMode::Texture;
+                                    }
+                                    if ui
+                                        .menu_item_config("Lightmap")
+                                        .selected(draw_mode == DrawMode::Lightmap)
+                                        .build()
+                                    {
+                                        draw_mode = DrawMode::Lightmap;
+                                    }
+                                    renderer.set_draw_mode(draw_mode);
+                                });
+                            });
+                        }
+
                         ui.menu("Game", || {
                             if ui.menu_item_config("Noclip").selected(noclip).build() {
                                 noclip = !noclip;
@@ -594,7 +617,7 @@ fn show_ui(cli: Cli) {
                                     renderer.set_gravity(gravity);
                                 }
                             }
-                        })
+                        });
                     });
 
                     if let Some(file_info) = file_info.as_ref() {

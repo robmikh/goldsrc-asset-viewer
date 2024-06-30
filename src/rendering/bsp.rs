@@ -54,6 +54,36 @@ impl GpuVertex {
     }
 }
 
+#[repr(i32)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum DrawMode {
+    Texture = 0,
+    Lightmap = 1,
+}
+
+impl DrawMode {
+    pub fn from_number(number: i32) -> Option<Self> {
+        match number {
+            0 => Some(Self::Texture),
+            1 => Some(Self::Lightmap),
+            _ => None,
+        }
+    }
+
+    pub fn cycle(&self) -> Self {
+        match self {
+            Self::Texture => Self::Lightmap,
+            Self::Lightmap => Self::Texture,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct DrawParams {
+    draw_mode: i32,
+}
+
 pub struct BspRenderer {
     models_to_render: Vec<usize>,
     map_models: Vec<GpuModel>,
@@ -68,6 +98,7 @@ pub struct BspRenderer {
     depth_sampler: wgpu::Sampler,
 
     _bind_group_layout: wgpu::BindGroupLayout,
+    _draw_params_bind_group_layout: wgpu::BindGroupLayout,
     model_bind_group_layout: wgpu::BindGroupLayout,
     _texture_bind_group_layout: wgpu::BindGroupLayout,
     _pipeline_layout: wgpu::PipelineLayout,
@@ -75,6 +106,11 @@ pub struct BspRenderer {
 
     lightmap_texture: wgpu::Texture,
     lightmap_view: wgpu::TextureView,
+
+    draw_mode: DrawMode,
+    draw_mode_update: Option<DrawMode>,
+    draw_params_buffer: wgpu::Buffer,
+    draw_params_bind_group: wgpu::BindGroup,
 
     camera: Camera,
     player: MovingEntity,
@@ -119,6 +155,22 @@ impl BspRenderer {
                 count: None,
             }],
         });
+        let draw_params_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(
+                            std::mem::size_of::<DrawParams>() as u64
+                        ),
+                    },
+                    count: None,
+                }],
+            });
         let model_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: None,
@@ -169,6 +221,7 @@ impl BspRenderer {
             label: None,
             bind_group_layouts: &[
                 &bind_group_layout,
+                &draw_params_bind_group_layout,
                 &model_bind_group_layout,
                 &texture_bind_group_layout,
             ],
@@ -225,7 +278,10 @@ impl BspRenderer {
                 lightmap_atlas.width() * 16,
                 lightmap_atlas.height() * 16,
             );
-            for (pixel, source_pixel) in image.pixels_mut().zip(lightmap_atlas.data().chunks_exact(3)) {
+            for (pixel, source_pixel) in image
+                .pixels_mut()
+                .zip(lightmap_atlas.data().chunks_exact(3))
+            {
                 *pixel =
                     image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
             }
@@ -267,6 +323,25 @@ impl BspRenderer {
             &bind_group_layout,
             &device,
         );
+
+        // Initialize draw params
+        let draw_mode = DrawMode::Texture;
+        let draw_params = DrawParams {
+            draw_mode: draw_mode as i32,
+        };
+        let draw_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Draw Params Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[draw_params]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let draw_params_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &draw_params_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: draw_params_buffer.as_entire_binding(),
+            }],
+            label: None,
+        });
 
         let vertex_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<GpuVertex>() as wgpu::BufferAddress,
@@ -419,6 +494,7 @@ impl BspRenderer {
             depth_sampler,
 
             _bind_group_layout: bind_group_layout,
+            _draw_params_bind_group_layout: draw_params_bind_group_layout,
             model_bind_group_layout,
             _texture_bind_group_layout: texture_bind_group_layout,
             _pipeline_layout: pipeline_layout,
@@ -426,6 +502,11 @@ impl BspRenderer {
 
             lightmap_texture,
             lightmap_view,
+
+            draw_mode,
+            draw_mode_update: None,
+            draw_params_buffer,
+            draw_params_bind_group,
 
             camera,
             player,
@@ -445,7 +526,7 @@ impl BspRenderer {
         for mesh in &model.meshes {
             let texture = mesh.texture_index;
             let (_, _, bind_group) = &self.textures[texture];
-            render_pass.set_bind_group(2, bind_group, &[]);
+            render_pass.set_bind_group(3, bind_group, &[]);
             render_pass.draw_indexed(
                 mesh.indices_range.start as u32..mesh.indices_range.end as u32,
                 0,
@@ -554,11 +635,12 @@ impl Renderer for BspRenderer {
             render_pass.push_debug_group("Prepare frame render pass.");
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
+            render_pass.set_bind_group(1, &self.draw_params_bind_group, &[]);
 
             render_pass.insert_debug_marker("Draw!");
             for model_index in &self.models_to_render {
                 let model = &self.map_models[*model_index];
-                render_pass.set_bind_group(1, &model.model_bind_group, &[]);
+                render_pass.set_bind_group(2, &model.model_bind_group, &[]);
                 self.render_model(&mut render_pass, model);
             }
 
@@ -781,6 +863,18 @@ impl Renderer for BspRenderer {
 
         self.camera.update(queue);
 
+        if let Some(draw_mode) = self.draw_mode_update.take() {
+            self.draw_mode = draw_mode;
+            let draw_params = DrawParams {
+                draw_mode: draw_mode as i32,
+            };
+            queue.write_buffer(
+                &self.draw_params_buffer,
+                0,
+                bytemuck::cast_slice(&[draw_params]),
+            );
+        }
+
         if let Some(new_debug_point) = self.new_debug_point.take() {
             let model = create_debug_point_model(new_debug_point, self.textures.len() - 1);
             let gpu_model = create_gpu_model_for_model(
@@ -826,6 +920,16 @@ impl Renderer for BspRenderer {
 
     fn set_gravity(&mut self, gravity: bool) {
         self.gravity = gravity;
+    }
+
+    fn set_draw_mode(&mut self, draw_mode: DrawMode) {
+        if self.draw_mode != draw_mode {
+            self.draw_mode_update = Some(draw_mode);
+        }
+    }
+
+    fn get_draw_mode(&self) -> DrawMode {
+        self.draw_mode
     }
 }
 

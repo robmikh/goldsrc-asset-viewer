@@ -11,16 +11,23 @@ struct Globals {
 @binding(0)
 var<uniform> r_globals: Globals;
 
-struct Locals {
-    transform: mat4x4<f32>,
+struct DrawParams {
+    draw_mode: i32,
 };
 @group(1)
 @binding(0)
+var<uniform> r_draw_params: DrawParams;
+
+struct Locals {
+    transform: mat4x4<f32>,
+};
+@group(2)
+@binding(0)
 var<uniform> r_locals: Locals;
-@group(1)
+@group(2)
 @binding(1)
 var r_sampler: sampler;
-@group(1)
+@group(2)
 @binding(2)
 var r_atlas: texture_2d<f32>;
 
@@ -44,7 +51,7 @@ fn vs_main(
     return out;
 }
 
-@group(2)
+@group(3)
 @binding(0)
 var r_texture: texture_2d<f32>;
 
@@ -57,8 +64,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if tex_color.w == 0.0 {
         discard;
     }
-    tex_color.x = lightmap_color.x;
-    tex_color.y = lightmap_color.y;
-    tex_color.z = lightmap_color.z;
+    if r_draw_params.draw_mode == 0 {
+        // Do nothing, use tex_color as-is
+    } else if r_draw_params.draw_mode == 1 {
+        tex_color.x = lightmap_color.x;
+        tex_color.y = lightmap_color.y;
+        tex_color.z = lightmap_color.z;
+    }
     return tex_color;
 }
