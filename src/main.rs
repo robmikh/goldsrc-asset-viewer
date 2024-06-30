@@ -16,7 +16,7 @@ use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
 use export::bsp::{decode_atlas, read_textures, read_wad_resources, WadCollection};
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
 use hittest::hittest_node_for_leaf;
@@ -213,6 +213,7 @@ fn show_ui(cli: Cli) {
     let mut down_keys = HashSet::<VirtualKeyCode>::new();
     let mut noclip = false;
     let mut gravity = true;
+    let mut debug_point = None;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = if cfg!(feature = "metal-auto-capture") {
             ControlFlow::Exit
@@ -374,6 +375,8 @@ fn show_ui(cli: Cli) {
                                                 closest_intersection
                                             {
                                                 renderer.set_debug_point(intersection_point);
+                                                debug_point = Some(intersection_point);
+                                                println!("Intersection: {:?}", intersection_point);
                                                 println!("Hit something... {}", model_index);
 
                                                 let mut found = None;
@@ -644,6 +647,22 @@ fn show_ui(cli: Cli) {
                                 &mut imgui_renderer,
                             ),
                         }
+                    }
+
+                    if let Some(debug_point) = debug_point.as_mut() {
+                        ui.window("Debug Point")
+                            .position([600.0, 25.0], Condition::FirstUseEver)
+                            .size([300.0, 400.0], Condition::FirstUseEver)
+                            .build(|| {
+                                let mut point = debug_point.to_array();
+                                if ui.input_float3("Position", &mut point).build() {
+                                    let point = Vec3::from_array(point);
+                                    *debug_point = point;
+                                    if let Some(renderer) = renderer.as_mut() {
+                                        renderer.set_debug_point(point);
+                                    }
+                                }
+                            });
                     }
                 }
 

@@ -333,9 +333,6 @@ fn process_indexed_triangles(
             }
 
             let excel_mod = |dividend: f32, divisor: f32| -> f32 {
-                if lightmap_index == 2715 {
-                    println!("{} % {}", dividend, divisor);
-                }
                 let quotient = (dividend / divisor).floor();
                 dividend - (divisor * quotient)
             };
@@ -371,9 +368,12 @@ fn process_indexed_triangles(
             };
             if lightmap_index == 2715 {
                 println!("lightmap_local_uv: {}", lightmap_local_uv);
-                println!("width: {}", lightmap_image.width);
-                println!("height: {}", lightmap_image.height);
-                println!("{:#?}", vertex);
+                println!("image size: {} x {}", lightmap_image.width, lightmap_image.height);
+                println!("lightmap_uv: {:?}", lightmap_uv);
+                //println!("{:#?}", vertex);
+                let temp = Vec2::from_array(lightmap_uv) * lightmap_atlas_size;
+                println!("{:?}", temp);
+                println!("pos: {:?}", pos_vec);
                 println!("");
             }
 

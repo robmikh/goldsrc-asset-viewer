@@ -286,7 +286,7 @@ impl BspRenderer {
                     image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
             }
 
-            image.save("testoutput/temp.png").unwrap();
+            //image.save("testoutput/temp.png").unwrap();
 
             let (texture, view) = create_texture_and_view(device, queue, &image);
             (texture, view)
