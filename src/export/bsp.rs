@@ -42,6 +42,7 @@ vertex_def! {
 struct SharedVertex {
     vertex: usize,
     texture: usize,
+    lightmap: usize,
 }
 
 pub struct TextureInfo {
@@ -483,6 +484,7 @@ fn convert_leaf(
             SharedVertex {
                 vertex: index as usize,
                 texture: face.texture_info as usize,
+                lightmap: face_index,
             }
         };
         for i in 0..surface_edges.len() - 2 {
