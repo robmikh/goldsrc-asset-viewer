@@ -212,7 +212,11 @@ pub fn read_textures(reader: &BspReader, wad_resources: &WadCollection) -> Vec<T
     textures
 }
 
-fn convert(reader: &BspReader, textures: &[TextureInfo], lightmap_atlas: &LightmapAtlas) -> Model<ModelVertex> {
+fn convert(
+    reader: &BspReader,
+    textures: &[TextureInfo],
+    lightmap_atlas: &LightmapAtlas,
+) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
     let mut meshes = Vec::new();
@@ -237,7 +241,11 @@ fn convert(reader: &BspReader, textures: &[TextureInfo], lightmap_atlas: &Lightm
     }
 }
 
-pub fn convert_models(reader: &BspReader, textures: &[TextureInfo], lightmap_atlas: &LightmapAtlas) -> Vec<Model<ModelVertex>> {
+pub fn convert_models(
+    reader: &BspReader,
+    textures: &[TextureInfo],
+    lightmap_atlas: &LightmapAtlas,
+) -> Vec<Model<ModelVertex>> {
     let bsp_models = reader.read_models();
 
     let mut models = Vec::with_capacity(bsp_models.len());
@@ -303,12 +311,22 @@ fn process_indexed_triangles(
                 pos_vec.dot(s) + texture_info.s_shift,
                 pos_vec.dot(t) + texture_info.t_shift,
             ];
-            assert_eq!(uv[0], Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.s)) + texture_info.s_shift);
-            assert_eq!(uv[1], Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.t)) + texture_info.t_shift);
+            assert_eq!(
+                uv[0],
+                Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.s))
+                    + texture_info.s_shift
+            );
+            assert_eq!(
+                uv[1],
+                Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.t))
+                    + texture_info.t_shift
+            );
 
             let normal = convert_coordinates(normal);
 
-            let lightmap_atlas_size = Vec2::new(lightmap_atlas.width as f32 , lightmap_atlas.height as f32) * Vec2::new(16.0, 16.0);
+            let lightmap_atlas_size =
+                Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32)
+                    * Vec2::new(16.0, 16.0);
             let lightmap_image = &lightmap_atlas.images[lightmap_index];
             let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
             let lightmap_uv = (Vec2::from_array(uv) / LIGHTMAP_SCALE as f32) + lightmap_offset;
@@ -320,7 +338,12 @@ fn process_indexed_triangles(
             ];
 
             let index = vertices.len();
-            vertices.push(ModelVertex { pos, normal, uv, lightmap_uv });
+            vertices.push(ModelVertex {
+                pos,
+                normal,
+                uv,
+                lightmap_uv,
+            });
             vertex_map.insert(*trivert, index);
             index
         };
@@ -380,7 +403,14 @@ fn convert_node(
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
         convert_leaf(
-            reader, leaf, indices, vertices, vertex_map, meshes, textures, lightmap_atlas
+            reader,
+            leaf,
+            indices,
+            vertices,
+            vertex_map,
+            meshes,
+            textures,
+            lightmap_atlas,
         );
         return;
     };
@@ -687,13 +717,16 @@ pub fn export_light_data<P: AsRef<Path>>(
     std::fs::write(export_path, data)?;
 
     let atlas = decode_atlas(reader);
-    
+
     let mut export_path = export_path.to_owned();
     export_path.set_file_name("atlas.png");
     let atlas_pixel_width = atlas.width * 16;
     let atlas_pixel_height = atlas.height * 16;
-    let pixel_data = image::RgbImage::from_vec(atlas_pixel_width, atlas_pixel_height, atlas.data).unwrap();
-    pixel_data.save_with_format(export_path, image::ImageFormat::Png).unwrap();
+    let pixel_data =
+        image::RgbImage::from_vec(atlas_pixel_width, atlas_pixel_height, atlas.data).unwrap();
+    pixel_data
+        .save_with_format(export_path, image::ImageFormat::Png)
+        .unwrap();
 
     Ok(())
 }
@@ -807,18 +840,20 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
         let extra_whole_rows = remaining / width;
         let extras = remaining % width;
         let height = if remaining > 0 {
-            let extra_row = if extras > 0 {
-                1
-            } else {
-                0
-            };
+            let extra_row = if extras > 0 { 1 } else { 0 };
             width + extra_whole_rows + extra_row
         } else {
             width
         };
         (width, height)
     };
-    assert!((atlas_width * atlas_height) >= face_datas.len(), "Failed: ({} x {}) >= {}", atlas_width, atlas_height, face_datas.len());
+    assert!(
+        (atlas_width * atlas_height) >= face_datas.len(),
+        "Failed: ({} x {}) >= {}",
+        atlas_width,
+        atlas_height,
+        face_datas.len()
+    );
     let bytes_per_pixel = 3;
     let image_width_in_pixels = 16;
     let image_height_in_pixels = 16;

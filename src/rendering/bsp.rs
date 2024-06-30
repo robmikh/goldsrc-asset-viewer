@@ -221,9 +221,13 @@ impl BspRenderer {
         // Create lightmap atlas
         let lightmap_atlas = decode_atlas(reader);
         let (lightmap_texture, lightmap_view) = {
-            let mut image = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(lightmap_atlas.width() * 16, lightmap_atlas.height() * 16);
+            let mut image = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new(
+                lightmap_atlas.width() * 16,
+                lightmap_atlas.height() * 16,
+            );
             for (pixel, source_pixel) in image.pixels_mut().zip(lightmap_atlas.data().windows(3)) {
-                *pixel = image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
+                *pixel =
+                    image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
             }
 
             let (texture, view) = create_texture_and_view(device, queue, &image);

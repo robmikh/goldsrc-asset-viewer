@@ -746,7 +746,8 @@ fn load_renderer(
 
                 let textures = read_textures(&file.reader, &wad_resources);
                 let lightmap_atlas = decode_atlas(&file.reader);
-                let map_models = export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
+                let map_models =
+                    export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
 
                 let renderer =
                     BspRenderer::new(&file.reader, &map_models, &textures, device, queue, config);
