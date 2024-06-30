@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Vec2, Vec2Swizzles, Vec3};
+use glam::{Vec2, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -819,18 +819,24 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
         (width, height)
     };
     assert!((atlas_width * atlas_height) >= face_datas.len(), "Failed: ({} x {}) >= {}", atlas_width, atlas_height, face_datas.len());
-    let atlas_image_stride = 16 * 3;
+    let bytes_per_pixel = 3;
+    let image_width_in_pixels = 16;
+    let image_height_in_pixels = 16;
+    let atlas_image_stride = image_width_in_pixels * bytes_per_pixel;
     let atlas_stride = atlas_width * atlas_image_stride;
-    let atlas_len = atlas_stride * (atlas_height * 16);
+    let atlas_len = atlas_stride * (atlas_height * image_height_in_pixels);
     let mut atlas_data = vec![0u8; atlas_len];
 
     let mut images = Vec::with_capacity(face_datas.len());
 
     // Build the atlas
     for (i, face_data) in face_datas.iter().enumerate() {
-        let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
+        let x = (i % atlas_width) * image_width_in_pixels;
+        let y = (i / atlas_width) * image_height_in_pixels;
+        let atlas_offset = (y * atlas_stride) + (x * bytes_per_pixel);
+        //let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
 
-        let data_stride = face_data.width as usize * 3;
+        let data_stride = face_data.width as usize * bytes_per_pixel;
         let rows = face_data.height as usize;
         for row in 0..rows {
             let atlas_row_start = atlas_offset + (row * atlas_stride);
@@ -843,8 +849,8 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
         }
 
         images.push(LightmapAtlasImage {
-            x: ((i % atlas_width) * 16) as u32,
-            y: ((i / atlas_width) * 16) as u32,
+            x: x as u32,
+            y: y as u32,
             width: face_data.width,
             height: face_data.height,
         })
