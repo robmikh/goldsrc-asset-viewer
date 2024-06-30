@@ -325,8 +325,20 @@ fn process_indexed_triangles(
 
             let normal = convert_coordinates(normal);
 
+            if lightmap_index == 2715 {
+                println!("lightmap_local_uv: {}", Vec2::from_array(uv) / LIGHTMAP_SCALE as f32);
+            }
+
+            let excel_mod = |dividend: f32, divisor: f32| -> f32 {
+                let quotient = (dividend / divisor).floor();
+                dividend - (divisor * quotient)
+            };
+            let excel_mod_vec2 = |dividend: Vec2, divisor: Vec2| -> Vec2 {
+                Vec2::new(excel_mod(dividend.x, divisor.x), excel_mod(dividend.y, divisor.y))
+            };
+
             let lightmap_image = &lightmap_atlas.images[lightmap_index];
-            let lightmap_local_uv = ((Vec2::from_array(uv) / LIGHTMAP_SCALE as f32) % (Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32))).abs();
+            let lightmap_local_uv = excel_mod_vec2(Vec2::from_array(uv) / LIGHTMAP_SCALE as f32, Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32));
             let lightmap_atlas_size =
                 Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32)
                     * Vec2::new(16.0, 16.0);
@@ -347,6 +359,8 @@ fn process_indexed_triangles(
             };
             if lightmap_index == 2715 {
                 println!("lightmap_local_uv: {}", lightmap_local_uv);
+                println!("width: {}", lightmap_image.width);
+                println!("height: {}", lightmap_image.height);
                 println!("{:#?}", vertex);
                 println!("");
             }
