@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec2Swizzles, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -27,6 +27,7 @@ use gsparser::{
 use crate::export::coordinates::convert_coordinates;
 
 const QUIVER_PREFIX: &'static str = "\\quiver\\";
+const LIGHTMAP_SCALE: usize = 16;
 
 vertex_def! {
     ModelVertex {
@@ -293,7 +294,8 @@ fn process_indexed_triangles(
         let index = if let Some(index) = vertex_map.get(trivert) {
             *index
         } else {
-            let pos = convert_coordinates(bsp_vertices[trivert.vertex as usize].to_array());
+            let hl_pos = bsp_vertices[trivert.vertex as usize].to_array();
+            let pos = convert_coordinates(hl_pos);
             let pos_vec = Vec3::from_array(pos);
             let s = Vec3::from_array(convert_coordinates(texture_info.s));
             let t = Vec3::from_array(convert_coordinates(texture_info.t));
@@ -301,14 +303,17 @@ fn process_indexed_triangles(
                 pos_vec.dot(s) + texture_info.s_shift,
                 pos_vec.dot(t) + texture_info.t_shift,
             ];
+            assert_eq!(uv[0], Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.s)) + texture_info.s_shift);
+            assert_eq!(uv[1], Vec3::from_array(hl_pos).dot(Vec3::from_array(texture_info.t)) + texture_info.t_shift);
 
             let normal = convert_coordinates(normal);
 
+            let lightmap_atlas_size = Vec2::new(lightmap_atlas.width as f32 , lightmap_atlas.height as f32) * Vec2::new(16.0, 16.0);
             let lightmap_image = &lightmap_atlas.images[lightmap_index];
-            let lightmap_uv = [
-                ((lightmap_image.x as f32) / (lightmap_atlas.width * 16) as f32) + (uv[0] / (lightmap_atlas.width * 16) as f32),
-                ((lightmap_image.y as f32) / (lightmap_atlas.height * 16) as f32) + (uv[1] / (lightmap_atlas.height * 16) as f32),
-            ];
+            let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
+            let lightmap_uv = (Vec2::from_array(uv) / LIGHTMAP_SCALE as f32) + lightmap_offset;
+            let lightmap_uv = (lightmap_uv / lightmap_atlas_size).to_array();
+            //let lightmap_uv = [lightmap_uv[1], lightmap_uv[0]];
             let uv = [
                 uv[0] / texture.image_width as f32,
                 uv[1] / texture.image_height as f32,
@@ -756,7 +761,6 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
             }
         }
 
-        const LIGHTMAP_SCALE: usize = 16;
         let mut imaxs = [0i32, 0];
         let mut imins = [0i32, 0];
         for k in 0..2 {
@@ -839,8 +843,8 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
         }
 
         images.push(LightmapAtlasImage {
-            x: ((i % atlas_width) * atlas_image_stride) as u32,
-            y: (i / atlas_width) as u32,
+            x: ((i % atlas_width) * 16) as u32,
+            y: ((i / atlas_width) * 16) as u32,
             width: face_data.width,
             height: face_data.height,
         })
