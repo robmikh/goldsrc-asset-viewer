@@ -996,8 +996,4 @@ impl LightmapAtlas {
     pub fn data(&self) -> &[u8] {
         &self.data
     }
-
-    pub fn size_in_pixels(&self) -> (u32, u32) {
-        (self.width * 16, self.height * 16)
-    }
 }
