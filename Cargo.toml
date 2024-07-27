@@ -21,3 +21,4 @@ pollster = "0.3.0"
 id_tree = "1.8.0"
 bytemuck = { version="1.16.0", features = [ "derive" ] }
 gltf = { git = "https://github.com/robmikh/gltf", rev = "e56c12b486e88294292bde7a335bb763021b2391" }
+rectangle-pack = "0.4.2"

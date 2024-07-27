@@ -1,10 +1,10 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::Write,
     path::{Path, PathBuf},
 };
 
-use glam::{Vec2, Vec2Swizzles, Vec3};
+use glam::{Vec2, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -23,6 +23,7 @@ use gsparser::{
     },
     wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
+use rectangle_pack::{contains_smallest_box, volume_heuristic, GroupedRectsToPlace, RectToInsert, TargetBin};
 
 use crate::export::coordinates::convert_coordinates;
 
@@ -350,8 +351,7 @@ fn process_indexed_triangles(
                 lightmap_image_size,
             ).ceil();
             let lightmap_atlas_size =
-                Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32)
-                    * Vec2::new(16.0, 16.0);
+                Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32);
             let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
             let lightmap_uv = lightmap_local_uv + lightmap_offset;
             let lightmap_uv = (lightmap_uv / lightmap_atlas_size).to_array();
@@ -885,43 +885,83 @@ pub struct LightmapAtlas {
 }
 
 fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
-    // Allocate atlas
-    let (atlas_width, atlas_height) = {
-        let width = (face_datas.len() as f64).sqrt() as usize;
-        let remaining = face_datas.len() - (width * width);
-        let extra_whole_rows = remaining / width;
-        let extras = remaining % width;
-        let height = if remaining > 0 {
-            let extra_row = if extras > 0 { 1 } else { 0 };
-            width + extra_whole_rows + extra_row
-        } else {
-            width
-        };
-        (width, height)
-    };
-    assert!(
-        (atlas_width * atlas_height) >= face_datas.len(),
-        "Failed: ({} x {}) >= {}",
-        atlas_width,
-        atlas_height,
-        face_datas.len()
-    );
-    let bytes_per_pixel = 3;
-    let image_width_in_pixels = 16;
-    let image_height_in_pixels = 16;
-    let atlas_image_stride = image_width_in_pixels * bytes_per_pixel;
-    let atlas_stride = atlas_width * atlas_image_stride;
-    let atlas_len = atlas_stride * (atlas_height * image_height_in_pixels);
-    let mut atlas_data = vec![0u8; atlas_len];
+
+    let mut rects_to_place: GroupedRectsToPlace<usize, usize> = GroupedRectsToPlace::new();
 
     let mut images = Vec::with_capacity(face_datas.len());
 
     // Build the atlas
+    let mut num_pixels = 0;
     for (i, face_data) in face_datas.iter().enumerate() {
-        let x = (i % atlas_width) * image_width_in_pixels;
-        let y = (i / atlas_width) * image_height_in_pixels;
+        rects_to_place.push_rect(i, None, RectToInsert::new(face_data.width, face_data.height, 1));
+        images.push(LightmapAtlasImage {
+            x: 0,
+            y: 0,
+            width: face_data.width,
+            height: face_data.height,
+        });
+        num_pixels += (face_data.width * face_data.height) as usize;
+    }
+
+    let (atlas_width, atlas_height, rectangle_placements) = {
+        let mut result = None;
+        for i in 0..10 {
+            let multiplier = 1.0 + (0.25 * i as f64);
+
+            let num_pixels_inflated = (num_pixels as f64 * multiplier) as usize;
+
+            let (atlas_width, atlas_height) = {
+                let width = (num_pixels_inflated as f64).sqrt() as usize;
+                let remaining = num_pixels_inflated - (width * width);
+                let extra_whole_rows = remaining / width;
+                let extras = remaining % width;
+                let height = if remaining > 0 {
+                    let extra_row = if extras > 0 { 1 } else { 0 };
+                    width + extra_whole_rows + extra_row
+                } else {
+                    width
+                };
+                (width, height)
+            };
+
+            let mut target_bins = BTreeMap::new();
+            target_bins.insert(0, TargetBin::new(atlas_width as u32, atlas_height as u32, 1));
+
+            if let Ok(rectangle_placements) = rectangle_pack::pack_rects(
+                &rects_to_place,
+                &mut target_bins,
+                &volume_heuristic,
+                &contains_smallest_box
+            ) {
+                result = Some((atlas_width, atlas_height, rectangle_placements));
+                break;
+            }
+        }
+
+        result.expect("Could not pack lightmap atlas!")
+    };
+
+    let locations = rectangle_placements.packed_locations();
+    for (i, image) in images.iter_mut().enumerate() {
+        let (_, location) = locations.get(&i).unwrap();
+        image.x = location.x();
+        image.y = location.y();
+        assert_eq!(image.width, location.width());
+        assert_eq!(image.height, location.height());
+    }
+
+    let bytes_per_pixel = 3;
+    let atlas_stride = atlas_width * bytes_per_pixel;
+    let atlas_len = atlas_stride * atlas_height;
+    let mut atlas_data = vec![0u8; atlas_len];
+
+    // Build the atlas
+    for (i, face_data) in face_datas.iter().enumerate() {
+        let image = &images[i];
+
+        let x = image.x as usize;
+        let y = image.y as usize;
         let atlas_offset = (y * atlas_stride) + (x * bytes_per_pixel);
-        //let atlas_offset = (((i / atlas_width) * atlas_stride) * 16) + ((i % atlas_width) * atlas_image_stride);
 
         let data_stride = face_data.width as usize * bytes_per_pixel;
         let rows = face_data.height as usize;
@@ -934,13 +974,6 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
             let source = &face_data.data[source_start..source_end];
             dest.copy_from_slice(source);
         }
-
-        images.push(LightmapAtlasImage {
-            x: x as u32,
-            y: y as u32,
-            width: face_data.width,
-            height: face_data.height,
-        })
     }
 
     LightmapAtlas {
