@@ -344,10 +344,11 @@ fn process_indexed_triangles(
             };
 
             let lightmap_image = &lightmap_atlas.images[lightmap_index];
+            let lightmap_image_size = Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32);
             let lightmap_local_uv = excel_mod_vec2(
                 Vec2::from_array(uv) / LIGHTMAP_SCALE as f32,
-                Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32),
-            );
+                lightmap_image_size,
+            ).ceil();
             let lightmap_atlas_size =
                 Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32)
                     * Vec2::new(16.0, 16.0);
@@ -368,7 +369,7 @@ fn process_indexed_triangles(
             };
             if lightmap_index == 2715 {
                 println!("lightmap_local_uv: {}", lightmap_local_uv);
-                println!("image size: {} x {}", lightmap_image.width, lightmap_image.height);
+                println!("image size: {}", lightmap_image_size);
                 println!("lightmap_uv: {:?}", lightmap_uv);
                 //println!("{:#?}", vertex);
                 let temp = Vec2::from_array(lightmap_uv) * lightmap_atlas_size;
@@ -961,5 +962,9 @@ impl LightmapAtlas {
 
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+
+    pub fn size_in_pixels(&self) -> (u32, u32) {
+        (self.width * 16, self.height * 16)
     }
 }

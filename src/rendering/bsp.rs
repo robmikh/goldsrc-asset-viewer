@@ -235,6 +235,7 @@ impl BspRenderer {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
+            anisotropy_clamp: 1,
             ..Default::default()
         });
 
