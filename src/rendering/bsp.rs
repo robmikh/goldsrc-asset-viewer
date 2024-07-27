@@ -8,7 +8,7 @@ use glam::{Mat4, Vec2, Vec3};
 use gltf::{Mesh, Model};
 use gsparser::bsp::{BspEntity, BspReader};
 use wgpu::util::DeviceExt;
-use winit::event::VirtualKeyCode;
+use winit::keyboard::KeyCode;
 
 use crate::{
     export::{
@@ -460,11 +460,13 @@ impl BspRenderer {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &vertex_buffers,
+                compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(target)],
+                compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 cull_mode: Some(wgpu::Face::Back),
@@ -621,17 +623,19 @@ impl Renderer for BspRenderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(clear_color),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             render_pass.push_debug_group("Prepare frame render pass.");
             render_pass.set_pipeline(&self.render_pipeline);
@@ -679,7 +683,7 @@ impl Renderer for BspRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         delta: std::time::Duration,
-        down_keys: &HashSet<VirtualKeyCode>,
+        down_keys: &HashSet<KeyCode>,
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
         noclip: bool,
@@ -687,15 +691,15 @@ impl Renderer for BspRenderer {
         let mut rotation = self.camera.yaw_pitch_roll();
         let old_rotation = rotation;
 
-        if down_keys.contains(&VirtualKeyCode::Q) {
+        if down_keys.contains(&KeyCode::KeyQ) {
             rotation.x += 5.0_f32.to_radians();
-        } else if down_keys.contains(&VirtualKeyCode::E) {
+        } else if down_keys.contains(&KeyCode::KeyE) {
             rotation.x -= 5.0_f32.to_radians();
         }
 
-        if down_keys.contains(&VirtualKeyCode::F) {
+        if down_keys.contains(&KeyCode::KeyF) {
             rotation.y += 5.0_f32.to_radians();
-        } else if down_keys.contains(&VirtualKeyCode::R) {
+        } else if down_keys.contains(&KeyCode::KeyR) {
             rotation.y -= 5.0_f32.to_radians();
         }
 
@@ -712,18 +716,18 @@ impl Renderer for BspRenderer {
         let mut direction = Vec3::ZERO;
         let facing = self.camera.facing();
         let up = self.camera.up();
-        if down_keys.contains(&VirtualKeyCode::W) {
+        if down_keys.contains(&KeyCode::KeyW) {
             let delta_position = facing;
             direction += delta_position;
-        } else if down_keys.contains(&VirtualKeyCode::S) {
+        } else if down_keys.contains(&KeyCode::KeyS) {
             let delta_position = -facing;
             direction += delta_position;
         }
 
-        if down_keys.contains(&VirtualKeyCode::A) {
+        if down_keys.contains(&KeyCode::KeyA) {
             let delta_position = -facing.cross(up);
             direction += delta_position;
-        } else if down_keys.contains(&VirtualKeyCode::D) {
+        } else if down_keys.contains(&KeyCode::KeyD) {
             let delta_position = facing.cross(up);
             direction += delta_position;
         }
@@ -739,7 +743,7 @@ impl Renderer for BspRenderer {
         };
 
         // TODO: On release
-        if down_keys.contains(&VirtualKeyCode::Space) && self.player.is_on_ground() {
+        if down_keys.contains(&KeyCode::Space) && self.player.is_on_ground() {
             // https://www.jwchong.com/hl/duckjump.html#jumping
             let jump_impulse = (2.0f32 * 800.0 * 45.0).sqrt();
             self.player
@@ -990,9 +994,9 @@ fn create_depth_texture(
     let texture = device.create_texture(&desc);
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        address_mode_u: wgpu::AddressMode::MirrorRepeat,
-        address_mode_v: wgpu::AddressMode::MirrorRepeat,
-        address_mode_w: wgpu::AddressMode::MirrorRepeat,
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
         mipmap_filter: wgpu::FilterMode::Linear,

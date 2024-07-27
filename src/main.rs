@@ -26,13 +26,14 @@ use mouse::{MouseInputController, MouseInputMode};
 use rendering::bsp::{BspRenderer, DrawMode};
 use rendering::Renderer;
 use rfd::FileDialog;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use winit::event::DeviceEvent;
 use winit::{
     dpi::LogicalSize,
-    event::{ElementState, Event, VirtualKeyCode, WindowEvent},
+    event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -121,24 +122,26 @@ fn show_ui(cli: Cli) {
         file_info = load_file(path);
     }
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
+    let window = Window::new(&event_loop).unwrap();
+    let _ = window.request_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
+    if let Some(path) = &cli.file_path {
+        window.set_title(&format!("{} - {}", WINDOW_TITLE, path.display()));
+    } else {
+        window.set_title(WINDOW_TITLE);
+    }
+    let size = window.inner_size();
+    let wgpu_backend = if cfg!(target_os = "windows") {
+        wgpu::Backends::DX12
+    } else {
+        wgpu::Backends::all()
+    };
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        //backends: wgpu::Backends::DX12,
+        //backends: wgpu::Backends::all(),
+        backends: wgpu_backend,
         ..Default::default()
     });
-    let (window, size, surface) = {
-        let window = Window::new(&event_loop).unwrap();
-        window.set_inner_size(LogicalSize::<f32>::new(1447.0, 867.0));
-        if let Some(path) = &cli.file_path {
-            window.set_title(&format!("{} - {}", WINDOW_TITLE, path.display()));
-        } else {
-            window.set_title(WINDOW_TITLE);
-        }
-        let size = window.inner_size();
-        let surface = unsafe { instance.create_surface(&window).unwrap() };
-        (window, size, surface)
-    };
+    let surface = instance.create_surface(&window).unwrap();
 
     let hidpi_factor = window.scale_factor();
 
@@ -148,6 +151,8 @@ fn show_ui(cli: Cli) {
         force_fallback_adapter: false,
     }))
     .unwrap();
+    let adapter_info = adapter.get_info();
+    println!("Adapter: {:#?}", adapter_info);
     let (mut device, mut queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
             .unwrap();
@@ -160,6 +165,7 @@ fn show_ui(cli: Cli) {
         present_mode: wgpu::PresentMode::Mailbox,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
+        desired_maximum_frame_latency: 0,
     };
     surface.configure(&device, &surface_config);
 
@@ -210,23 +216,20 @@ fn show_ui(cli: Cli) {
     let mut pending_path: Option<PathBuf> = None;
 
     let mut mouse_controller = MouseInputController::new();
-    let mut down_keys = HashSet::<VirtualKeyCode>::new();
+    let mut down_keys = HashSet::<KeyCode>::new();
     let mut noclip = false;
     let mut gravity = true;
     let mut debug_point = None;
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = if cfg!(feature = "metal-auto-capture") {
-            ControlFlow::Exit
-        } else {
-            ControlFlow::Poll
-        };
+    event_loop.set_control_flow(ControlFlow::Poll);
+    event_loop.run(|event, target| {
+        let mut should_exit = false;
         let mut mouse_event = false;
         match event {
-            Event::MainEventsCleared => window.request_redraw(),
+            Event::AboutToWait => window.request_redraw(),
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
-            } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+            } if window_id == window.id() => should_exit = true,
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
                 ..
@@ -241,6 +244,7 @@ fn show_ui(cli: Cli) {
                     present_mode: wgpu::PresentMode::Mailbox,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
                     view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
+                    desired_maximum_frame_latency: 0,
                 };
                 surface.configure(&device, &surface_config);
                 if let Some(renderer) = renderer.as_mut() {
@@ -253,9 +257,9 @@ fn show_ui(cli: Cli) {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            winit::event::KeyboardInput {
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                        event:
+                            winit::event::KeyEvent {
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
                                 state: ElementState::Pressed,
                                 ..
                             },
@@ -267,14 +271,14 @@ fn show_ui(cli: Cli) {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                should_exit = true;
             }
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            winit::event::KeyboardInput {
-                                virtual_keycode,
+                        event:
+                            winit::event::KeyEvent {
+                                physical_key,
                                 state,
                                 ..
                             },
@@ -282,7 +286,7 @@ fn show_ui(cli: Cli) {
                     },
                 ..
             } => {
-                if let Some(keycode) = virtual_keycode {
+                if let PhysicalKey::Code(keycode) = physical_key {
                     let was_down = down_keys.get(&keycode).is_some();
 
                     if state == ElementState::Pressed {
@@ -292,9 +296,9 @@ fn show_ui(cli: Cli) {
                     }
 
                     // TODO: Consolodate keyboard key up/down logic
-                    if keycode == VirtualKeyCode::B
+                    if keycode == KeyCode::KeyB
                         && was_down
-                        && down_keys.contains(&VirtualKeyCode::LShift)
+                        && down_keys.contains(&KeyCode::ShiftLeft)
                     {
                         let new_input_mode = match mouse_controller.input_mode() {
                             MouseInputMode::Cursor => MouseInputMode::CameraLook,
@@ -329,7 +333,7 @@ fn show_ui(cli: Cli) {
                 if mouse_controller.input_mode() == MouseInputMode::Cursor {
                     if state == ElementState::Released && button == winit::event::MouseButton::Left
                     {
-                        if down_keys.contains(&VirtualKeyCode::LShift) {
+                        if down_keys.contains(&KeyCode::ShiftLeft) {
                             if let Some(renderer) = renderer.as_mut() {
                                 let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
                                     mouse_controller.mouse_position(),
@@ -414,7 +418,7 @@ fn show_ui(cli: Cli) {
                     } else if state == ElementState::Released
                         && button == winit::event::MouseButton::Right
                     {
-                        if down_keys.contains(&VirtualKeyCode::LShift) {
+                        if down_keys.contains(&KeyCode::ShiftLeft) {
                             if let Some(renderer) = renderer.as_mut() {
                                 let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
                                     mouse_controller.mouse_position(),
@@ -444,7 +448,10 @@ fn show_ui(cli: Cli) {
                     }
                 }
             }
-            Event::RedrawRequested(_) => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 let now = Instant::now();
                 let delta = now - last_frame;
                 last_frame = now;
@@ -493,12 +500,12 @@ fn show_ui(cli: Cli) {
                     renderer.render(clear_color, &view, &device, &queue);
                     wgpu::Operations {
                         load: wgpu::LoadOp::Load,
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }
                 } else {
                     wgpu::Operations {
                         load: wgpu::LoadOp::Clear(clear_color),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }
                 };
 
@@ -582,7 +589,7 @@ fn show_ui(cli: Cli) {
                                 }
                             }
                             if ui.menu_item("Exit") {
-                                *control_flow = ControlFlow::Exit;
+                                should_exit = true;
                             }
                         });
 
@@ -683,6 +690,8 @@ fn show_ui(cli: Cli) {
                             ops: clear_op,
                         })],
                         depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
                     });
 
                     imgui_renderer
@@ -695,10 +704,13 @@ fn show_ui(cli: Cli) {
             }
             _ => (),
         };
+        if should_exit {
+            target.exit();
+        }
         if mouse_controller.input_mode() == MouseInputMode::Cursor || !mouse_event {
             platform.handle_event(imgui.io_mut(), &window, &event);
         }
-    });
+    }).unwrap();
 }
 
 fn get_extension_from_path<P: AsRef<Path>>(path: P) -> Option<String> {

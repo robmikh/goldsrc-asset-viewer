@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use bsp::DrawMode;
 use glam::{Vec2, Vec3};
-use winit::event::VirtualKeyCode;
+use winit::keyboard::KeyCode;
 
 use crate::FileInfo;
 
@@ -32,7 +32,7 @@ pub trait Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         delta: Duration,
-        down_keys: &HashSet<VirtualKeyCode>,
+        down_keys: &HashSet<KeyCode>,
         mouse_delta: Option<Vec2>,
         // TODO: remove
         file_info: &Option<FileInfo>,
