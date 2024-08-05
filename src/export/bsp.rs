@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec2Swizzles, Vec3};
 use gltf::{
     animation::Animations,
     buffer::BufferWriter,
@@ -353,8 +353,8 @@ fn process_indexed_triangles(
             let lightmap_atlas_size =
                 Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32);
             let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
-            let lightmap_uv = lightmap_local_uv + lightmap_offset;
-            let lightmap_uv = (lightmap_uv / lightmap_atlas_size).to_array();
+            let lightmap_nonrelative_uv = lightmap_local_uv + lightmap_offset + Vec2::new(0.5, 0.5);
+            let lightmap_uv = (lightmap_nonrelative_uv / lightmap_atlas_size).to_array();
             //let lightmap_uv = [lightmap_uv[1], lightmap_uv[0]];
             let uv = [
                 uv[0] / texture.image_width as f32,
@@ -371,6 +371,7 @@ fn process_indexed_triangles(
                 println!("lightmap_local_uv: {}", lightmap_local_uv);
                 println!("image size: {}", lightmap_image_size);
                 println!("lightmap_uv: {:?}", lightmap_uv);
+                println!("lightmap_nonrelative_uv: {:?}", lightmap_nonrelative_uv);
                 //println!("{:#?}", vertex);
                 let temp = Vec2::from_array(lightmap_uv) * lightmap_atlas_size;
                 println!("{:?}", temp);

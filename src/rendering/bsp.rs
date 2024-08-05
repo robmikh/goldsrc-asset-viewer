@@ -235,7 +235,6 @@ impl BspRenderer {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            anisotropy_clamp: 1,
             ..Default::default()
         });
 
@@ -287,7 +286,8 @@ impl BspRenderer {
                     image::Rgba::<u8>([source_pixel[0], source_pixel[1], source_pixel[2], 255]);
             }
 
-            //image.save("testoutput/temp.png").unwrap();
+            //let image = image::imageops::resize(&image, lightmap_atlas.width() * 2, lightmap_atlas.height() * 2, image::imageops::FilterType::Nearest);
+            //image.save("testoutput/tempScaled.png").unwrap();
 
             let (texture, view) = create_texture_and_view(device, queue, &image);
             (texture, view)
