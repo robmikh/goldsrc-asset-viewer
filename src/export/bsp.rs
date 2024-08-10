@@ -280,6 +280,9 @@ pub fn convert_models(
     models
 }
 
+//const DEBUG_LIGHTMAP_INDEX: usize = 2715;
+const DEBUG_LIGHTMAP_INDEX: usize = 2712;
+
 fn process_indexed_triangles(
     triangle_list: &[SharedVertex],
     face: &BspFace,
@@ -326,30 +329,26 @@ fn process_indexed_triangles(
 
             let normal = convert_coordinates(normal);
 
-            if lightmap_index == 2715 {
+            let lightmap_local_nonrelative_uv = Vec2::from_array(uv) / LIGHTMAP_SCALE as f32;
+            if lightmap_index == DEBUG_LIGHTMAP_INDEX {
+                println!("st: {}, {}", s, t);
+                println!("uv: {:?}", uv);
                 println!(
-                    "lightmap_local_uv: {}",
-                    Vec2::from_array(uv) / LIGHTMAP_SCALE as f32
+                    "lightmap_local_nonrelative_uv: {}",
+                    lightmap_local_nonrelative_uv
                 );
             }
 
-            let excel_mod = |dividend: f32, divisor: f32| -> f32 {
-                let quotient = (dividend / divisor).floor();
-                dividend - (divisor * quotient)
-            };
-            let excel_mod_vec2 = |dividend: Vec2, divisor: Vec2| -> Vec2 {
-                Vec2::new(
-                    excel_mod(dividend.x, divisor.x),
-                    excel_mod(dividend.y, divisor.y),
-                )
-            };
-
             let lightmap_image = &lightmap_atlas.images[lightmap_index];
             let lightmap_image_size = Vec2::new(lightmap_image.width as f32, lightmap_image.height as f32);
-            let lightmap_local_uv = excel_mod_vec2(
-                Vec2::from_array(uv) / LIGHTMAP_SCALE as f32,
-                lightmap_image_size,
-            ).ceil();
+            //let lightmap_local_uv = excel_mod_vec2(
+            //    lightmap_local_uv,
+            //    lightmap_image_size,
+            //);
+            //let lightmap_local_uv = lightmap_local_nonrelative_uv / lightmap_image_size;
+            let (lightmap_mins, _lightmap_maxs) = &lightmap_atlas.mins_maxs[lightmap_index];
+            let lightmap_local_uv = lightmap_local_nonrelative_uv - *lightmap_mins;
+
             let lightmap_atlas_size =
                 Vec2::new(lightmap_atlas.width as f32, lightmap_atlas.height as f32);
             let lightmap_offset = Vec2::new(lightmap_image.x as f32, lightmap_image.y as f32);
@@ -367,7 +366,7 @@ fn process_indexed_triangles(
                 uv,
                 lightmap_uv,
             };
-            if lightmap_index == 2715 {
+            if lightmap_index == DEBUG_LIGHTMAP_INDEX {
                 println!("lightmap_local_uv: {}", lightmap_local_uv);
                 println!("image size: {}", lightmap_image_size);
                 println!("lightmap_uv: {:?}", lightmap_uv);
@@ -376,6 +375,7 @@ fn process_indexed_triangles(
                 let temp = Vec2::from_array(lightmap_uv) * lightmap_atlas_size;
                 println!("{:?}", temp);
                 println!("pos: {:?}", pos_vec);
+                println!("texture uv: {:?}", uv);
                 println!("");
             }
 
@@ -785,8 +785,8 @@ pub fn export_light_data<P: AsRef<Path>>(
 }
 
 pub fn decode_atlas(reader: &BspReader) -> LightmapAtlas {
-    let face_datas = decode_face_lightmaps(reader);
-    let atlas = construct_atlas(&face_datas);
+    let (face_datas, mins_maxs) = decode_face_lightmaps(reader);
+    let atlas = construct_atlas(&face_datas, &mins_maxs);
     atlas
 }
 
@@ -796,16 +796,18 @@ struct LightmapFaceData<'a> {
     data: &'a [u8],
 }
 
-fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
+fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> (Vec<LightmapFaceData>, Vec<(Vec2, Vec2)>) {
     let data = reader.read_lighting_data();
     let faces = reader.read_faces();
     let mut lightmap_face_data = Vec::with_capacity(faces.len());
+
+    let mut mins_maxs = Vec::with_capacity(faces.len());
 
     let texture_infos = reader.read_texture_infos();
     let surface_edges = reader.read_surface_edges();
     let edges = reader.read_edges();
     let vertices = reader.read_vertices();
-    for face in faces {
+    for (face_index, face) in faces.iter().enumerate() {
         let texture_info = &texture_infos[face.texture_info as usize];
 
         // Collect the vertices
@@ -830,6 +832,19 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
             let u = vertex.dot(Vec3::from_array(texture_info.s)) + texture_info.s_shift;
             let v = vertex.dot(Vec3::from_array(texture_info.t)) + texture_info.t_shift;
             uvs.push(Vec2::new(u, v));
+        }
+
+        if face_index == DEBUG_LIGHTMAP_INDEX {
+            println!("UVs:");
+            for uv in &uvs {
+                println!("  {}", uv);
+            }
+            println!();
+            println!("Lightmap UVs:");
+            for uv in &uvs {
+                println!("  {}", *uv / LIGHTMAP_SCALE as f32);
+            }
+            println!();
         }
 
         // Find mins and maxs
@@ -857,6 +872,57 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
         let width = imaxs[0] - imins[0] + 1;
         let height = imaxs[1] - imins[1] + 1;
 
+        let mins = Vec2::new(imins[0] as f32, imins[1] as f32);
+        let maxs = Vec2::new(imaxs[0] as f32, imaxs[1] as f32);
+        if face_index == DEBUG_LIGHTMAP_INDEX {
+            println!("Lightmap UVs (wrapped):");
+            for uv in &uvs {
+                let scaled = *uv / LIGHTMAP_SCALE as f32;
+                let wrapped = Vec2::new(scaled.x % width as f32, scaled.y % height as f32);
+                println!("  {}", wrapped);
+            }
+            println!();
+            let size = Vec2::new(width as f32, height as f32);
+            println!("Size: {}", size);
+            println!("Lightmap UVs (wrapped excel):");
+            for uv in &uvs {
+                let scaled = *uv / LIGHTMAP_SCALE as f32;
+                let wrapped = excel_mod_vec2(scaled, size);
+                println!("  {}", wrapped);
+            }
+            println!();
+            println!("Lightmap UVs (wrapped alt):");
+            for uv in &uvs {
+                let scaled = *uv / LIGHTMAP_SCALE as f32;
+                let mut wrapped = Vec2::new(scaled.x % width as f32, scaled.y % height as f32);
+                if wrapped.x < 0.0 {
+                    wrapped.x = wrapped.x + size.x;
+                }
+                if wrapped.y < 0.0 {
+                    wrapped.y = wrapped.y + size.y;
+                }
+                println!("  {}", wrapped);
+            }
+            println!();
+            println!("Divide Lightmap UVs:");
+            for uv in &uvs {
+                let scaled = *uv / LIGHTMAP_SCALE as f32;
+                let divided = scaled / size;
+                let wrapped = excel_mod_vec2(divided, Vec2::ONE);
+                let expanded = wrapped * size;
+                println!("  {}", expanded);
+            }
+            println!();
+            println!("New Lightmap UVs:");
+            
+            for uv in &uvs {
+                let scaled = *uv / LIGHTMAP_SCALE as f32;
+                let adjustment = scaled - mins;
+                println!("  {}", adjustment);
+            }
+            println!();
+        }
+
         let data_start = face.lightmap_offset as usize;
         let data_end = data_start + (width * height * 3) as usize;
         let face_lightmap = &data[data_start..data_end];
@@ -866,9 +932,11 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> Vec<LightmapFaceData> {
             height: height as u32,
             data: face_lightmap,
         });
+
+        mins_maxs.push((mins, maxs));
     }
 
-    lightmap_face_data
+    (lightmap_face_data, mins_maxs)
 }
 
 struct LightmapAtlasImage {
@@ -883,9 +951,10 @@ pub struct LightmapAtlas {
     height: u32,
     data: Vec<u8>,
     images: Vec<LightmapAtlasImage>,
+    mins_maxs: Vec<(Vec2, Vec2)>,
 }
 
-fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
+fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) -> LightmapAtlas {
 
     let mut rects_to_place: GroupedRectsToPlace<usize, usize> = GroupedRectsToPlace::new();
 
@@ -982,6 +1051,7 @@ fn construct_atlas(face_datas: &[LightmapFaceData]) -> LightmapAtlas {
         height: atlas_height as u32,
         data: atlas_data,
         images,
+        mins_maxs: mins_maxs.iter().map(|(mins, maxs)| (*mins, *maxs)).collect(),
     }
 }
 
@@ -997,4 +1067,16 @@ impl LightmapAtlas {
     pub fn data(&self) -> &[u8] {
         &self.data
     }
+}
+
+fn excel_mod(dividend: f32, divisor: f32) -> f32 {
+    let quotient = (dividend / divisor).floor();
+    dividend - (divisor * quotient)
+}
+
+fn excel_mod_vec2(dividend: Vec2, divisor: Vec2) -> Vec2 {
+    Vec2::new(
+        excel_mod(dividend.x, divisor.x),
+        excel_mod(dividend.y, divisor.y),
+    )
 }
