@@ -104,7 +104,7 @@ pub struct BspRenderer {
     _pipeline_layout: wgpu::PipelineLayout,
     render_pipeline: wgpu::RenderPipeline,
 
-    lightmap_texture: wgpu::Texture,
+    _lightmap_texture: wgpu::Texture,
     lightmap_view: wgpu::TextureView,
 
     draw_mode: DrawMode,
@@ -503,7 +503,7 @@ impl BspRenderer {
             _pipeline_layout: pipeline_layout,
             render_pipeline,
 
-            lightmap_texture,
+            _lightmap_texture: lightmap_texture,
             lightmap_view,
 
             draw_mode,
