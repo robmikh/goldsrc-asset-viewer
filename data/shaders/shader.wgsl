@@ -70,6 +70,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         tex_color.x = lightmap_color.x;
         tex_color.y = lightmap_color.y;
         tex_color.z = lightmap_color.z;
+    } else if r_draw_params.draw_mode == 2 {
+        // Blend the texture color and the lightmap color
+        tex_color.x = tex_color.x * lightmap_color.x;
+        tex_color.y = tex_color.y * lightmap_color.y;
+        tex_color.z = tex_color.z * lightmap_color.z;
     }
     return tex_color;
 }

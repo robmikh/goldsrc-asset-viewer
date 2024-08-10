@@ -611,6 +611,13 @@ fn show_ui(cli: Cli) {
                                     {
                                         draw_mode = DrawMode::Lightmap;
                                     }
+                                    if ui
+                                        .menu_item_config("Lit Texture")
+                                        .selected(draw_mode == DrawMode::LitTexture)
+                                        .build()
+                                    {
+                                        draw_mode = DrawMode::LitTexture;
+                                    }
                                     renderer.set_draw_mode(draw_mode);
                                 });
                             });

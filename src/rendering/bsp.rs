@@ -59,6 +59,7 @@ impl GpuVertex {
 pub enum DrawMode {
     Texture = 0,
     Lightmap = 1,
+    LitTexture = 2,
 }
 
 impl DrawMode {
@@ -66,6 +67,7 @@ impl DrawMode {
         match number {
             0 => Some(Self::Texture),
             1 => Some(Self::Lightmap),
+            2 => Some(Self::LitTexture),
             _ => None,
         }
     }
@@ -73,7 +75,8 @@ impl DrawMode {
     pub fn cycle(&self) -> Self {
         match self {
             Self::Texture => Self::Lightmap,
-            Self::Lightmap => Self::Texture,
+            Self::Lightmap => Self::LitTexture,
+            Self::LitTexture => Self::Texture,
         }
     }
 }
@@ -326,7 +329,7 @@ impl BspRenderer {
         );
 
         // Initialize draw params
-        let draw_mode = DrawMode::Texture;
+        let draw_mode = DrawMode::LitTexture;
         let draw_params = DrawParams {
             draw_mode: draw_mode as i32,
         };
