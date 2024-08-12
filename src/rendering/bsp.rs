@@ -87,8 +87,16 @@ struct DrawParams {
     draw_mode: i32,
 }
 
+#[repr(C, align(16))]
+#[derive(Copy, Clone)]
+struct ModelBuffer {
+    transform: [f32; 16],
+    alpha: f32,
+}
+
 pub struct BspRenderer {
     models_to_render: Vec<usize>,
+    transparent_models: HashSet<usize>,
     map_models: Vec<GpuModel>,
     textures: Vec<(wgpu::Texture, wgpu::TextureView, wgpu::BindGroup)>,
     sampler: wgpu::Sampler,
@@ -180,11 +188,11 @@ impl BspRenderer {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(64),
+                            min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<ModelBuffer>() as u64),
                         },
                         count: None,
                     },
@@ -391,8 +399,9 @@ impl BspRenderer {
             .iter()
             .enumerate()
             .map(|(i, model)| -> GpuModel {
-                let origin = {
+                let (origin, alpha) = {
                     let mut origin = Vec3::ZERO;
+                    let mut alpha = 1.0;
 
                     if let Some(entity_index) = model_to_entity.get(&i) {
                         let entity = &entities[*entity_index];
@@ -405,14 +414,22 @@ impl BspRenderer {
                             let coord = convert_coordinates([hl_x, hl_y, hl_z]);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
+                        if let Some(render_amt) = entity.0.get("renderamt") {
+                            if let Ok(render_amt) = render_amt.parse::<i32>() {          
+                                if render_amt != 0 && render_amt != 255{
+                                    alpha = render_amt as f32 / 255.0;
+                                }
+                            }
+                        }
                     }
 
-                    origin
+                    (origin, alpha)
                 };
 
                 create_gpu_model_for_model(
                     model,
                     origin,
+                    alpha,
                     device,
                     &model_bind_group_layout,
                     &sampler,
@@ -424,6 +441,7 @@ impl BspRenderer {
         // Record which models to hide
         // TODO: More robust logic
         let mut models_to_render: Vec<usize> = (0..map_models.len()).collect();
+        let mut transparent_models = HashSet::new();
         for entity in &entities {
             if let Some(model_value) = entity.0.get("model") {
                 if model_value.starts_with('*') {
@@ -432,7 +450,15 @@ impl BspRenderer {
 
                     if let Some(render_amt) = entity.0.get("renderamt") {
                         if let Ok(render_amt) = render_amt.parse::<i32>() {          
-                            if render_amt == 0 {
+                            if render_amt != 0 && render_amt != 255{
+                                transparent_models.insert(model_index);
+                                if let Some(position) =
+                                    models_to_render.iter().position(|x| *x == model_index)
+                                {
+                                    models_to_render.remove(position);
+                                    continue;
+                                }
+                            } else if render_amt == 0 {
                                 if let Some(position) =
                                     models_to_render.iter().position(|x| *x == model_index)
                                 {
@@ -503,6 +529,7 @@ impl BspRenderer {
 
         Self {
             models_to_render,
+            transparent_models,
             map_models,
             textures,
             sampler,
@@ -541,6 +568,7 @@ impl BspRenderer {
     }
 
     fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
+        render_pass.set_bind_group(2, &model.model_bind_group, &[]);
         render_pass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
 
@@ -663,7 +691,11 @@ impl Renderer for BspRenderer {
             render_pass.insert_debug_marker("Draw!");
             for model_index in &self.models_to_render {
                 let model = &self.map_models[*model_index];
-                render_pass.set_bind_group(2, &model.model_bind_group, &[]);
+                self.render_model(&mut render_pass, model);
+            }
+
+            for model_index in &self.transparent_models {
+                let model = &self.map_models[*model_index];
                 self.render_model(&mut render_pass, model);
             }
 
@@ -903,6 +935,7 @@ impl Renderer for BspRenderer {
             let gpu_model = create_gpu_model_for_model(
                 &model,
                 Vec3::ZERO,
+                1.0,
                 device,
                 &self.model_bind_group_layout,
                 &self.sampler,
@@ -916,6 +949,7 @@ impl Renderer for BspRenderer {
             let gpu_model = create_gpu_model_for_model(
                 &model,
                 Vec3::ZERO,
+                1.0,
                 device,
                 &self.model_bind_group_layout,
                 &self.sampler,
@@ -1026,6 +1060,7 @@ fn create_depth_texture(
 fn create_gpu_model_for_model(
     model: &Model<ModelVertex>,
     origin: Vec3,
+    alpha: f32,
     device: &wgpu::Device,
     model_bind_group_layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
@@ -1044,11 +1079,19 @@ fn create_gpu_model_for_model(
     });
     let meshes = model.meshes.clone();
 
-    let transform = Mat4::from_translation(origin);
-    let mx_ref: &[f32; 16] = transform.as_ref();
+    let transform = *Mat4::from_translation(origin).as_ref();
+    let model_buffer_data = ModelBuffer {
+        transform,
+        alpha,
+    };
+    let model_buffer_data_bytes = unsafe {
+        let len = std::mem::size_of_val(&model_buffer_data);
+        let ptr = &model_buffer_data as *const _ as *const u8;
+        std::slice::from_raw_parts(ptr, len)
+    };
     let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Model Uniform Buffer"),
-        contents: bytemuck::cast_slice(mx_ref),
+        contents: model_buffer_data_bytes,
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
     let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -20,6 +20,7 @@ var<uniform> r_draw_params: DrawParams;
 
 struct Locals {
     transform: mat4x4<f32>,
+    alpha: f32,
 };
 @group(2)
 @binding(0)
@@ -64,6 +65,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if tex_color.w == 0.0 {
         discard;
     }
+    tex_color.w = tex_color.w * r_locals.alpha;
     if r_draw_params.draw_mode == 0 {
         // Do nothing, use tex_color as-is
     } else if r_draw_params.draw_mode == 1 {
