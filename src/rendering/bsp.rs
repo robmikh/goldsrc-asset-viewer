@@ -425,16 +425,31 @@ impl BspRenderer {
         // TODO: More robust logic
         let mut models_to_render: Vec<usize> = (0..map_models.len()).collect();
         for entity in &entities {
-            if let Some(class_name) = entity.0.get("classname") {
-                if class_name.starts_with("trigger") || class_name.starts_with("func_ladder") {
-                    if let Some(model_value) = entity.0.get("model") {
-                        if model_value.starts_with('*') {
-                            let model_index: usize =
-                                model_value.trim_start_matches('*').parse().unwrap();
+            if let Some(model_value) = entity.0.get("model") {
+                if model_value.starts_with('*') {
+                    let model_index: usize =
+                        model_value.trim_start_matches('*').parse().unwrap();
+
+                    if let Some(render_amt) = entity.0.get("renderamt") {
+                        if let Ok(render_amt) = render_amt.parse::<i32>() {          
+                            if render_amt == 0 {
+                                if let Some(position) =
+                                    models_to_render.iter().position(|x| *x == model_index)
+                                {
+                                    models_to_render.remove(position);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if let Some(class_name) = entity.0.get("classname") {
+                        if class_name.starts_with("trigger") || class_name.starts_with("func_ladder") {
                             if let Some(position) =
                                 models_to_render.iter().position(|x| *x == model_index)
                             {
                                 models_to_render.remove(position);
+                                continue;
                             }
                         }
                     }
