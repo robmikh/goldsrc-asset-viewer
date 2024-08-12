@@ -8,6 +8,7 @@ mod mouse;
 mod numerics;
 mod rendering;
 mod wad_viewer;
+mod util;
 
 use crate::hittest::hittest_clip_node;
 use crate::mdl_viewer::MdlViewer;

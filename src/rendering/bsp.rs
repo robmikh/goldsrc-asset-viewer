@@ -17,7 +17,7 @@ use crate::{
     },
     hittest::hittest_clip_node,
     rendering::movement::MovingEntity,
-    FileInfo,
+    basic_enum, FileInfo,
 };
 
 use super::{
@@ -92,6 +92,17 @@ struct DrawParams {
 struct ModelBuffer {
     transform: [f32; 16],
     alpha: f32,
+}
+
+basic_enum!{
+    RenderMode: i32 {
+        Normal = 0,
+        Color = 1,
+        Texture = 2,
+        Glow = 3,
+        TransparentAlpha = 4,
+        TransparentAdd = 5,
+    }
 }
 
 pub struct BspRenderer {
@@ -414,10 +425,16 @@ impl BspRenderer {
                             let coord = convert_coordinates([hl_x, hl_y, hl_z]);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
-                        if let Some(render_amt) = entity.0.get("renderamt") {
-                            if let Ok(render_amt) = render_amt.parse::<i32>() {          
-                                if render_amt != 0 && render_amt != 255{
-                                    alpha = render_amt as f32 / 255.0;
+                        if let Some(render_mode) = entity.0.get("rendermode") {
+                            if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
+                                if render_mode != RenderMode::Normal {
+                                    if let Some(render_amt) = entity.0.get("renderamt") {
+                                        if let Ok(render_amt) = render_amt.parse::<i32>() {          
+                                            if render_amt != 0 && render_amt != 255{
+                                                alpha = render_amt as f32 / 255.0;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -448,22 +465,28 @@ impl BspRenderer {
                     let model_index: usize =
                         model_value.trim_start_matches('*').parse().unwrap();
 
-                    if let Some(render_amt) = entity.0.get("renderamt") {
-                        if let Ok(render_amt) = render_amt.parse::<i32>() {          
-                            if render_amt != 0 && render_amt != 255{
-                                transparent_models.insert(model_index);
-                                if let Some(position) =
-                                    models_to_render.iter().position(|x| *x == model_index)
-                                {
-                                    models_to_render.remove(position);
-                                    continue;
-                                }
-                            } else if render_amt == 0 {
-                                if let Some(position) =
-                                    models_to_render.iter().position(|x| *x == model_index)
-                                {
-                                    models_to_render.remove(position);
-                                    continue;
+                    if let Some(render_mode) = entity.0.get("rendermode") {
+                        if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
+                            if render_mode != RenderMode::Normal {
+                                if let Some(render_amt) = entity.0.get("renderamt") {
+                                    if let Ok(render_amt) = render_amt.parse::<i32>() {          
+                                        if render_amt != 0 && render_amt != 255{
+                                            transparent_models.insert(model_index);
+                                            if let Some(position) =
+                                                models_to_render.iter().position(|x| *x == model_index)
+                                            {
+                                                models_to_render.remove(position);
+                                                continue;
+                                            }
+                                        } else if render_amt == 0 {
+                                            if let Some(position) =
+                                                models_to_render.iter().position(|x| *x == model_index)
+                                            {
+                                                models_to_render.remove(position);
+                                                continue;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
