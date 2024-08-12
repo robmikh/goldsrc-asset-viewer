@@ -23,7 +23,9 @@ use gsparser::{
     },
     wad3::{MipmapedTextureData, WadArchive, WadFileInfo},
 };
-use rectangle_pack::{contains_smallest_box, volume_heuristic, GroupedRectsToPlace, RectToInsert, TargetBin};
+use rectangle_pack::{
+    contains_smallest_box, volume_heuristic, GroupedRectsToPlace, RectToInsert, TargetBin,
+};
 
 use crate::export::coordinates::convert_coordinates;
 
@@ -863,7 +865,6 @@ pub struct LightmapAtlas {
 }
 
 fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) -> LightmapAtlas {
-
     let mut rects_to_place: GroupedRectsToPlace<usize, usize> = GroupedRectsToPlace::new();
 
     let mut images = Vec::with_capacity(face_datas.len());
@@ -871,7 +872,11 @@ fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) 
     // Build the atlas
     let mut num_pixels = 0;
     for (i, face_data) in face_datas.iter().enumerate() {
-        rects_to_place.push_rect(i, None, RectToInsert::new(face_data.width, face_data.height, 1));
+        rects_to_place.push_rect(
+            i,
+            None,
+            RectToInsert::new(face_data.width, face_data.height, 1),
+        );
         images.push(LightmapAtlasImage {
             x: 0,
             y: 0,
@@ -903,13 +908,16 @@ fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) 
             };
 
             let mut target_bins = BTreeMap::new();
-            target_bins.insert(0, TargetBin::new(atlas_width as u32, atlas_height as u32, 1));
+            target_bins.insert(
+                0,
+                TargetBin::new(atlas_width as u32, atlas_height as u32, 1),
+            );
 
             if let Ok(rectangle_placements) = rectangle_pack::pack_rects(
                 &rects_to_place,
                 &mut target_bins,
                 &volume_heuristic,
-                &contains_smallest_box
+                &contains_smallest_box,
             ) {
                 result = Some((atlas_width, atlas_height, rectangle_placements));
                 break;
@@ -959,7 +967,10 @@ fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) 
         height: atlas_height as u32,
         data: atlas_data,
         images,
-        mins_maxs: mins_maxs.iter().map(|(mins, maxs)| (*mins, *maxs)).collect(),
+        mins_maxs: mins_maxs
+            .iter()
+            .map(|(mins, maxs)| (*mins, *maxs))
+            .collect(),
     }
 }
 

@@ -11,13 +11,14 @@ use wgpu::util::DeviceExt;
 use winit::keyboard::KeyCode;
 
 use crate::{
+    basic_enum,
     export::{
         bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
     hittest::hittest_clip_node,
     rendering::movement::MovingEntity,
-    basic_enum, FileInfo,
+    FileInfo,
 };
 
 use super::{
@@ -94,7 +95,7 @@ struct ModelBuffer {
     alpha: f32,
 }
 
-basic_enum!{
+basic_enum! {
     RenderMode: i32 {
         Normal = 0,
         Color = 1,
@@ -203,7 +204,9 @@ impl BspRenderer {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<ModelBuffer>() as u64),
+                            min_binding_size: wgpu::BufferSize::new(
+                                std::mem::size_of::<ModelBuffer>() as u64,
+                            ),
                         },
                         count: None,
                     },
@@ -429,8 +432,8 @@ impl BspRenderer {
                             if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
                                 if render_mode != RenderMode::Normal {
                                     if let Some(render_amt) = entity.0.get("renderamt") {
-                                        if let Ok(render_amt) = render_amt.parse::<i32>() {          
-                                            if render_amt != 0 && render_amt != 255{
+                                        if let Ok(render_amt) = render_amt.parse::<i32>() {
+                                            if render_amt != 0 && render_amt != 255 {
                                                 alpha = render_amt as f32 / 255.0;
                                             }
                                         }
@@ -462,25 +465,26 @@ impl BspRenderer {
         for entity in &entities {
             if let Some(model_value) = entity.0.get("model") {
                 if model_value.starts_with('*') {
-                    let model_index: usize =
-                        model_value.trim_start_matches('*').parse().unwrap();
+                    let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
 
                     if let Some(render_mode) = entity.0.get("rendermode") {
                         if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
                             if render_mode != RenderMode::Normal {
                                 if let Some(render_amt) = entity.0.get("renderamt") {
-                                    if let Ok(render_amt) = render_amt.parse::<i32>() {          
-                                        if render_amt != 0 && render_amt != 255{
+                                    if let Ok(render_amt) = render_amt.parse::<i32>() {
+                                        if render_amt != 0 && render_amt != 255 {
                                             transparent_models.insert(model_index);
-                                            if let Some(position) =
-                                                models_to_render.iter().position(|x| *x == model_index)
+                                            if let Some(position) = models_to_render
+                                                .iter()
+                                                .position(|x| *x == model_index)
                                             {
                                                 models_to_render.remove(position);
                                                 continue;
                                             }
                                         } else if render_amt == 0 {
-                                            if let Some(position) =
-                                                models_to_render.iter().position(|x| *x == model_index)
+                                            if let Some(position) = models_to_render
+                                                .iter()
+                                                .position(|x| *x == model_index)
                                             {
                                                 models_to_render.remove(position);
                                                 continue;
@@ -491,9 +495,11 @@ impl BspRenderer {
                             }
                         }
                     }
-                    
+
                     if let Some(class_name) = entity.0.get("classname") {
-                        if class_name.starts_with("trigger") || class_name.starts_with("func_ladder") {
+                        if class_name.starts_with("trigger")
+                            || class_name.starts_with("func_ladder")
+                        {
                             if let Some(position) =
                                 models_to_render.iter().position(|x| *x == model_index)
                             {
@@ -1103,10 +1109,7 @@ fn create_gpu_model_for_model(
     let meshes = model.meshes.clone();
 
     let transform = *Mat4::from_translation(origin).as_ref();
-    let model_buffer_data = ModelBuffer {
-        transform,
-        alpha,
-    };
+    let model_buffer_data = ModelBuffer { transform, alpha };
     let model_buffer_data_bytes = unsafe {
         let len = std::mem::size_of_val(&model_buffer_data);
         let ptr = &model_buffer_data as *const _ as *const u8;

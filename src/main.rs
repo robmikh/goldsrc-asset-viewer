@@ -7,8 +7,8 @@ mod mdl_viewer;
 mod mouse;
 mod numerics;
 mod rendering;
-mod wad_viewer;
 mod util;
+mod wad_viewer;
 
 use crate::hittest::hittest_clip_node;
 use crate::mdl_viewer::MdlViewer;
@@ -27,11 +27,11 @@ use mouse::{MouseInputController, MouseInputMode};
 use rendering::bsp::{BspRenderer, DrawMode};
 use rendering::Renderer;
 use rfd::FileDialog;
-use winit::keyboard::{KeyCode, PhysicalKey};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use winit::event::DeviceEvent;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, WindowEvent},
@@ -222,526 +222,541 @@ fn show_ui(cli: Cli) {
     let mut gravity = true;
     let mut debug_point = None;
     event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop.run(|event, target| {
-        let mut should_exit = false;
-        let mut mouse_event = false;
-        match event {
-            Event::AboutToWait => window.request_redraw(),
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => should_exit = true,
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                let size = window.inner_size();
+    event_loop
+        .run(|event, target| {
+            let mut should_exit = false;
+            let mut mouse_event = false;
+            match event {
+                Event::AboutToWait => window.request_redraw(),
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                } if window_id == window.id() => should_exit = true,
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(_),
+                    ..
+                } => {
+                    let size = window.inner_size();
 
-                surface_config = wgpu::SurfaceConfiguration {
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    width: size.width as u32,
-                    height: size.height as u32,
-                    present_mode: wgpu::PresentMode::Mailbox,
-                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                    view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
-                    desired_maximum_frame_latency: 0,
-                };
-                surface.configure(&device, &surface_config);
-                if let Some(renderer) = renderer.as_mut() {
-                    renderer.resize(&surface_config, &device, &queue);
-                }
-
-                let size = Vec2::new(size.width as f32, size.height as f32);
-                mouse_controller.on_resize(size);
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        event:
-                            winit::event::KeyEvent {
-                                physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                state: ElementState::Pressed,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            }
-            | Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                should_exit = true;
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        event:
-                            winit::event::KeyEvent {
-                                physical_key,
-                                state,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => {
-                if let PhysicalKey::Code(keycode) = physical_key {
-                    let was_down = down_keys.get(&keycode).is_some();
-
-                    if state == ElementState::Pressed {
-                        down_keys.insert(keycode);
-                    } else {
-                        down_keys.remove(&keycode);
+                    surface_config = wgpu::SurfaceConfiguration {
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        width: size.width as u32,
+                        height: size.height as u32,
+                        present_mode: wgpu::PresentMode::Mailbox,
+                        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                        view_formats: vec![wgpu::TextureFormat::Rgba8Unorm],
+                        desired_maximum_frame_latency: 0,
+                    };
+                    surface.configure(&device, &surface_config);
+                    if let Some(renderer) = renderer.as_mut() {
+                        renderer.resize(&surface_config, &device, &queue);
                     }
 
-                    // TODO: Consolodate keyboard key up/down logic
-                    if keycode == KeyCode::KeyB
-                        && was_down
-                        && down_keys.contains(&KeyCode::ShiftLeft)
-                    {
-                        let new_input_mode = match mouse_controller.input_mode() {
-                            MouseInputMode::Cursor => MouseInputMode::CameraLook,
-                            MouseInputMode::CameraLook => MouseInputMode::Cursor,
-                        };
-                        println!("Mouse input mode switched to {:?}", new_input_mode);
-                        mouse_controller.set_input_mode(&window, new_input_mode);
+                    let size = Vec2::new(size.width as f32, size.height as f32);
+                    mouse_controller.on_resize(size);
+                }
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event:
+                                winit::event::KeyEvent {
+                                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                    state: ElementState::Pressed,
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                }
+                | Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    should_exit = true;
+                }
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event:
+                                winit::event::KeyEvent {
+                                    physical_key,
+                                    state,
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => {
+                    if let PhysicalKey::Code(keycode) = physical_key {
+                        let was_down = down_keys.get(&keycode).is_some();
+
+                        if state == ElementState::Pressed {
+                            down_keys.insert(keycode);
+                        } else {
+                            down_keys.remove(&keycode);
+                        }
+
+                        // TODO: Consolodate keyboard key up/down logic
+                        if keycode == KeyCode::KeyB
+                            && was_down
+                            && down_keys.contains(&KeyCode::ShiftLeft)
+                        {
+                            let new_input_mode = match mouse_controller.input_mode() {
+                                MouseInputMode::Cursor => MouseInputMode::CameraLook,
+                                MouseInputMode::CameraLook => MouseInputMode::Cursor,
+                            };
+                            println!("Mouse input mode switched to {:?}", new_input_mode);
+                            mouse_controller.set_input_mode(&window, new_input_mode);
+                        }
                     }
                 }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CursorMoved { position, .. },
-                ..
-            } => {
-                let position = Vec2::new(position.x as f32, position.y as f32);
-                mouse_controller.on_mouse_move(position);
-                mouse_event = true;
-            }
-            Event::DeviceEvent {
-                event: DeviceEvent::MouseMotion { delta },
-                ..
-            } => {
-                let delta = Vec2::new(delta.0 as f32, delta.1 as f32);
-                mouse_controller.on_mouse_motion(delta);
-                mouse_event = true;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button, .. },
-                ..
-            } => {
-                mouse_event = true;
-                if mouse_controller.input_mode() == MouseInputMode::Cursor {
-                    if state == ElementState::Released && button == winit::event::MouseButton::Left
-                    {
-                        if down_keys.contains(&KeyCode::ShiftLeft) {
-                            if let Some(renderer) = renderer.as_mut() {
-                                let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
-                                    mouse_controller.mouse_position(),
-                                );
+                Event::WindowEvent {
+                    event: WindowEvent::CursorMoved { position, .. },
+                    ..
+                } => {
+                    let position = Vec2::new(position.x as f32, position.y as f32);
+                    mouse_controller.on_mouse_move(position);
+                    mouse_event = true;
+                }
+                Event::DeviceEvent {
+                    event: DeviceEvent::MouseMotion { delta },
+                    ..
+                } => {
+                    let delta = Vec2::new(delta.0 as f32, delta.1 as f32);
+                    mouse_controller.on_mouse_motion(delta);
+                    mouse_event = true;
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::MouseInput { state, button, .. },
+                    ..
+                } => {
+                    mouse_event = true;
+                    if mouse_controller.input_mode() == MouseInputMode::Cursor {
+                        if state == ElementState::Released
+                            && button == winit::event::MouseButton::Left
+                        {
+                            if down_keys.contains(&KeyCode::ShiftLeft) {
+                                if let Some(renderer) = renderer.as_mut() {
+                                    let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                        mouse_controller.mouse_position(),
+                                    );
 
-                                println!("pos: {:?}    ray: {:?}", pos, ray);
-                                if let Some(file_info) = file_info.as_ref() {
-                                    match file_info {
-                                        FileInfo::BspFile(file_info) => {
-                                            let models = file_info.reader.read_models();
-                                            let mut closest_intersection = None;
-                                            for (i, model) in models.iter().enumerate() {
-                                                let node_index = model.head_nodes[0] as usize;
-                                                if let Some((intersection_point, _leaf_index)) =
-                                                    hittest_node_for_leaf(
-                                                        &file_info.reader,
-                                                        node_index,
-                                                        pos,
-                                                        ray,
-                                                    )
-                                                {
-                                                    let distance = pos.distance(intersection_point);
-                                                    if let Some((old_i, old_intersection)) =
-                                                        closest_intersection.take()
+                                    println!("pos: {:?}    ray: {:?}", pos, ray);
+                                    if let Some(file_info) = file_info.as_ref() {
+                                        match file_info {
+                                            FileInfo::BspFile(file_info) => {
+                                                let models = file_info.reader.read_models();
+                                                let mut closest_intersection = None;
+                                                for (i, model) in models.iter().enumerate() {
+                                                    let node_index = model.head_nodes[0] as usize;
+                                                    if let Some((intersection_point, _leaf_index)) =
+                                                        hittest_node_for_leaf(
+                                                            &file_info.reader,
+                                                            node_index,
+                                                            pos,
+                                                            ray,
+                                                        )
                                                     {
-                                                        let old_distance =
-                                                            pos.distance(old_intersection);
-                                                        if distance < old_distance {
-                                                            closest_intersection =
-                                                                Some((i, intersection_point));
+                                                        let distance =
+                                                            pos.distance(intersection_point);
+                                                        if let Some((old_i, old_intersection)) =
+                                                            closest_intersection.take()
+                                                        {
+                                                            let old_distance =
+                                                                pos.distance(old_intersection);
+                                                            if distance < old_distance {
+                                                                closest_intersection =
+                                                                    Some((i, intersection_point));
+                                                            } else {
+                                                                closest_intersection =
+                                                                    Some((old_i, old_intersection));
+                                                            }
                                                         } else {
                                                             closest_intersection =
-                                                                Some((old_i, old_intersection));
+                                                                Some((i, intersection_point));
                                                         }
-                                                    } else {
-                                                        closest_intersection =
-                                                            Some((i, intersection_point));
                                                     }
                                                 }
-                                            }
 
-                                            if let Some((model_index, intersection_point)) =
-                                                closest_intersection
-                                            {
-                                                renderer.set_debug_point(intersection_point);
-                                                debug_point = Some(intersection_point);
-                                                println!("Intersection: {:?}", intersection_point);
-                                                println!("Hit something... {}", model_index);
-
-                                                let mut found = None;
-                                                let entities = BspEntity::parse_entities(
-                                                    file_info.reader.read_entities(),
-                                                );
-                                                for (entity_index, entity) in
-                                                    entities.iter().enumerate()
+                                                if let Some((model_index, intersection_point)) =
+                                                    closest_intersection
                                                 {
-                                                    if let Some(value) = entity.0.get("model") {
-                                                        if value.starts_with('*') {
-                                                            let model_ref: usize = value
-                                                                .trim_start_matches('*')
-                                                                .parse()
-                                                                .unwrap();
-                                                            if model_ref == model_index {
-                                                                found = Some(entity_index);
-                                                                break;
+                                                    renderer.set_debug_point(intersection_point);
+                                                    debug_point = Some(intersection_point);
+                                                    println!(
+                                                        "Intersection: {:?}",
+                                                        intersection_point
+                                                    );
+                                                    println!("Hit something... {}", model_index);
+
+                                                    let mut found = None;
+                                                    let entities = BspEntity::parse_entities(
+                                                        file_info.reader.read_entities(),
+                                                    );
+                                                    for (entity_index, entity) in
+                                                        entities.iter().enumerate()
+                                                    {
+                                                        if let Some(value) = entity.0.get("model") {
+                                                            if value.starts_with('*') {
+                                                                let model_ref: usize = value
+                                                                    .trim_start_matches('*')
+                                                                    .parse()
+                                                                    .unwrap();
+                                                                if model_ref == model_index {
+                                                                    found = Some(entity_index);
+                                                                    break;
+                                                                }
                                                             }
                                                         }
                                                     }
-                                                }
 
-                                                if let Some(entity_index) = found {
-                                                    println!("Found entity: {}", entity_index);
-                                                    bsp_viewer.select_entity(entity_index as i32);
+                                                    if let Some(entity_index) = found {
+                                                        println!("Found entity: {}", entity_index);
+                                                        bsp_viewer
+                                                            .select_entity(entity_index as i32);
+                                                    }
                                                 }
                                             }
+                                            _ => (),
                                         }
-                                        _ => (),
+                                    }
+                                }
+                            }
+                        } else if state == ElementState::Released
+                            && button == winit::event::MouseButton::Right
+                        {
+                            if down_keys.contains(&KeyCode::ShiftLeft) {
+                                if let Some(renderer) = renderer.as_mut() {
+                                    let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                        mouse_controller.mouse_position(),
+                                    );
+                                    println!("pos: {:?}    ray: {:?}", pos, ray);
+
+                                    let reader = match file_info.as_ref().unwrap() {
+                                        FileInfo::BspFile(file) => &file.reader,
+                                        _ => panic!(),
+                                    };
+                                    let clip_node_index =
+                                        reader.read_models()[0].head_nodes[1] as usize;
+                                    if let Some(intersection) = hittest_clip_node(
+                                        reader,
+                                        clip_node_index,
+                                        pos,
+                                        pos + (ray * 10000.0),
+                                    ) {
+                                        println!("intersection: {:?}", intersection);
+                                        renderer.set_debug_pyramid(
+                                            intersection.position,
+                                            intersection.normal,
+                                        );
                                     }
                                 }
                             }
                         }
-                    } else if state == ElementState::Released
-                        && button == winit::event::MouseButton::Right
-                    {
-                        if down_keys.contains(&KeyCode::ShiftLeft) {
-                            if let Some(renderer) = renderer.as_mut() {
-                                let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
-                                    mouse_controller.mouse_position(),
-                                );
-                                println!("pos: {:?}    ray: {:?}", pos, ray);
-
-                                let reader = match file_info.as_ref().unwrap() {
-                                    FileInfo::BspFile(file) => &file.reader,
-                                    _ => panic!(),
-                                };
-                                let clip_node_index =
-                                    reader.read_models()[0].head_nodes[1] as usize;
-                                if let Some(intersection) = hittest_clip_node(
-                                    reader,
-                                    clip_node_index,
-                                    pos,
-                                    pos + (ray * 10000.0),
-                                ) {
-                                    println!("intersection: {:?}", intersection);
-                                    renderer.set_debug_pyramid(
-                                        intersection.position,
-                                        intersection.normal,
-                                    );
-                                }
-                            }
-                        }
                     }
                 }
-            }
-            Event::WindowEvent {
-                event: WindowEvent::RedrawRequested,
-                ..
-            } => {
-                let now = Instant::now();
-                let delta = now - last_frame;
-                last_frame = now;
+                Event::WindowEvent {
+                    event: WindowEvent::RedrawRequested,
+                    ..
+                } => {
+                    let now = Instant::now();
+                    let delta = now - last_frame;
+                    last_frame = now;
 
-                let frame = match surface.get_current_texture() {
-                    Ok(frame) => frame,
-                    Err(e) => {
-                        eprintln!("dropped frame: {:?}", e);
-                        return;
-                    }
-                };
-
-                if let Some(new_path) = &pending_path {
-                    file_info = load_file(new_path);
-                    window.set_title(&format!("{} - {}", WINDOW_TITLE, new_path.display()));
-                    renderer =
-                        load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
-                    pending_path = None;
-                }
-
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-
-                // Rendering
-                let clear_op = if let Some(renderer) = renderer.as_mut() {
-                    let mouse_delta = {
-                        let mut mouse_delta = None;
-                        if mouse_controller.input_mode() == MouseInputMode::CameraLook {
-                            mouse_delta = mouse_controller.take_mouse_delta();
+                    let frame = match surface.get_current_texture() {
+                        Ok(frame) => frame,
+                        Err(e) => {
+                            eprintln!("dropped frame: {:?}", e);
+                            return;
                         }
-                        mouse_delta
                     };
 
-                    renderer.update(
-                        &device,
-                        &queue,
-                        delta,
-                        &down_keys,
-                        mouse_delta,
-                        &file_info,
-                        noclip,
-                    );
-                    let (position, direction) = renderer.get_position_and_direction();
-                    bsp_viewer.set_position(position, direction);
-                    renderer.render(clear_color, &view, &device, &queue);
-                    wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
+                    if let Some(new_path) = &pending_path {
+                        file_info = load_file(new_path);
+                        window.set_title(&format!("{} - {}", WINDOW_TITLE, new_path.display()));
+                        renderer = load_renderer(
+                            file_info.as_ref(),
+                            &device,
+                            &queue,
+                            surface_config.clone(),
+                        );
+                        pending_path = None;
                     }
-                } else {
-                    wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear_color),
-                        store: wgpu::StoreOp::Store,
-                    }
-                };
 
-                // UI
-                imgui.io_mut().update_delta_time(delta);
-                platform
-                    .prepare_frame(imgui.io_mut(), &window)
-                    .expect("Failed to prepare frame");
-                let ui = imgui.frame();
+                    let view = frame
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
 
-                {
-                    ui.main_menu_bar(|| {
-                        ui.menu("File", || {
-                            if ui.menu_item_config("Open").shortcut("Ctrl+O").build() {
-                                if let Some(new_path) = FileDialog::new()
-                                    .add_filter("Half-Life Assets", &["wad", "mdl", "bsp"])
-                                    .set_directory("/")
-                                    .pick_file()
-                                {
-                                    pending_path = Some(new_path);
-                                }
+                    // Rendering
+                    let clear_op = if let Some(renderer) = renderer.as_mut() {
+                        let mouse_delta = {
+                            let mut mouse_delta = None;
+                            if mouse_controller.input_mode() == MouseInputMode::CameraLook {
+                                mouse_delta = mouse_controller.take_mouse_delta();
                             }
-                            let is_mdl = if let Some(file_info) = file_info.as_ref() {
-                                match file_info {
-                                    FileInfo::MdlFile(_) => true,
-                                    _ => false,
-                                }
-                            } else {
-                                false
-                            };
-                            if ui.menu_item_config("Export").enabled(is_mdl).build() {
-                                if let Some(new_path) = FileDialog::new()
-                                    .add_filter("GLTF File", &["gltf"])
-                                    .set_directory("/")
-                                    .save_file()
-                                {
-                                    let mdl_file = if let Some(file_info) = file_info.as_ref() {
-                                        match file_info {
-                                            FileInfo::MdlFile(file) => file,
-                                            _ => panic!(),
-                                        }
-                                    } else {
-                                        panic!()
-                                    };
-                                    let mut log = if cli.log { Some(String::new()) } else { None };
-                                    export::mdl::export(&mdl_file.file, new_path, log.as_mut())
-                                        .unwrap();
-                                    if let Some(log) = log {
-                                        std::fs::write("log.txt", log).unwrap();
-                                    }
-                                }
-                            }
-                            let is_bsp = if let Some(file_info) = file_info.as_ref() {
-                                match file_info {
-                                    FileInfo::BspFile(_) => true,
-                                    _ => false,
-                                }
-                            } else {
-                                false
-                            };
-                            if ui
-                                .menu_item_config("Export light data")
-                                .enabled(is_bsp)
-                                .build()
-                            {
-                                if let Some(new_path) = FileDialog::new()
-                                    .add_filter("Binary Data", &["bin"])
-                                    .set_directory("/")
-                                    .save_file()
-                                {
-                                    let bsp_file = if let Some(file_info) = file_info.as_ref() {
-                                        match file_info {
-                                            FileInfo::BspFile(file) => file,
-                                            _ => panic!(),
-                                        }
-                                    } else {
-                                        panic!()
-                                    };
-                                    export::bsp::export_light_data(&bsp_file.reader, new_path)
-                                        .unwrap();
-                                }
-                            }
-                            if ui
-                                .menu_item_config("Export entity data")
-                                .enabled(is_bsp)
-                                .build()
-                            {
-                                if let Some(new_path) = FileDialog::new()
-                                    .add_filter("Text", &["txt"])
-                                    .set_directory("/")
-                                    .save_file()
-                                {
-                                    let bsp_file = if let Some(file_info) = file_info.as_ref() {
-                                        match file_info {
-                                            FileInfo::BspFile(file) => file,
-                                            _ => panic!(),
-                                        }
-                                    } else {
-                                        panic!()
-                                    };
-                                    let entities = BspEntity::parse_entities(bsp_file.reader.read_entities());
-                                    let entities_string = format!("{:#?}", entities);
-                                    std::fs::write(new_path, entities_string).unwrap();
-                                }
-                            }
-                            if ui.menu_item("Exit") {
-                                should_exit = true;
-                            }
-                        });
+                            mouse_delta
+                        };
 
-                        if let Some(renderer) = renderer.as_mut() {
-                            ui.menu("View", || {
-                                ui.menu("Draw mode", || {
-                                    let mut draw_mode = renderer.get_draw_mode();
-                                    if ui
-                                        .menu_item_config("Texture")
-                                        .selected(draw_mode == DrawMode::Texture)
-                                        .build()
+                        renderer.update(
+                            &device,
+                            &queue,
+                            delta,
+                            &down_keys,
+                            mouse_delta,
+                            &file_info,
+                            noclip,
+                        );
+                        let (position, direction) = renderer.get_position_and_direction();
+                        bsp_viewer.set_position(position, direction);
+                        renderer.render(clear_color, &view, &device, &queue);
+                        wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }
+                    } else {
+                        wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(clear_color),
+                            store: wgpu::StoreOp::Store,
+                        }
+                    };
+
+                    // UI
+                    imgui.io_mut().update_delta_time(delta);
+                    platform
+                        .prepare_frame(imgui.io_mut(), &window)
+                        .expect("Failed to prepare frame");
+                    let ui = imgui.frame();
+
+                    {
+                        ui.main_menu_bar(|| {
+                            ui.menu("File", || {
+                                if ui.menu_item_config("Open").shortcut("Ctrl+O").build() {
+                                    if let Some(new_path) = FileDialog::new()
+                                        .add_filter("Half-Life Assets", &["wad", "mdl", "bsp"])
+                                        .set_directory("/")
+                                        .pick_file()
                                     {
-                                        draw_mode = DrawMode::Texture;
+                                        pending_path = Some(new_path);
                                     }
-                                    if ui
-                                        .menu_item_config("Lightmap")
-                                        .selected(draw_mode == DrawMode::Lightmap)
-                                        .build()
+                                }
+                                let is_mdl = if let Some(file_info) = file_info.as_ref() {
+                                    match file_info {
+                                        FileInfo::MdlFile(_) => true,
+                                        _ => false,
+                                    }
+                                } else {
+                                    false
+                                };
+                                if ui.menu_item_config("Export").enabled(is_mdl).build() {
+                                    if let Some(new_path) = FileDialog::new()
+                                        .add_filter("GLTF File", &["gltf"])
+                                        .set_directory("/")
+                                        .save_file()
                                     {
-                                        draw_mode = DrawMode::Lightmap;
+                                        let mdl_file = if let Some(file_info) = file_info.as_ref() {
+                                            match file_info {
+                                                FileInfo::MdlFile(file) => file,
+                                                _ => panic!(),
+                                            }
+                                        } else {
+                                            panic!()
+                                        };
+                                        let mut log =
+                                            if cli.log { Some(String::new()) } else { None };
+                                        export::mdl::export(&mdl_file.file, new_path, log.as_mut())
+                                            .unwrap();
+                                        if let Some(log) = log {
+                                            std::fs::write("log.txt", log).unwrap();
+                                        }
                                     }
-                                    if ui
-                                        .menu_item_config("Lit Texture")
-                                        .selected(draw_mode == DrawMode::LitTexture)
-                                        .build()
+                                }
+                                let is_bsp = if let Some(file_info) = file_info.as_ref() {
+                                    match file_info {
+                                        FileInfo::BspFile(_) => true,
+                                        _ => false,
+                                    }
+                                } else {
+                                    false
+                                };
+                                if ui
+                                    .menu_item_config("Export light data")
+                                    .enabled(is_bsp)
+                                    .build()
+                                {
+                                    if let Some(new_path) = FileDialog::new()
+                                        .add_filter("Binary Data", &["bin"])
+                                        .set_directory("/")
+                                        .save_file()
                                     {
-                                        draw_mode = DrawMode::LitTexture;
+                                        let bsp_file = if let Some(file_info) = file_info.as_ref() {
+                                            match file_info {
+                                                FileInfo::BspFile(file) => file,
+                                                _ => panic!(),
+                                            }
+                                        } else {
+                                            panic!()
+                                        };
+                                        export::bsp::export_light_data(&bsp_file.reader, new_path)
+                                            .unwrap();
                                     }
-                                    renderer.set_draw_mode(draw_mode);
+                                }
+                                if ui
+                                    .menu_item_config("Export entity data")
+                                    .enabled(is_bsp)
+                                    .build()
+                                {
+                                    if let Some(new_path) = FileDialog::new()
+                                        .add_filter("Text", &["txt"])
+                                        .set_directory("/")
+                                        .save_file()
+                                    {
+                                        let bsp_file = if let Some(file_info) = file_info.as_ref() {
+                                            match file_info {
+                                                FileInfo::BspFile(file) => file,
+                                                _ => panic!(),
+                                            }
+                                        } else {
+                                            panic!()
+                                        };
+                                        let entities = BspEntity::parse_entities(
+                                            bsp_file.reader.read_entities(),
+                                        );
+                                        let entities_string = format!("{:#?}", entities);
+                                        std::fs::write(new_path, entities_string).unwrap();
+                                    }
+                                }
+                                if ui.menu_item("Exit") {
+                                    should_exit = true;
+                                }
+                            });
+
+                            if let Some(renderer) = renderer.as_mut() {
+                                ui.menu("View", || {
+                                    ui.menu("Draw mode", || {
+                                        let mut draw_mode = renderer.get_draw_mode();
+                                        if ui
+                                            .menu_item_config("Texture")
+                                            .selected(draw_mode == DrawMode::Texture)
+                                            .build()
+                                        {
+                                            draw_mode = DrawMode::Texture;
+                                        }
+                                        if ui
+                                            .menu_item_config("Lightmap")
+                                            .selected(draw_mode == DrawMode::Lightmap)
+                                            .build()
+                                        {
+                                            draw_mode = DrawMode::Lightmap;
+                                        }
+                                        if ui
+                                            .menu_item_config("Lit Texture")
+                                            .selected(draw_mode == DrawMode::LitTexture)
+                                            .build()
+                                        {
+                                            draw_mode = DrawMode::LitTexture;
+                                        }
+                                        renderer.set_draw_mode(draw_mode);
+                                    });
                                 });
-                            });
-                        }
-
-                        ui.menu("Game", || {
-                            if ui.menu_item_config("Noclip").selected(noclip).build() {
-                                noclip = !noclip;
                             }
 
-                            if ui.menu_item_config("Gravity").selected(gravity).build() {
-                                gravity = !gravity;
-                                if let Some(renderer) = renderer.as_mut() {
-                                    renderer.set_gravity(gravity);
+                            ui.menu("Game", || {
+                                if ui.menu_item_config("Noclip").selected(noclip).build() {
+                                    noclip = !noclip;
                                 }
-                            }
-                        });
-                    });
 
-                    if let Some(file_info) = file_info.as_ref() {
-                        match file_info {
-                            FileInfo::WadFile(file_info) => wad_viewer.build_ui(
-                                &ui,
-                                &file_info,
-                                &mut device,
-                                &mut queue,
-                                &mut imgui_renderer,
-                            ),
-                            FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
-                                &ui,
-                                &file_info,
-                                &mut device,
-                                &mut queue,
-                                &mut imgui_renderer,
-                            ),
-                            FileInfo::BspFile(file_info) => bsp_viewer.build_ui(
-                                &ui,
-                                &file_info,
-                                &mut device,
-                                &mut queue,
-                                &mut imgui_renderer,
-                            ),
-                        }
-                    }
-
-                    if let Some(debug_point) = debug_point.as_mut() {
-                        ui.window("Debug Point")
-                            .position([600.0, 25.0], Condition::FirstUseEver)
-                            .size([300.0, 400.0], Condition::FirstUseEver)
-                            .build(|| {
-                                let mut point = debug_point.to_array();
-                                if ui.input_float3("Position", &mut point).build() {
-                                    let point = Vec3::from_array(point);
-                                    *debug_point = point;
+                                if ui.menu_item_config("Gravity").selected(gravity).build() {
+                                    gravity = !gravity;
                                     if let Some(renderer) = renderer.as_mut() {
-                                        renderer.set_debug_point(point);
+                                        renderer.set_gravity(gravity);
                                     }
                                 }
                             });
+                        });
+
+                        if let Some(file_info) = file_info.as_ref() {
+                            match file_info {
+                                FileInfo::WadFile(file_info) => wad_viewer.build_ui(
+                                    &ui,
+                                    &file_info,
+                                    &mut device,
+                                    &mut queue,
+                                    &mut imgui_renderer,
+                                ),
+                                FileInfo::MdlFile(file_info) => mdl_viewer.build_ui(
+                                    &ui,
+                                    &file_info,
+                                    &mut device,
+                                    &mut queue,
+                                    &mut imgui_renderer,
+                                ),
+                                FileInfo::BspFile(file_info) => bsp_viewer.build_ui(
+                                    &ui,
+                                    &file_info,
+                                    &mut device,
+                                    &mut queue,
+                                    &mut imgui_renderer,
+                                ),
+                            }
+                        }
+
+                        if let Some(debug_point) = debug_point.as_mut() {
+                            ui.window("Debug Point")
+                                .position([600.0, 25.0], Condition::FirstUseEver)
+                                .size([300.0, 400.0], Condition::FirstUseEver)
+                                .build(|| {
+                                    let mut point = debug_point.to_array();
+                                    if ui.input_float3("Position", &mut point).build() {
+                                        let point = Vec3::from_array(point);
+                                        *debug_point = point;
+                                        if let Some(renderer) = renderer.as_mut() {
+                                            renderer.set_debug_point(point);
+                                        }
+                                    }
+                                });
+                        }
                     }
+
+                    let mut encoder: wgpu::CommandEncoder = device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+                    if last_cursor != Some(ui.mouse_cursor()) {
+                        last_cursor = Some(ui.mouse_cursor());
+                        platform.prepare_render(&ui, &window);
+                    }
+
+                    {
+                        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: None,
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &view,
+                                resolve_target: None,
+                                ops: clear_op,
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+
+                        imgui_renderer
+                            .render(imgui.render(), &queue, &device, &mut rpass)
+                            .expect("Rendering failed");
+                    }
+
+                    queue.submit(Some(encoder.finish()));
+                    frame.present();
                 }
-
-                let mut encoder: wgpu::CommandEncoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-                if last_cursor != Some(ui.mouse_cursor()) {
-                    last_cursor = Some(ui.mouse_cursor());
-                    platform.prepare_render(&ui, &window);
-                }
-
-                {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: None,
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: clear_op,
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-
-                    imgui_renderer
-                        .render(imgui.render(), &queue, &device, &mut rpass)
-                        .expect("Rendering failed");
-                }
-
-                queue.submit(Some(encoder.finish()));
-                frame.present();
+                _ => (),
+            };
+            if should_exit {
+                target.exit();
             }
-            _ => (),
-        };
-        if should_exit {
-            target.exit();
-        }
-        if mouse_controller.input_mode() == MouseInputMode::Cursor || !mouse_event {
-            platform.handle_event(imgui.io_mut(), &window, &event);
-        }
-    }).unwrap();
+            if mouse_controller.input_mode() == MouseInputMode::Cursor || !mouse_event {
+                platform.handle_event(imgui.io_mut(), &window, &event);
+            }
+        })
+        .unwrap();
 }
 
 fn get_extension_from_path<P: AsRef<Path>>(path: P) -> Option<String> {
