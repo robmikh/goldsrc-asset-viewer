@@ -448,6 +448,7 @@ impl<'a> BspBitmap<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct BspEntity<'a>(pub HashMap<&'a str, &'a str>);
 
 impl<'a> BspEntity<'a> {

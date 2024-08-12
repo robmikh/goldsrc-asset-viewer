@@ -588,6 +588,29 @@ fn show_ui(cli: Cli) {
                                         .unwrap();
                                 }
                             }
+                            if ui
+                                .menu_item_config("Export entity data")
+                                .enabled(is_bsp)
+                                .build()
+                            {
+                                if let Some(new_path) = FileDialog::new()
+                                    .add_filter("Text", &["txt"])
+                                    .set_directory("/")
+                                    .save_file()
+                                {
+                                    let bsp_file = if let Some(file_info) = file_info.as_ref() {
+                                        match file_info {
+                                            FileInfo::BspFile(file) => file,
+                                            _ => panic!(),
+                                        }
+                                    } else {
+                                        panic!()
+                                    };
+                                    let entities = BspEntity::parse_entities(bsp_file.reader.read_entities());
+                                    let entities_string = format!("{:#?}", entities);
+                                    std::fs::write(new_path, entities_string).unwrap();
+                                }
+                            }
                             if ui.menu_item("Exit") {
                                 should_exit = true;
                             }
