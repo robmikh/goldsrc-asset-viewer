@@ -52,10 +52,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(
-        device: &wgpu::Device,
-        config: wgpu::SurfaceConfiguration,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, config: wgpu::SurfaceConfiguration) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(
@@ -303,9 +300,12 @@ impl Renderer {
         &self.sampler
     }
 
-    pub fn render<'a>(&'a self, encoder: &'a mut wgpu::CommandEncoder, 
+    pub fn render<'a>(
+        &'a self,
+        encoder: &'a mut wgpu::CommandEncoder,
         clear_color: wgpu::Color,
-        view: &'a wgpu::TextureView) -> RenderPass<'a> {
+        view: &'a wgpu::TextureView,
+    ) -> RenderPass<'a> {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

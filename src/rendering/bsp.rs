@@ -18,7 +18,9 @@ use crate::{
 };
 
 use super::{
-    debug::{create_debug_point, create_debug_pyramid}, renderer::{DrawParams, GpuVertex, ModelBuffer}, Renderer
+    debug::{create_debug_point, create_debug_pyramid},
+    renderer::{DrawParams, GpuVertex, ModelBuffer},
+    Renderer,
 };
 
 struct GpuModel {
@@ -690,11 +692,16 @@ impl Renderer for BspRenderer {
     }
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
-        self.renderer.camera().world_pos_and_ray_from_screen_pos(pos)
+        self.renderer
+            .camera()
+            .world_pos_and_ray_from_screen_pos(pos)
     }
 
     fn get_position_and_direction(&self) -> (Vec3, Vec3) {
-        (self.renderer.camera().position(), self.renderer.camera().facing())
+        (
+            self.renderer.camera().position(),
+            self.renderer.camera().facing(),
+        )
     }
 
     fn set_debug_point(&mut self, point: Vec3) {
@@ -753,7 +760,6 @@ fn create_texture_and_view(
     );
     (texture, texture_view)
 }
-
 
 fn create_gpu_model_for_model(
     model: &Model<ModelVertex>,
