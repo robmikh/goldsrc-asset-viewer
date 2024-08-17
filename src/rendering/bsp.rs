@@ -80,7 +80,7 @@ basic_enum! {
     }
 }
 
-pub struct BspRenderer {
+struct MapData {
     models_to_render: Vec<usize>,
     transparent_models: HashSet<usize>,
     map_models: Vec<GpuModel>,
@@ -88,31 +88,17 @@ pub struct BspRenderer {
 
     _lightmap_texture: wgpu::Texture,
     lightmap_view: wgpu::TextureView,
-
-    renderer: super::renderer::Renderer,
-    player: MovingEntity,
-    gravity: bool,
-
-    new_debug_point: Option<Vec3>,
-    debug_point: Option<GpuModel>,
-    new_debug_pyramid_location: Option<(Vec3, Vec3)>,
-    debug_pyramid: Option<GpuModel>,
-
-    draw_mode: DrawMode,
-    draw_mode_update: Option<DrawMode>,
 }
 
-impl BspRenderer {
+impl MapData {
     pub fn new(
+        renderer: &super::renderer::Renderer,
         reader: &BspReader,
         loaded_map_models: &[Model<ModelVertex>],
         loaded_textures: &[TextureInfo],
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let renderer = super::renderer::Renderer::new(device, config);
-
         let model_bind_group_layout = renderer.model_bind_group_layout();
         let texture_bind_group_layout = renderer.texture_bind_group_layout();
         let sampler = renderer.sampler();
@@ -172,29 +158,7 @@ impl BspRenderer {
             (texture, view)
         };
 
-        // Find the "info_player_start" entity
         let entities = BspEntity::parse_entities(reader.read_entities());
-        let mut player_start_entity = None;
-        for entity in &entities {
-            if let Some(value) = entity.0.get("classname") {
-                if *value == "info_player_start" {
-                    player_start_entity = Some(entity);
-                }
-            }
-        }
-        let camera_start = {
-            let entity = player_start_entity.unwrap();
-            let value = entity.0.get("origin").unwrap();
-            let mut split = value.split(" ");
-            let x: f32 = split.next().unwrap().parse().unwrap();
-            let y: f32 = split.next().unwrap().parse().unwrap();
-            let z: f32 = split.next().unwrap().parse().unwrap();
-            let coord = [x, y, z];
-            let coord = convert_coordinates(coord);
-            Vec3::from_array(coord)
-        };
-        println!("Start position: {:?}", camera_start);
-        let player = MovingEntity::new(camera_start);
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
@@ -312,8 +276,6 @@ impl BspRenderer {
             }
         }
 
-        let draw_mode = DrawMode::LitTexture;
-
         Self {
             models_to_render,
             transparent_models,
@@ -322,19 +284,32 @@ impl BspRenderer {
 
             _lightmap_texture: lightmap_texture,
             lightmap_view,
-
-            renderer,
-            player,
-            gravity: true,
-
-            new_debug_point: None,
-            debug_point: None,
-            new_debug_pyramid_location: None,
-            debug_pyramid: None,
-
-            draw_mode,
-            draw_mode_update: None,
         }
+    }
+
+    fn get_start_position(&self, reader: &BspReader) -> Vec3 {
+        // Find the "info_player_start" entity
+        let entities = BspEntity::parse_entities(reader.read_entities());
+        let mut player_start_entity = None;
+        for entity in &entities {
+            if let Some(value) = entity.0.get("classname") {
+                if *value == "info_player_start" {
+                    player_start_entity = Some(entity);
+                }
+            }
+        }
+        let camera_start = {
+            let entity = player_start_entity.unwrap();
+            let value = entity.0.get("origin").unwrap();
+            let mut split = value.split(" ");
+            let x: f32 = split.next().unwrap().parse().unwrap();
+            let y: f32 = split.next().unwrap().parse().unwrap();
+            let z: f32 = split.next().unwrap().parse().unwrap();
+            let coord = [x, y, z];
+            let coord = convert_coordinates(coord);
+            Vec3::from_array(coord)
+        };
+        camera_start
     }
 
     fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
@@ -351,6 +326,79 @@ impl BspRenderer {
                 0,
                 0..1,
             );
+        }
+    }
+
+    fn render<'a>(&'a self, render_pass: &mut super::renderer::RenderPass<'a>) {
+        for model_index in &self.models_to_render {
+            let model = &self.map_models[*model_index];
+            self.render_model(&mut render_pass.render_pass, model);
+        }
+
+        for model_index in &self.transparent_models {
+            let model = &self.map_models[*model_index];
+            self.render_model(&mut render_pass.render_pass, model);
+        }
+    }
+}
+
+pub struct BspRenderer {
+    map_data: MapData,
+
+    renderer: super::renderer::Renderer,
+    player: MovingEntity,
+    gravity: bool,
+
+    new_debug_point: Option<Vec3>,
+    debug_point: Option<GpuModel>,
+    new_debug_pyramid_location: Option<(Vec3, Vec3)>,
+    debug_pyramid: Option<GpuModel>,
+
+    draw_mode: DrawMode,
+    draw_mode_update: Option<DrawMode>,
+}
+
+impl BspRenderer {
+    pub fn new(
+        reader: &BspReader,
+        loaded_map_models: &[Model<ModelVertex>],
+        loaded_textures: &[TextureInfo],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        let renderer = super::renderer::Renderer::new(device, config);
+
+        let map_data = MapData::new(
+            &renderer,
+            reader,
+            loaded_map_models,
+            loaded_textures,
+            device,
+            queue,
+        );
+
+        // Find the "info_player_start" entity
+        let camera_start = map_data.get_start_position(reader);
+        println!("Start position: {:?}", camera_start);
+        let player = MovingEntity::new(camera_start);
+
+        let draw_mode = DrawMode::LitTexture;
+
+        Self {
+            map_data,
+
+            renderer,
+            player,
+            gravity: true,
+
+            new_debug_point: None,
+            debug_point: None,
+            new_debug_pyramid_location: None,
+            debug_pyramid: None,
+
+            draw_mode,
+            draw_mode_update: None,
         }
     }
 
@@ -433,22 +481,17 @@ impl Renderer for BspRenderer {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut render_pass = self.renderer.render(&mut encoder, clear_color, view);
-            for model_index in &self.models_to_render {
-                let model = &self.map_models[*model_index];
-                self.render_model(&mut render_pass.render_pass, model);
-            }
 
-            for model_index in &self.transparent_models {
-                let model = &self.map_models[*model_index];
-                self.render_model(&mut render_pass.render_pass, model);
-            }
+            self.map_data.render(&mut render_pass);
 
             if let Some(model) = self.debug_point.as_ref() {
-                self.render_model(&mut render_pass.render_pass, model);
+                self.map_data
+                    .render_model(&mut render_pass.render_pass, model);
             }
 
             if let Some(model) = self.debug_pyramid.as_ref() {
-                self.render_model(&mut render_pass.render_pass, model);
+                self.map_data
+                    .render_model(&mut render_pass.render_pass, model);
             }
         }
 
@@ -663,7 +706,7 @@ impl Renderer for BspRenderer {
         }
 
         if let Some(new_debug_point) = self.new_debug_point.take() {
-            let model = create_debug_point_model(new_debug_point, self.textures.len() - 1);
+            let model = create_debug_point_model(new_debug_point, self.map_data.textures.len() - 1);
             let gpu_model = create_gpu_model_for_model(
                 &model,
                 Vec3::ZERO,
@@ -671,13 +714,13 @@ impl Renderer for BspRenderer {
                 device,
                 self.renderer.model_bind_group_layout(),
                 self.renderer.sampler(),
-                &self.lightmap_view,
+                &self.map_data.lightmap_view,
             );
             self.debug_point = Some(gpu_model);
         }
 
         if let Some((pos, dir)) = self.new_debug_pyramid_location.take() {
-            let model = create_debug_pyramid_model(pos, dir, self.textures.len() - 1);
+            let model = create_debug_pyramid_model(pos, dir, self.map_data.textures.len() - 1);
             let gpu_model = create_gpu_model_for_model(
                 &model,
                 Vec3::ZERO,
@@ -685,7 +728,7 @@ impl Renderer for BspRenderer {
                 device,
                 self.renderer.model_bind_group_layout(),
                 self.renderer.sampler(),
-                &self.lightmap_view,
+                &self.map_data.lightmap_view,
             );
             self.debug_pyramid = Some(gpu_model);
         }
