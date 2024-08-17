@@ -10,6 +10,7 @@ pub mod bsp;
 mod camera;
 mod debug;
 mod movement;
+mod renderer;
 
 pub trait Renderer {
     fn render(
