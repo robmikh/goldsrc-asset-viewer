@@ -564,9 +564,13 @@ impl Renderer for BspRenderer {
         let wish_dir = if direction != Vec3::ZERO {
             direction = direction.normalize();
 
-            let mut wish_dir = direction;
-            wish_dir.y = 0.0;
-            wish_dir.normalize()
+            if !noclip {
+                let mut wish_dir = direction;
+                wish_dir.y = 0.0;
+                wish_dir.normalize()
+            } else {
+                direction
+            }
         } else {
             Vec3::ZERO
         };
@@ -686,6 +690,8 @@ impl Renderer for BspRenderer {
                         self.player.set_is_on_ground(true);
                     }
                 }
+            } else {
+                position = start_position + (velocity * delta.as_secs_f32());
             }
 
             position = position + CROUCH_HEIGHT;
