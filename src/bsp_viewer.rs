@@ -12,10 +12,12 @@ use imgui_wgpu::Renderer;
 pub struct ExtraTextureData {}
 
 #[derive(Copy, Clone)]
-struct BspViewerState {
+pub struct BspViewerState {
     pub selected_entity_index: i32,
     pub position: Vec3,
     pub direction: Vec3,
+    pub noclip: bool,
+    pub gravity: bool,
 }
 
 impl BspViewerState {
@@ -24,13 +26,9 @@ impl BspViewerState {
             selected_entity_index: -1,
             position: Vec3::ZERO,
             direction: Vec3::ZERO,
+            noclip: false,
+            gravity: true,
         }
-    }
-
-    fn copy_state(&mut self, other: &Self) {
-        self.selected_entity_index = other.selected_entity_index;
-        self.position = other.position;
-        self.direction = other.direction;
     }
 }
 
@@ -55,14 +53,31 @@ impl BspViewer {
         self.state.selected_entity_index = 0;
     }
 
-    pub fn build_ui(
-        &mut self,
-        ui: &Ui,
-        file_info: &BspFile,
-        device: &mut wgpu::Device,
-        queue: &mut wgpu::Queue,
-        renderer: &mut Renderer,
-    ) {
+    pub fn state(&self) -> &BspViewerState {
+        &self.state
+    }
+
+    pub fn build_menu(&mut self, ui: &Ui) {
+        ui.menu("Game", || {
+            if ui
+                .menu_item_config("Noclip")
+                .selected(self.state.noclip)
+                .build()
+            {
+                self.state.noclip = !self.state.noclip;
+            }
+
+            if ui
+                .menu_item_config("Gravity")
+                .selected(self.state.gravity)
+                .build()
+            {
+                self.state.gravity = !self.state.gravity;
+            }
+        });
+    }
+
+    pub fn build_ui(&mut self, ui: &Ui, file_info: &BspFile) {
         let mut force_new_selection = false;
 
         if self.last_file_path != file_info.path {

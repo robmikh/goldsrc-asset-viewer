@@ -218,8 +218,6 @@ fn show_ui(cli: Cli) {
 
     let mut mouse_controller = MouseInputController::new();
     let mut down_keys = HashSet::<KeyCode>::new();
-    let mut noclip = false;
-    let mut gravity = true;
     let mut debug_point = None;
     event_loop.set_control_flow(ControlFlow::Poll);
     event_loop
@@ -505,7 +503,6 @@ fn show_ui(cli: Cli) {
                             &down_keys,
                             mouse_delta,
                             &file_info,
-                            noclip,
                         );
                         let (position, direction) = renderer.get_position_and_direction();
                         bsp_viewer.set_position(position, direction);
@@ -661,18 +658,9 @@ fn show_ui(cli: Cli) {
                                 });
                             }
 
-                            ui.menu("Game", || {
-                                if ui.menu_item_config("Noclip").selected(noclip).build() {
-                                    noclip = !noclip;
-                                }
-
-                                if ui.menu_item_config("Gravity").selected(gravity).build() {
-                                    gravity = !gravity;
-                                    if let Some(renderer) = renderer.as_mut() {
-                                        renderer.set_gravity(gravity);
-                                    }
-                                }
-                            });
+                            if let Some(renderer) = renderer.as_mut() {
+                                renderer.build_ui_menu(ui);
+                            }
                         });
 
                         if let Some(file_info) = file_info.as_ref() {
@@ -691,13 +679,11 @@ fn show_ui(cli: Cli) {
                                     &mut queue,
                                     &mut imgui_renderer,
                                 ),
-                                FileInfo::BspFile(file_info) => bsp_viewer.build_ui(
-                                    &ui,
-                                    &file_info,
-                                    &mut device,
-                                    &mut queue,
-                                    &mut imgui_renderer,
-                                ),
+                                FileInfo::BspFile(_) => {
+                                    if let Some(renderer) = renderer.as_mut() {
+                                        renderer.build_ui(ui, file_info);
+                                    }
+                                }
                             }
                         }
 

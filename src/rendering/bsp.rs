@@ -8,6 +8,7 @@ use winit::keyboard::KeyCode;
 
 use crate::{
     basic_enum,
+    bsp_viewer::BspViewer,
     export::{
         bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
@@ -329,10 +330,16 @@ impl MapData {
         }
     }
 
-    fn render<'a>(&'a self, render_pass: &mut super::renderer::RenderPass<'a>) {
-        for model_index in &self.models_to_render {
-            let model = &self.map_models[*model_index];
-            self.render_model(&mut render_pass.render_pass, model);
+    fn render<'a>(&'a self, render_pass: &mut super::renderer::RenderPass<'a>, render_all: bool) {
+        if !render_all {
+            for model_index in &self.models_to_render {
+                let model = &self.map_models[*model_index];
+                self.render_model(&mut render_pass.render_pass, model);
+            }
+        } else {
+            for model in &self.map_models {
+                self.render_model(&mut render_pass.render_pass, model);
+            }
         }
 
         for model_index in &self.transparent_models {
@@ -356,6 +363,9 @@ pub struct BspRenderer {
 
     draw_mode: DrawMode,
     draw_mode_update: Option<DrawMode>,
+    render_all: bool,
+
+    ui: Option<BspViewer>,
 }
 
 impl BspRenderer {
@@ -399,6 +409,9 @@ impl BspRenderer {
 
             draw_mode,
             draw_mode_update: None,
+            render_all: false,
+
+            ui: Some(BspViewer::new()),
         }
     }
 
@@ -482,7 +495,7 @@ impl Renderer for BspRenderer {
         {
             let mut render_pass = self.renderer.render(&mut encoder, clear_color, view);
 
-            self.map_data.render(&mut render_pass);
+            self.map_data.render(&mut render_pass, self.render_all);
 
             if let Some(model) = self.debug_point.as_ref() {
                 self.map_data
@@ -515,8 +528,14 @@ impl Renderer for BspRenderer {
         down_keys: &HashSet<KeyCode>,
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
-        noclip: bool,
     ) {
+        let noclip = {
+            if let Some(viewer) = self.ui.as_ref() {
+                viewer.state().noclip
+            } else {
+                false
+            }
+        };
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -761,10 +780,6 @@ impl Renderer for BspRenderer {
         self.new_debug_pyramid_location = Some((point, dir));
     }
 
-    fn set_gravity(&mut self, gravity: bool) {
-        self.gravity = gravity;
-    }
-
     fn set_draw_mode(&mut self, draw_mode: DrawMode) {
         if self.draw_mode != draw_mode {
             self.draw_mode_update = Some(draw_mode);
@@ -773,6 +788,28 @@ impl Renderer for BspRenderer {
 
     fn get_draw_mode(&self) -> DrawMode {
         self.draw_mode
+    }
+
+    fn build_ui_menu(&mut self, ui: &imgui::Ui) {
+        if let Some(viewer) = self.ui.as_mut() {
+            let old_state = *viewer.state();
+            viewer.build_menu(ui);
+            let new_state = *viewer.state();
+
+            if old_state.gravity != new_state.gravity {
+                self.gravity = new_state.gravity;
+            }
+        }
+    }
+
+    fn build_ui(&mut self, ui: &imgui::Ui, file_info: &FileInfo) {
+        if let Some(viewer) = self.ui.as_mut() {
+            let bsp_file = match file_info {
+                FileInfo::BspFile(file) => file,
+                _ => panic!(),
+            };
+            viewer.build_ui(ui, bsp_file);
+        }
     }
 }
 

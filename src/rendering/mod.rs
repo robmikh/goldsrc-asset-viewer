@@ -28,6 +28,10 @@ pub trait Renderer {
         queue: &wgpu::Queue,
     );
 
+    fn build_ui_menu(&mut self, ui: &imgui::Ui);
+
+    fn build_ui(&mut self, ui: &imgui::Ui, file_info: &FileInfo);
+
     fn update(
         &mut self,
         device: &wgpu::Device,
@@ -37,7 +41,6 @@ pub trait Renderer {
         mouse_delta: Option<Vec2>,
         // TODO: remove
         file_info: &Option<FileInfo>,
-        noclip: bool,
     );
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);
@@ -46,7 +49,6 @@ pub trait Renderer {
 
     fn set_debug_point(&mut self, point: Vec3);
     fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3);
-    fn set_gravity(&mut self, gravity: bool);
     fn set_draw_mode(&mut self, draw_mode: DrawMode);
     fn get_draw_mode(&self) -> DrawMode;
 }
