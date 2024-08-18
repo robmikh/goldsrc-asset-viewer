@@ -51,4 +51,8 @@ pub trait Renderer {
     fn set_debug_pyramid(&mut self, point: Vec3, dir: Vec3);
     fn set_draw_mode(&mut self, draw_mode: DrawMode);
     fn get_draw_mode(&self) -> DrawMode;
+
+    // TODO: remove
+    fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
+    fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
 }

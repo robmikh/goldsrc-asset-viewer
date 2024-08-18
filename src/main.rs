@@ -10,17 +10,14 @@ mod rendering;
 mod util;
 mod wad_viewer;
 
-use crate::hittest::hittest_clip_node;
 use crate::mdl_viewer::MdlViewer;
 use crate::wad_viewer::{load_wad_archive, WadViewer};
-use bsp_viewer::BspViewer;
 use clap::*;
 use cli::Cli;
 use export::bsp::{decode_atlas, read_textures, read_wad_resources, WadCollection};
-use glam::{Vec2, Vec3};
+use glam::Vec2;
 use gsparser::bsp::{BspEntity, BspReader};
 use gsparser::wad3::{WadArchive, WadFileInfo};
-use hittest::hittest_node_for_leaf;
 use imgui::*;
 use imgui_wgpu::RendererConfig;
 use mouse::{MouseInputController, MouseInputMode};
@@ -212,13 +209,11 @@ fn show_ui(cli: Cli) {
     let mut last_cursor = None;
     let mut wad_viewer = WadViewer::new();
     let mut mdl_viewer = MdlViewer::new();
-    let mut bsp_viewer = BspViewer::new();
 
     let mut pending_path: Option<PathBuf> = None;
 
     let mut mouse_controller = MouseInputController::new();
     let mut down_keys = HashSet::<KeyCode>::new();
-    let mut debug_point = None;
     event_loop.set_control_flow(ControlFlow::Poll);
     event_loop
         .run(|event, target| {
@@ -336,89 +331,10 @@ fn show_ui(cli: Cli) {
                         {
                             if down_keys.contains(&KeyCode::ShiftLeft) {
                                 if let Some(renderer) = renderer.as_mut() {
-                                    let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                    renderer.process_shift_left_click(
                                         mouse_controller.mouse_position(),
+                                        &file_info,
                                     );
-
-                                    println!("pos: {:?}    ray: {:?}", pos, ray);
-                                    if let Some(file_info) = file_info.as_ref() {
-                                        match file_info {
-                                            FileInfo::BspFile(file_info) => {
-                                                let models = file_info.reader.read_models();
-                                                let mut closest_intersection = None;
-                                                for (i, model) in models.iter().enumerate() {
-                                                    let node_index = model.head_nodes[0] as usize;
-                                                    if let Some((intersection_point, _leaf_index)) =
-                                                        hittest_node_for_leaf(
-                                                            &file_info.reader,
-                                                            node_index,
-                                                            pos,
-                                                            ray,
-                                                        )
-                                                    {
-                                                        let distance =
-                                                            pos.distance(intersection_point);
-                                                        if let Some((old_i, old_intersection)) =
-                                                            closest_intersection.take()
-                                                        {
-                                                            let old_distance =
-                                                                pos.distance(old_intersection);
-                                                            if distance < old_distance {
-                                                                closest_intersection =
-                                                                    Some((i, intersection_point));
-                                                            } else {
-                                                                closest_intersection =
-                                                                    Some((old_i, old_intersection));
-                                                            }
-                                                        } else {
-                                                            closest_intersection =
-                                                                Some((i, intersection_point));
-                                                        }
-                                                    }
-                                                }
-
-                                                if let Some((model_index, intersection_point)) =
-                                                    closest_intersection
-                                                {
-                                                    renderer.set_debug_point(intersection_point);
-                                                    debug_point = Some(intersection_point);
-                                                    println!(
-                                                        "Intersection: {:?}",
-                                                        intersection_point
-                                                    );
-                                                    println!("Hit something... {}", model_index);
-
-                                                    let mut found = None;
-                                                    let entities = BspEntity::parse_entities(
-                                                        file_info.reader.read_entities(),
-                                                    );
-                                                    for (entity_index, entity) in
-                                                        entities.iter().enumerate()
-                                                    {
-                                                        if let Some(value) = entity.0.get("model") {
-                                                            if value.starts_with('*') {
-                                                                let model_ref: usize = value
-                                                                    .trim_start_matches('*')
-                                                                    .parse()
-                                                                    .unwrap();
-                                                                if model_ref == model_index {
-                                                                    found = Some(entity_index);
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-
-                                                    if let Some(entity_index) = found {
-                                                        println!("Found entity: {}", entity_index);
-                                                        bsp_viewer
-                                                            .select_entity(entity_index as i32);
-                                                    }
-                                                }
-                                            }
-                                            _ => (),
-                                        }
-                                    }
                                 }
                             }
                         } else if state == ElementState::Released
@@ -426,29 +342,10 @@ fn show_ui(cli: Cli) {
                         {
                             if down_keys.contains(&KeyCode::ShiftLeft) {
                                 if let Some(renderer) = renderer.as_mut() {
-                                    let (pos, ray) = renderer.world_pos_and_ray_from_screen_pos(
+                                    renderer.process_shift_right_click(
                                         mouse_controller.mouse_position(),
+                                        &file_info,
                                     );
-                                    println!("pos: {:?}    ray: {:?}", pos, ray);
-
-                                    let reader = match file_info.as_ref().unwrap() {
-                                        FileInfo::BspFile(file) => &file.reader,
-                                        _ => panic!(),
-                                    };
-                                    let clip_node_index =
-                                        reader.read_models()[0].head_nodes[1] as usize;
-                                    if let Some(intersection) = hittest_clip_node(
-                                        reader,
-                                        clip_node_index,
-                                        pos,
-                                        pos + (ray * 10000.0),
-                                    ) {
-                                        println!("intersection: {:?}", intersection);
-                                        renderer.set_debug_pyramid(
-                                            intersection.position,
-                                            intersection.normal,
-                                        );
-                                    }
                                 }
                             }
                         }
@@ -504,8 +401,6 @@ fn show_ui(cli: Cli) {
                             mouse_delta,
                             &file_info,
                         );
-                        let (position, direction) = renderer.get_position_and_direction();
-                        bsp_viewer.set_position(position, direction);
                         renderer.render(clear_color, &view, &device, &queue);
                         wgpu::Operations {
                             load: wgpu::LoadOp::Load,
@@ -685,22 +580,6 @@ fn show_ui(cli: Cli) {
                                     }
                                 }
                             }
-                        }
-
-                        if let Some(debug_point) = debug_point.as_mut() {
-                            ui.window("Debug Point")
-                                .position([600.0, 25.0], Condition::FirstUseEver)
-                                .size([300.0, 400.0], Condition::FirstUseEver)
-                                .build(|| {
-                                    let mut point = debug_point.to_array();
-                                    if ui.input_float3("Position", &mut point).build() {
-                                        let point = Vec3::from_array(point);
-                                        *debug_point = point;
-                                        if let Some(renderer) = renderer.as_mut() {
-                                            renderer.set_debug_point(point);
-                                        }
-                                    }
-                                });
                         }
                     }
 

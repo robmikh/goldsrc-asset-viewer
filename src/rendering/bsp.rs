@@ -13,7 +13,7 @@ use crate::{
         bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
-    hittest::hittest_clip_node,
+    hittest::{hittest_clip_node, hittest_node_for_leaf},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -357,6 +357,7 @@ pub struct BspRenderer {
     noclip: bool,
     gravity: bool,
 
+    debug_point_position: Option<Vec3>,
     new_debug_point: Option<Vec3>,
     debug_point: Option<GpuModel>,
     new_debug_pyramid_location: Option<(Vec3, Vec3)>,
@@ -404,6 +405,7 @@ impl BspRenderer {
             noclip: false,
             gravity: true,
 
+            debug_point_position: None,
             new_debug_point: None,
             debug_point: None,
             new_debug_pyramid_location: None,
@@ -736,6 +738,7 @@ impl Renderer for BspRenderer {
                 self.renderer.sampler(),
                 &self.map_data.lightmap_view,
             );
+            self.debug_point_position = Some(new_debug_point);
             self.debug_point = Some(gpu_model);
         }
 
@@ -751,6 +754,11 @@ impl Renderer for BspRenderer {
                 &self.map_data.lightmap_view,
             );
             self.debug_pyramid = Some(gpu_model);
+        }
+
+        let (position, direction) = self.get_position_and_direction();
+        if let Some(viewer) = self.ui.as_mut() {
+            viewer.set_position(position, direction)
         }
     }
 
@@ -798,6 +806,10 @@ impl Renderer for BspRenderer {
             if old_state.gravity != new_state.gravity {
                 self.gravity = new_state.gravity;
             }
+
+            if old_state.render_all != new_state.render_all {
+                self.render_all = new_state.render_all;
+            }
         }
     }
 
@@ -808,6 +820,105 @@ impl Renderer for BspRenderer {
                 _ => panic!(),
             };
             viewer.build_ui(ui, bsp_file);
+        }
+
+        if let Some(debug_point) = self.debug_point_position.clone() {
+            ui.window("Debug Point")
+                .position([600.0, 25.0], imgui::Condition::FirstUseEver)
+                .size([300.0, 400.0], imgui::Condition::FirstUseEver)
+                .build(|| {
+                    let mut point = debug_point.to_array();
+                    if ui.input_float3("Position", &mut point).build() {
+                        let point = Vec3::from_array(point);
+                        self.set_debug_point(point);
+                    }
+                });
+        }
+    }
+
+    fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>) {
+        let (pos, ray) = self.world_pos_and_ray_from_screen_pos(screen_space);
+
+        println!("pos: {:?}    ray: {:?}", pos, ray);
+        if let Some(file_info) = file_info.as_ref() {
+            match file_info {
+                FileInfo::BspFile(file_info) => {
+                    let models = file_info.reader.read_models();
+                    let mut closest_intersection = None;
+                    for (i, model) in models.iter().enumerate() {
+                        let node_index = model.head_nodes[0] as usize;
+                        if let Some((intersection_point, _leaf_index)) =
+                            hittest_node_for_leaf(&file_info.reader, node_index, pos, ray)
+                        {
+                            let distance = pos.distance(intersection_point);
+                            if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                                let old_distance = pos.distance(old_intersection);
+                                if distance < old_distance {
+                                    closest_intersection = Some((i, intersection_point));
+                                } else {
+                                    closest_intersection = Some((old_i, old_intersection));
+                                }
+                            } else {
+                                closest_intersection = Some((i, intersection_point));
+                            }
+                        }
+                    }
+
+                    if let Some((model_index, intersection_point)) = closest_intersection {
+                        self.set_debug_point(intersection_point);
+                        println!("Intersection: {:?}", intersection_point);
+                        println!("Hit something... {}", model_index);
+
+                        let mut found = None;
+                        let entities = BspEntity::parse_entities(file_info.reader.read_entities());
+                        for (entity_index, entity) in entities.iter().enumerate() {
+                            if let Some(value) = entity.0.get("model") {
+                                if value.starts_with('*') {
+                                    let model_ref: usize =
+                                        value.trim_start_matches('*').parse().unwrap();
+                                    if model_ref == model_index {
+                                        found = Some(entity_index);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(entity_index) = found {
+                            println!("Found entity: {}", entity_index);
+                            if let Some(viewer) = self.ui.as_mut() {
+                                viewer.select_entity(entity_index as i32);
+                            }
+                        } else {
+                            if let Some(viewer) = self.ui.as_mut() {
+                                viewer.select_entity(-1);
+                            }
+                        }
+                    } else {
+                        if let Some(viewer) = self.ui.as_mut() {
+                            viewer.select_entity(-1);
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>) {
+        let (pos, ray) = self.world_pos_and_ray_from_screen_pos(screen_space);
+        println!("pos: {:?}    ray: {:?}", pos, ray);
+
+        let reader = match file_info.as_ref().unwrap() {
+            FileInfo::BspFile(file) => &file.reader,
+            _ => panic!(),
+        };
+        let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+        if let Some(intersection) =
+            hittest_clip_node(reader, clip_node_index, pos, pos + (ray * 10000.0))
+        {
+            println!("intersection: {:?}", intersection);
+            self.set_debug_pyramid(intersection.position, intersection.normal);
         }
     }
 }

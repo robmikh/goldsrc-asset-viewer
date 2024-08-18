@@ -18,6 +18,7 @@ pub struct BspViewerState {
     pub direction: Vec3,
     pub noclip: bool,
     pub gravity: bool,
+    pub render_all: bool,
 }
 
 impl BspViewerState {
@@ -28,6 +29,7 @@ impl BspViewerState {
             direction: Vec3::ZERO,
             noclip: false,
             gravity: true,
+            render_all: false,
         }
     }
 }
@@ -73,6 +75,14 @@ impl BspViewer {
                 .build()
             {
                 self.state.gravity = !self.state.gravity;
+            }
+
+            if ui
+                .menu_item_config("Render All")
+                .selected(self.state.render_all)
+                .build()
+            {
+                self.state.render_all = !self.state.render_all;
             }
         });
     }
