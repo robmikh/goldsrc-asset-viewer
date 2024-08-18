@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, path::PathBuf};
 
 use glam::{Mat4, Vec2, Vec3};
 use gltf::{Mesh, Model};
@@ -23,6 +23,10 @@ use super::{
     renderer::{DrawParams, GpuVertex, ModelBuffer},
     Renderer,
 };
+
+// On c1a0, we start at -166 and fall to -179.96875 without adjustments
+const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
+const AUTO_STEP_HEIGHT: f32 = 4.0;
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -89,6 +93,8 @@ struct MapData {
 
     _lightmap_texture: wgpu::Texture,
     lightmap_view: wgpu::TextureView,
+
+    entities: Vec<HashMap<String, String>>,
 }
 
 impl MapData {
@@ -277,6 +283,17 @@ impl MapData {
             }
         }
 
+        let entities = BspEntity::parse_entities(reader.read_entities())
+        .iter()
+        .map(|x| {
+            let mut result = HashMap::new();
+            for (key, value) in &x.0 {
+                result.insert((*key).to_owned(), (*value).to_owned());
+            }
+            result
+        })
+        .collect();
+
         Self {
             models_to_render,
             transparent_models,
@@ -285,6 +302,8 @@ impl MapData {
 
             _lightmap_texture: lightmap_texture,
             lightmap_view,
+
+            entities,
         }
     }
 
@@ -484,6 +503,69 @@ impl BspRenderer {
         }
         (position, velocity, collisions > 0)
     }
+
+    fn find_model_with_entity(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<(usize, usize, Vec3)> {
+        match file_info {
+            FileInfo::BspFile(file_info) => {
+                let models = file_info.reader.read_models();
+                let mut closest_intersection = None;
+                for (i, model) in models.iter().enumerate() {
+                    let node_index = model.head_nodes[0] as usize;
+                    if let Some((intersection_point, _leaf_index)) =
+                        hittest_node_for_leaf(&file_info.reader, node_index, pos, ray)
+                    {
+                        let distance = pos.distance(intersection_point);
+                        if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                            let old_distance = pos.distance(old_intersection);
+                            if distance < old_distance {
+                                closest_intersection = Some((i, intersection_point));
+                            } else {
+                                closest_intersection = Some((old_i, old_intersection));
+                            }
+                        } else {
+                            closest_intersection = Some((i, intersection_point));
+                        }
+                    }
+                }
+
+                let (model_index, intersection_point) = closest_intersection?;
+
+                let mut found = None;
+                let entities = BspEntity::parse_entities(file_info.reader.read_entities());
+                for (entity_index, entity) in entities.iter().enumerate() {
+                    if let Some(value) = entity.0.get("model") {
+                        if value.starts_with('*') {
+                            let model_ref: usize =
+                                value.trim_start_matches('*').parse().unwrap();
+                            if model_ref == model_index {
+                                found = Some(entity_index);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                let entity_index = found?;
+
+                Some((model_index, entity_index, intersection_point))
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn intersecting_with_change_level_trigger(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<String> {
+        let mut new_map = None;
+        if let Some((_model_index, entity_index, _)) = self.find_model_with_entity(pos, ray, file_info) {
+            let entity = &self.map_data.entities[entity_index];
+            if let Some(class_name) = entity.get("classname") {
+                if class_name == "trigger_changelevel" {
+                    let map_name = entity.get("map").expect("Expected map property on trigger_changelevel entity.");     
+                    new_map = Some(map_name.clone());
+                }
+            }
+        }
+        new_map
+    }
 }
 
 impl Renderer for BspRenderer {
@@ -532,7 +614,7 @@ impl Renderer for BspRenderer {
         down_keys: &HashSet<KeyCode>,
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
-    ) {
+    ) -> Option<String> {
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -600,11 +682,8 @@ impl Renderer for BspRenderer {
             self.player.set_is_on_ground(false);
         }
 
+        let old_position = self.player.position();
         {
-            // On c1a0, we start at -166 and fall to -179.96875 without adjustments
-            const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
-            const AUTO_STEP_HEIGHT: f32 = 4.0;
-
             self.player.update_velocity_ground(wish_dir, delta);
             let mut velocity = self.player.velocity();
             let start_position = self.player.position() - CROUCH_HEIGHT;
@@ -760,6 +839,18 @@ impl Renderer for BspRenderer {
         if let Some(viewer) = self.ui.as_mut() {
             viewer.set_position(position, direction)
         }
+
+        // TODO: Check this during movement, not after
+        // Check to see if we're intersecting an entity
+        let file_info = file_info.as_ref().unwrap();
+        let ray = direction * 0.1;
+        let new_map = if self.intersecting_with_change_level_trigger(old_position, ray, file_info).is_none() {
+            self.intersecting_with_change_level_trigger(position, ray, file_info)
+        } else {
+            None
+        };
+        
+        new_map
     }
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3) {
@@ -838,69 +929,22 @@ impl Renderer for BspRenderer {
 
     fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>) {
         let (pos, ray) = self.world_pos_and_ray_from_screen_pos(screen_space);
-
         println!("pos: {:?}    ray: {:?}", pos, ray);
+
         if let Some(file_info) = file_info.as_ref() {
-            match file_info {
-                FileInfo::BspFile(file_info) => {
-                    let models = file_info.reader.read_models();
-                    let mut closest_intersection = None;
-                    for (i, model) in models.iter().enumerate() {
-                        let node_index = model.head_nodes[0] as usize;
-                        if let Some((intersection_point, _leaf_index)) =
-                            hittest_node_for_leaf(&file_info.reader, node_index, pos, ray)
-                        {
-                            let distance = pos.distance(intersection_point);
-                            if let Some((old_i, old_intersection)) = closest_intersection.take() {
-                                let old_distance = pos.distance(old_intersection);
-                                if distance < old_distance {
-                                    closest_intersection = Some((i, intersection_point));
-                                } else {
-                                    closest_intersection = Some((old_i, old_intersection));
-                                }
-                            } else {
-                                closest_intersection = Some((i, intersection_point));
-                            }
-                        }
-                    }
-
-                    if let Some((model_index, intersection_point)) = closest_intersection {
-                        self.set_debug_point(intersection_point);
-                        println!("Intersection: {:?}", intersection_point);
-                        println!("Hit something... {}", model_index);
-
-                        let mut found = None;
-                        let entities = BspEntity::parse_entities(file_info.reader.read_entities());
-                        for (entity_index, entity) in entities.iter().enumerate() {
-                            if let Some(value) = entity.0.get("model") {
-                                if value.starts_with('*') {
-                                    let model_ref: usize =
-                                        value.trim_start_matches('*').parse().unwrap();
-                                    if model_ref == model_index {
-                                        found = Some(entity_index);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(entity_index) = found {
-                            println!("Found entity: {}", entity_index);
-                            if let Some(viewer) = self.ui.as_mut() {
-                                viewer.select_entity(entity_index as i32);
-                            }
-                        } else {
-                            if let Some(viewer) = self.ui.as_mut() {
-                                viewer.select_entity(-1);
-                            }
-                        }
-                    } else {
-                        if let Some(viewer) = self.ui.as_mut() {
-                            viewer.select_entity(-1);
-                        }
-                    }
+            if let Some((model_index, entity_index, intersection_point)) = self.find_model_with_entity(pos, ray, file_info) {
+                self.set_debug_point(intersection_point);
+                println!("Intersection: {:?}", intersection_point);
+                println!("Hit something... {}", model_index);
+    
+                println!("Found entity: {}", entity_index);
+                if let Some(viewer) = self.ui.as_mut() {
+                    viewer.select_entity(entity_index as i32);
                 }
-                _ => (),
+            } else {
+                if let Some(viewer) = self.ui.as_mut() {
+                    viewer.select_entity(-1);
+                }
             }
         }
     }
@@ -920,6 +964,26 @@ impl Renderer for BspRenderer {
             println!("intersection: {:?}", intersection);
             self.set_debug_pyramid(intersection.position, intersection.normal);
         }
+    }
+    
+    fn load_file(&mut self, file_info: &Option<FileInfo>, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let file = match file_info.as_ref().unwrap() {
+            FileInfo::BspFile(file) => file,
+            _ => panic!(),
+        };
+
+        let path = PathBuf::from(&file.path).canonicalize().unwrap();
+        let game_root_path = crate::get_game_root_path(&path).unwrap();
+
+        let mut wad_resources = crate::export::bsp::WadCollection::new();
+        crate::export::bsp::read_wad_resources(&file.reader, &game_root_path, &mut wad_resources);
+
+        let textures = crate::export::bsp::read_textures(&file.reader, &wad_resources);
+        let lightmap_atlas = decode_atlas(&file.reader);
+        let map_models =
+            crate::export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
+
+        self.map_data = MapData::new(&self.renderer, &file.reader, &map_models, &textures, device, queue);
     }
 }
 

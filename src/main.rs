@@ -393,7 +393,7 @@ fn show_ui(cli: Cli) {
                             mouse_delta
                         };
 
-                        renderer.update(
+                        let new_map = renderer.update(
                             &device,
                             &queue,
                             delta,
@@ -401,6 +401,24 @@ fn show_ui(cli: Cli) {
                             mouse_delta,
                             &file_info,
                         );
+                        if let Some(new_map) = new_map {
+                            println!("Changing level to {}...", new_map);
+
+                            let (map_path, game_root_path) = {
+                                let file_info = file_info.as_ref().unwrap();
+                                let bsp_file = match file_info {
+                                    FileInfo::BspFile(file) => file,
+                                    _ => panic!(),
+                                };
+                                let mut path = PathBuf::from(&bsp_file.path).canonicalize().unwrap();
+                                path.set_file_name(format!("{}.bsp", new_map));
+                                let game_root_path = get_game_root_path(&path).unwrap().to_owned();
+                                (path, game_root_path)
+                            };
+
+                            file_info = load_file(map_path);
+                            renderer.load_file(&file_info, &device, &queue);
+                        }
                         renderer.render(clear_color, &view, &device, &queue);
                         wgpu::Operations {
                             load: wgpu::LoadOp::Load,
