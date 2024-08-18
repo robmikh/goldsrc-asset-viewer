@@ -354,6 +354,7 @@ pub struct BspRenderer {
 
     renderer: super::renderer::Renderer,
     player: MovingEntity,
+    noclip: bool,
     gravity: bool,
 
     new_debug_point: Option<Vec3>,
@@ -400,6 +401,7 @@ impl BspRenderer {
 
             renderer,
             player,
+            noclip: false,
             gravity: true,
 
             new_debug_point: None,
@@ -529,13 +531,6 @@ impl Renderer for BspRenderer {
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
     ) {
-        let noclip = {
-            if let Some(viewer) = self.ui.as_ref() {
-                viewer.state().noclip
-            } else {
-                false
-            }
-        };
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -583,7 +578,7 @@ impl Renderer for BspRenderer {
         let wish_dir = if direction != Vec3::ZERO {
             direction = direction.normalize();
 
-            if !noclip {
+            if !self.noclip {
                 let mut wish_dir = direction;
                 wish_dir.y = 0.0;
                 wish_dir.normalize()
@@ -614,7 +609,7 @@ impl Renderer for BspRenderer {
 
             let mut position = start_position;
 
-            if !noclip {
+            if !self.noclip {
                 let reader = match file_info.as_ref().unwrap() {
                     FileInfo::BspFile(file) => &file.reader,
                     _ => panic!(),
@@ -795,6 +790,10 @@ impl Renderer for BspRenderer {
             let old_state = *viewer.state();
             viewer.build_menu(ui);
             let new_state = *viewer.state();
+
+            if old_state.noclip != new_state.noclip {
+                self.noclip = new_state.noclip;
+            }
 
             if old_state.gravity != new_state.gravity {
                 self.gravity = new_state.gravity;
