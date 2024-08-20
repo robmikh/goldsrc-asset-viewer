@@ -735,6 +735,7 @@ impl Renderer for BspRenderer {
 
                     // If we've collided with something, check to see if we can move without a collision
                     // if we were a bit higher. This is an attempt to allow movement over small bumps.
+                    // TODO: This needs to be limited to only walls
                     if colided {
                         let nudged_start_position =
                             start_position + (surface_normal * AUTO_STEP_HEIGHT);
