@@ -26,7 +26,8 @@ use super::{
 
 // On c1a0, we start at -166 and fall to -179.96875 without adjustments
 const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
-const AUTO_STEP_HEIGHT: f32 = 4.0;
+// This gets me up the stairs in c1a0d
+const AUTO_STEP_HEIGHT: f32 = 8.0;
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
