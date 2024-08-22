@@ -1062,7 +1062,7 @@ impl Renderer for BspRenderer {
         self.debug_point_position = None;
         self.debug_pyramid = None;
 
-        // Move the player
+        // Move both player and camera
         let landmark_entity = self
             .map_data
             .entities
@@ -1088,7 +1088,10 @@ impl Renderer for BspRenderer {
         };
         let position_diff = origin - old_origin;
         let player_position = self.player.position();
-        self.player.set_position(player_position + position_diff);
+        let new_player_position = player_position + position_diff;
+        self.player.set_position(new_player_position);
+        self.renderer.camera_mut().set_position(new_player_position);
+        self.renderer.camera_mut().update(queue);
     }
 }
 
