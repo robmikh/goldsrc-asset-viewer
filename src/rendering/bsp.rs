@@ -937,7 +937,7 @@ impl Renderer for BspRenderer {
         // TODO: Check this during movement, not after
         // Check to see if we're intersecting an entity
         let file_info = file_info.as_ref().unwrap();
-        let ray = direction * 0.1;
+        let ray = direction * 0.001;
         let new_map = if !self.disable_level_change
             && self
                 .intersecting_with_change_level_trigger(old_position, ray, file_info)
