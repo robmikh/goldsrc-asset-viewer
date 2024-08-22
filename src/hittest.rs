@@ -197,6 +197,7 @@ fn node_resolver(
     } else {
         let leaf_index = !node_index;
         let leaf = &reader.read_leaves()[leaf_index as usize];
+        //println!("{:?}", leaf.contents());
         if leaf.contents() == BspContents::Solid {
             return ResolvedNode::Leaf(Some((p1, leaf_index as usize)));
         } else {

@@ -41,7 +41,7 @@ pub trait Renderer {
         mouse_delta: Option<Vec2>,
         // TODO: remove
         file_info: &Option<FileInfo>,
-    ) -> Option<String>; // TODO: change map ownership
+    ) -> Option<(String, String, Vec3)>; // TODO: change map ownership
 
     fn world_pos_and_ray_from_screen_pos(&self, pos: Vec2) -> (Vec3, Vec3);
 
@@ -55,5 +55,5 @@ pub trait Renderer {
     // TODO: remove
     fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
     fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
-    fn load_file(&mut self, file_info: &Option<FileInfo>, device: &wgpu::Device, queue: &wgpu::Queue);
+    fn load_file(&mut self, file_info: &Option<FileInfo>, landmark: &str, old_origin: Vec3, device: &wgpu::Device, queue: &wgpu::Queue);
 }

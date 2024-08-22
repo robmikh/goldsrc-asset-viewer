@@ -386,6 +386,7 @@ pub struct BspRenderer {
     draw_mode: DrawMode,
     draw_mode_update: Option<DrawMode>,
     render_all: bool,
+    disable_level_change: bool,
 
     ui: Option<BspViewer>,
 }
@@ -434,6 +435,7 @@ impl BspRenderer {
             draw_mode,
             draw_mode_update: None,
             render_all: false,
+            disable_level_change: true,
 
             ui: Some(BspViewer::new()),
         }
@@ -554,14 +556,34 @@ impl BspRenderer {
         }
     }
 
-    fn intersecting_with_change_level_trigger(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<String> {
+    fn intersecting_with_change_level_trigger(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<(String, String, Vec3)> {
         let mut new_map = None;
         if let Some((_model_index, entity_index, _)) = self.find_model_with_entity(pos, ray, file_info) {
             let entity = &self.map_data.entities[entity_index];
             if let Some(class_name) = entity.get("classname") {
                 if class_name == "trigger_changelevel" {
                     let map_name = entity.get("map").expect("Expected map property on trigger_changelevel entity.");     
-                    new_map = Some(map_name.clone());
+                    let landmark = entity.get("landmark").expect("Expected landmark property on trigger_changelevel entity.");
+                    
+                    // Calculate the relative position 
+                    let landmark_entity = self.map_data.entities.iter().find(|x| if let Some(target_name) = x.get("targetname") {
+                        target_name == landmark
+                    } else {
+                        false
+                    }).expect("Expected entity with matching targetname to trigger landmark");
+                    let origin = if let Some(origin_str) = landmark_entity.get("origin") {
+                        let mut parts = origin_str.split_whitespace();
+                        let hl_x: isize = parts.next().unwrap().parse().unwrap();
+                        let hl_y: isize = parts.next().unwrap().parse().unwrap();
+                        let hl_z: isize = parts.next().unwrap().parse().unwrap();
+
+                        let coord = convert_coordinates([hl_x, hl_y, hl_z]);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        Vec3::ZERO
+                    };
+                    
+                    new_map = Some((map_name.clone(), landmark.clone(), origin));
                 }
             }
         }
@@ -615,7 +637,7 @@ impl Renderer for BspRenderer {
         down_keys: &HashSet<KeyCode>,
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
-    ) -> Option<String> {
+    ) -> Option<(String, String, Vec3)> {
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -846,7 +868,7 @@ impl Renderer for BspRenderer {
         // Check to see if we're intersecting an entity
         let file_info = file_info.as_ref().unwrap();
         let ray = direction * 0.1;
-        let new_map = if self.intersecting_with_change_level_trigger(old_position, ray, file_info).is_none() {
+        let new_map = if !self.disable_level_change && self.intersecting_with_change_level_trigger(old_position, ray, file_info).is_none() {
             self.intersecting_with_change_level_trigger(position, ray, file_info)
         } else {
             None
@@ -902,6 +924,10 @@ impl Renderer for BspRenderer {
 
             if old_state.render_all != new_state.render_all {
                 self.render_all = new_state.render_all;
+            }
+
+            if old_state.disable_level_change != new_state.disable_level_change {
+                self.disable_level_change = new_state.disable_level_change;
             }
         }
     }
@@ -968,7 +994,7 @@ impl Renderer for BspRenderer {
         }
     }
     
-    fn load_file(&mut self, file_info: &Option<FileInfo>, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn load_file(&mut self, file_info: &Option<FileInfo>, landmark: &str, old_origin: Vec3, device: &wgpu::Device, queue: &wgpu::Queue) {
         let file = match file_info.as_ref().unwrap() {
             FileInfo::BspFile(file) => file,
             _ => panic!(),
@@ -986,6 +1012,31 @@ impl Renderer for BspRenderer {
             crate::export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
 
         self.map_data = MapData::new(&self.renderer, &file.reader, &map_models, &textures, device, queue);
+    
+        self.debug_point = None;
+        self.debug_point_position = None;
+        self.debug_pyramid = None;
+
+        // Move the player
+        let landmark_entity = self.map_data.entities.iter().find(|x| if let Some(target_name) = x.get("targetname") {
+            target_name == landmark
+        } else {
+            false
+        }).expect("Expected entity with matching targetname to previous map landmark");
+        let origin = if let Some(origin_str) = landmark_entity.get("origin") {
+            let mut parts = origin_str.split_whitespace();
+            let hl_x: isize = parts.next().unwrap().parse().unwrap();
+            let hl_y: isize = parts.next().unwrap().parse().unwrap();
+            let hl_z: isize = parts.next().unwrap().parse().unwrap();
+
+            let coord = convert_coordinates([hl_x, hl_y, hl_z]);
+            Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+        } else {
+            Vec3::ZERO
+        };
+        let position_diff = origin - old_origin;
+        let player_position = self.player.position();
+        self.player.set_position(player_position + position_diff);
     }
 }
 

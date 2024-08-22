@@ -19,6 +19,7 @@ pub struct BspViewerState {
     pub noclip: bool,
     pub gravity: bool,
     pub render_all: bool,
+    pub disable_level_change: bool,
 }
 
 impl BspViewerState {
@@ -30,6 +31,7 @@ impl BspViewerState {
             noclip: false,
             gravity: true,
             render_all: false,
+            disable_level_change: true,
         }
     }
 }
@@ -83,6 +85,14 @@ impl BspViewer {
                 .build()
             {
                 self.state.render_all = !self.state.render_all;
+            }
+
+            if ui
+                .menu_item_config("Disable Level Change")
+                .selected(self.state.disable_level_change)
+                .build()
+            {
+                self.state.disable_level_change = !self.state.disable_level_change;
             }
         });
     }
