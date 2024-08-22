@@ -170,16 +170,17 @@ impl MapData {
             (texture, view)
         };
 
-        let entities: Vec<HashMap<String, String>> = BspEntity::parse_entities(reader.read_entities())
-            .iter()
-            .map(|x| {
-                let mut result = HashMap::new();
-                for (key, value) in &x.0 {
-                    result.insert((*key).to_owned(), (*value).to_owned());
-                }
-                result
-            })
-            .collect();
+        let entities: Vec<HashMap<String, String>> =
+            BspEntity::parse_entities(reader.read_entities())
+                .iter()
+                .map(|x| {
+                    let mut result = HashMap::new();
+                    for (key, value) in &x.0 {
+                        result.insert((*key).to_owned(), (*value).to_owned());
+                    }
+                    result
+                })
+                .collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
@@ -473,7 +474,9 @@ impl BspRenderer {
 
             // TODO: Account for model transforms (e.g. origin entity property)
             let clip_node_index = model.head_nodes[1] as usize;
-            if let Some(intersection) = hittest_clip_node(reader, clip_node_index, start_position, end_position) {
+            if let Some(intersection) =
+                hittest_clip_node(reader, clip_node_index, start_position, end_position)
+            {
                 return Some((i, intersection));
             }
         }
@@ -491,7 +494,9 @@ impl BspRenderer {
         let mut position = end_position;
         let mut collisions = 0;
 
-        if let Some((model_index, _intersection)) = self.find_closest_model_intersection(reader, start_position, end_position) {
+        if let Some((model_index, _intersection)) =
+            self.find_closest_model_intersection(reader, start_position, end_position)
+        {
             let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
 
             let mut distance = start_position.distance(end_position);
@@ -547,7 +552,6 @@ impl BspRenderer {
             }
         }
 
-        
         (position, velocity, collisions > 0)
     }
 
