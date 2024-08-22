@@ -16,7 +16,7 @@ use crate::{
         bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
-    hittest::{hittest_clip_node, hittest_node_for_leaf},
+    hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -99,6 +99,7 @@ struct MapData {
     lightmap_view: wgpu::TextureView,
 
     entities: Vec<HashMap<String, String>>,
+    model_to_entity: HashMap<usize, usize>,
 }
 
 impl MapData {
@@ -169,13 +170,22 @@ impl MapData {
             (texture, view)
         };
 
-        let entities = BspEntity::parse_entities(reader.read_entities());
+        let entities: Vec<HashMap<String, String>> = BspEntity::parse_entities(reader.read_entities())
+            .iter()
+            .map(|x| {
+                let mut result = HashMap::new();
+                for (key, value) in &x.0 {
+                    result.insert((*key).to_owned(), (*value).to_owned());
+                }
+                result
+            })
+            .collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
         let mut model_to_entity = HashMap::new();
         for (entity_index, entity) in entities.iter().enumerate() {
-            if let Some(model_value) = entity.0.get("model") {
+            if let Some(model_value) = entity.get("model") {
                 if model_value.starts_with('*') {
                     let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
                     let old = model_to_entity.insert(model_index, entity_index);
@@ -194,7 +204,7 @@ impl MapData {
 
                     if let Some(entity_index) = model_to_entity.get(&i) {
                         let entity = &entities[*entity_index];
-                        if let Some(origin_str) = entity.0.get("origin") {
+                        if let Some(origin_str) = entity.get("origin") {
                             let mut parts = origin_str.split_whitespace();
                             let hl_x: isize = parts.next().unwrap().parse().unwrap();
                             let hl_y: isize = parts.next().unwrap().parse().unwrap();
@@ -203,10 +213,10 @@ impl MapData {
                             let coord = convert_coordinates([hl_x, hl_y, hl_z]);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
-                        if let Some(render_mode) = entity.0.get("rendermode") {
+                        if let Some(render_mode) = entity.get("rendermode") {
                             if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
                                 if render_mode != RenderMode::Normal {
-                                    if let Some(render_amt) = entity.0.get("renderamt") {
+                                    if let Some(render_amt) = entity.get("renderamt") {
                                         if let Ok(render_amt) = render_amt.parse::<i32>() {
                                             if render_amt != 0 && render_amt != 255 {
                                                 alpha = render_amt as f32 / 255.0;
@@ -238,14 +248,14 @@ impl MapData {
         let mut models_to_render: Vec<usize> = (0..map_models.len()).collect();
         let mut transparent_models = HashSet::new();
         for entity in &entities {
-            if let Some(model_value) = entity.0.get("model") {
+            if let Some(model_value) = entity.get("model") {
                 if model_value.starts_with('*') {
                     let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
 
-                    if let Some(render_mode) = entity.0.get("rendermode") {
+                    if let Some(render_mode) = entity.get("rendermode") {
                         if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
                             if render_mode != RenderMode::Normal {
-                                if let Some(render_amt) = entity.0.get("renderamt") {
+                                if let Some(render_amt) = entity.get("renderamt") {
                                     if let Ok(render_amt) = render_amt.parse::<i32>() {
                                         if render_amt != 0 && render_amt != 255 {
                                             transparent_models.insert(model_index);
@@ -271,7 +281,7 @@ impl MapData {
                         }
                     }
 
-                    if let Some(class_name) = entity.0.get("classname") {
+                    if let Some(class_name) = entity.get("classname") {
                         if class_name.starts_with("trigger")
                             || class_name.starts_with("func_ladder")
                         {
@@ -287,17 +297,6 @@ impl MapData {
             }
         }
 
-        let entities = BspEntity::parse_entities(reader.read_entities())
-            .iter()
-            .map(|x| {
-                let mut result = HashMap::new();
-                for (key, value) in &x.0 {
-                    result.insert((*key).to_owned(), (*value).to_owned());
-                }
-                result
-            })
-            .collect();
-
         Self {
             models_to_render,
             transparent_models,
@@ -308,6 +307,7 @@ impl MapData {
             lightmap_view,
 
             entities,
+            model_to_entity,
         }
     }
 
@@ -444,6 +444,42 @@ impl BspRenderer {
         }
     }
 
+    fn find_closest_model_intersection(
+        &self,
+        reader: &BspReader,
+        start_position: Vec3,
+        end_position: Vec3,
+    ) -> Option<(usize, IntersectionInfo)> {
+        // TODO: Track closest intersection
+        for (i, model) in reader.read_models().iter().enumerate() {
+            if i > 0 {
+                let is_func_wall = {
+                    let mut is_func_wall = false;
+                    if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+                        let entity = &self.map_data.entities[*entity_index];
+                        if let Some(class_name) = entity.get("classname") {
+                            if class_name == "func_wall" {
+                                is_func_wall = true;
+                            }
+                        }
+                    }
+                    is_func_wall
+                };
+
+                if !is_func_wall {
+                    continue;
+                }
+            }
+
+            // TODO: Account for model transforms (e.g. origin entity property)
+            let clip_node_index = model.head_nodes[1] as usize;
+            if let Some(intersection) = hittest_clip_node(reader, clip_node_index, start_position, end_position) {
+                return Some((i, intersection));
+            }
+        }
+        None
+    }
+
     fn process_movement(
         &self,
         reader: &BspReader,
@@ -453,60 +489,65 @@ impl BspRenderer {
         project_collision: bool,
     ) -> (Vec3, Vec3, bool) {
         let mut position = end_position;
-        let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-
-        let mut distance = start_position.distance(end_position);
-        let full_distance = distance;
-        let mut start_position = start_position;
-        let mut end_position = end_position;
         let mut collisions = 0;
-        while distance > 0.0 {
-            if end_position.is_nan() {
-                position = start_position;
-                velocity = Vec3::ZERO;
-                break;
-            }
 
-            if let Some(intersection) =
-                hittest_clip_node(reader, clip_node_index, start_position, end_position)
-            {
-                collisions += 1;
-                if collisions > 4 {
-                    position = intersection.position;
+        if let Some((model_index, _intersection)) = self.find_closest_model_intersection(reader, start_position, end_position) {
+            let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
+
+            let mut distance = start_position.distance(end_position);
+            let full_distance = distance;
+            let mut start_position = start_position;
+            let mut end_position = end_position;
+            while distance > 0.0 {
+                if end_position.is_nan() {
+                    position = start_position;
+                    velocity = Vec3::ZERO;
                     break;
                 }
 
-                let direction = velocity.normalize();
-                let dot = direction.dot(intersection.normal);
-                if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
-                    velocity = Vec3::ZERO;
-                    position = start_position;
-                    break;
-                } else {
-                    // Calc our new position
-                    let v1 = direction.cross(intersection.normal).normalize();
-                    let surface_dir = -v1.cross(intersection.normal).normalize();
-
-                    let dist = start_position.distance(intersection.position);
-                    distance -= dist;
-
-                    if distance <= 0.0 || (dist <= 0.0 && distance / full_distance != 1.0) {
+                if let Some(intersection) =
+                    hittest_clip_node(reader, clip_node_index, start_position, end_position)
+                {
+                    collisions += 1;
+                    if collisions > 4 {
                         position = intersection.position;
                         break;
                     }
 
-                    let new_vector = surface_dir * distance;
-                    let new_velocity = velocity.length() * surface_dir;
-                    velocity = new_velocity;
+                    let direction = velocity.normalize();
+                    let dot = direction.dot(intersection.normal);
+                    if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
+                        velocity = Vec3::ZERO;
+                        position = start_position;
+                        break;
+                    } else {
+                        // Calc our new position
+                        let v1 = direction.cross(intersection.normal).normalize();
+                        let surface_dir = -v1.cross(intersection.normal).normalize();
 
-                    start_position = intersection.position;
-                    end_position = intersection.position + new_vector;
-                    position = end_position;
+                        let dist = start_position.distance(intersection.position);
+                        distance -= dist;
+
+                        if distance <= 0.0 || (dist <= 0.0 && distance / full_distance != 1.0) {
+                            position = intersection.position;
+                            break;
+                        }
+
+                        let new_vector = surface_dir * distance;
+                        let new_velocity = velocity.length() * surface_dir;
+                        velocity = new_velocity;
+
+                        start_position = intersection.position;
+                        end_position = intersection.position + new_vector;
+                        position = end_position;
+                    }
+                } else {
+                    break;
                 }
-            } else {
-                break;
             }
         }
+
+        
         (position, velocity, collisions > 0)
     }
 
