@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, HashSet}, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use glam::{Mat4, Vec2, Vec3};
 use gltf::{Mesh, Model};
@@ -285,15 +288,15 @@ impl MapData {
         }
 
         let entities = BspEntity::parse_entities(reader.read_entities())
-        .iter()
-        .map(|x| {
-            let mut result = HashMap::new();
-            for (key, value) in &x.0 {
-                result.insert((*key).to_owned(), (*value).to_owned());
-            }
-            result
-        })
-        .collect();
+            .iter()
+            .map(|x| {
+                let mut result = HashMap::new();
+                for (key, value) in &x.0 {
+                    result.insert((*key).to_owned(), (*value).to_owned());
+                }
+                result
+            })
+            .collect();
 
         Self {
             models_to_render,
@@ -507,7 +510,12 @@ impl BspRenderer {
         (position, velocity, collisions > 0)
     }
 
-    fn find_model_with_entity(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<(usize, usize, Vec3)> {
+    fn find_model_with_entity(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        file_info: &FileInfo,
+    ) -> Option<(usize, usize, Vec3)> {
         match file_info {
             FileInfo::BspFile(file_info) => {
                 let models = file_info.reader.read_models();
@@ -538,8 +546,7 @@ impl BspRenderer {
                 for (entity_index, entity) in entities.iter().enumerate() {
                     if let Some(value) = entity.0.get("model") {
                         if value.starts_with('*') {
-                            let model_ref: usize =
-                                value.trim_start_matches('*').parse().unwrap();
+                            let model_ref: usize = value.trim_start_matches('*').parse().unwrap();
                             if model_ref == model_index {
                                 found = Some(entity_index);
                                 break;
@@ -556,21 +563,39 @@ impl BspRenderer {
         }
     }
 
-    fn intersecting_with_change_level_trigger(&self, pos: Vec3, ray: Vec3, file_info: &FileInfo) -> Option<(String, String, Vec3)> {
+    fn intersecting_with_change_level_trigger(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        file_info: &FileInfo,
+    ) -> Option<(String, String, Vec3)> {
         let mut new_map = None;
-        if let Some((_model_index, entity_index, _)) = self.find_model_with_entity(pos, ray, file_info) {
+        if let Some((_model_index, entity_index, _)) =
+            self.find_model_with_entity(pos, ray, file_info)
+        {
             let entity = &self.map_data.entities[entity_index];
             if let Some(class_name) = entity.get("classname") {
                 if class_name == "trigger_changelevel" {
-                    let map_name = entity.get("map").expect("Expected map property on trigger_changelevel entity.");     
-                    let landmark = entity.get("landmark").expect("Expected landmark property on trigger_changelevel entity.");
-                    
-                    // Calculate the relative position 
-                    let landmark_entity = self.map_data.entities.iter().find(|x| if let Some(target_name) = x.get("targetname") {
-                        target_name == landmark
-                    } else {
-                        false
-                    }).expect("Expected entity with matching targetname to trigger landmark");
+                    let map_name = entity
+                        .get("map")
+                        .expect("Expected map property on trigger_changelevel entity.");
+                    let landmark = entity
+                        .get("landmark")
+                        .expect("Expected landmark property on trigger_changelevel entity.");
+
+                    // Calculate the relative position
+                    let landmark_entity = self
+                        .map_data
+                        .entities
+                        .iter()
+                        .find(|x| {
+                            if let Some(target_name) = x.get("targetname") {
+                                target_name == landmark
+                            } else {
+                                false
+                            }
+                        })
+                        .expect("Expected entity with matching targetname to trigger landmark");
                     let origin = if let Some(origin_str) = landmark_entity.get("origin") {
                         let mut parts = origin_str.split_whitespace();
                         let hl_x: isize = parts.next().unwrap().parse().unwrap();
@@ -582,7 +607,7 @@ impl BspRenderer {
                     } else {
                         Vec3::ZERO
                     };
-                    
+
                     new_map = Some((map_name.clone(), landmark.clone(), origin));
                 }
             }
@@ -868,12 +893,16 @@ impl Renderer for BspRenderer {
         // Check to see if we're intersecting an entity
         let file_info = file_info.as_ref().unwrap();
         let ray = direction * 0.1;
-        let new_map = if !self.disable_level_change && self.intersecting_with_change_level_trigger(old_position, ray, file_info).is_none() {
+        let new_map = if !self.disable_level_change
+            && self
+                .intersecting_with_change_level_trigger(old_position, ray, file_info)
+                .is_none()
+        {
             self.intersecting_with_change_level_trigger(position, ray, file_info)
         } else {
             None
         };
-        
+
         new_map
     }
 
@@ -960,11 +989,13 @@ impl Renderer for BspRenderer {
         println!("pos: {:?}    ray: {:?}", pos, ray);
 
         if let Some(file_info) = file_info.as_ref() {
-            if let Some((model_index, entity_index, intersection_point)) = self.find_model_with_entity(pos, ray, file_info) {
+            if let Some((model_index, entity_index, intersection_point)) =
+                self.find_model_with_entity(pos, ray, file_info)
+            {
                 self.set_debug_point(intersection_point);
                 println!("Intersection: {:?}", intersection_point);
                 println!("Hit something... {}", model_index);
-    
+
                 println!("Found entity: {}", entity_index);
                 if let Some(viewer) = self.ui.as_mut() {
                     viewer.select_entity(entity_index as i32);
@@ -993,8 +1024,15 @@ impl Renderer for BspRenderer {
             self.set_debug_pyramid(intersection.position, intersection.normal);
         }
     }
-    
-    fn load_file(&mut self, file_info: &Option<FileInfo>, landmark: &str, old_origin: Vec3, device: &wgpu::Device, queue: &wgpu::Queue) {
+
+    fn load_file(
+        &mut self,
+        file_info: &Option<FileInfo>,
+        landmark: &str,
+        old_origin: Vec3,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
         let file = match file_info.as_ref().unwrap() {
             FileInfo::BspFile(file) => file,
             _ => panic!(),
@@ -1011,18 +1049,32 @@ impl Renderer for BspRenderer {
         let map_models =
             crate::export::bsp::convert_models(&file.reader, &textures, &lightmap_atlas);
 
-        self.map_data = MapData::new(&self.renderer, &file.reader, &map_models, &textures, device, queue);
-    
+        self.map_data = MapData::new(
+            &self.renderer,
+            &file.reader,
+            &map_models,
+            &textures,
+            device,
+            queue,
+        );
+
         self.debug_point = None;
         self.debug_point_position = None;
         self.debug_pyramid = None;
 
         // Move the player
-        let landmark_entity = self.map_data.entities.iter().find(|x| if let Some(target_name) = x.get("targetname") {
-            target_name == landmark
-        } else {
-            false
-        }).expect("Expected entity with matching targetname to previous map landmark");
+        let landmark_entity = self
+            .map_data
+            .entities
+            .iter()
+            .find(|x| {
+                if let Some(target_name) = x.get("targetname") {
+                    target_name == landmark
+                } else {
+                    false
+                }
+            })
+            .expect("Expected entity with matching targetname to previous map landmark");
         let origin = if let Some(origin_str) = landmark_entity.get("origin") {
             let mut parts = origin_str.split_whitespace();
             let hl_x: isize = parts.next().unwrap().parse().unwrap();

@@ -413,7 +413,8 @@ fn show_ui(cli: Cli) {
                             };
 
                             let map_path = {
-                                let mut path = PathBuf::from(&old_file.path).canonicalize().unwrap();
+                                let mut path =
+                                    PathBuf::from(&old_file.path).canonicalize().unwrap();
                                 path.set_file_name(format!("{}.bsp", new_map));
                                 path
                             };

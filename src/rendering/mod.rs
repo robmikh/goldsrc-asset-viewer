@@ -55,5 +55,12 @@ pub trait Renderer {
     // TODO: remove
     fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
     fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>);
-    fn load_file(&mut self, file_info: &Option<FileInfo>, landmark: &str, old_origin: Vec3, device: &wgpu::Device, queue: &wgpu::Queue);
+    fn load_file(
+        &mut self,
+        file_info: &Option<FileInfo>,
+        landmark: &str,
+        old_origin: Vec3,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    );
 }
