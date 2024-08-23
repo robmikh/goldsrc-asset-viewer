@@ -105,7 +105,7 @@ impl BspViewer {
             self.reset_listbox_index();
             force_new_selection = true;
 
-            self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities())
+            self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities_str())
                 .iter()
                 .map(|x| {
                     let mut result = HashMap::new();

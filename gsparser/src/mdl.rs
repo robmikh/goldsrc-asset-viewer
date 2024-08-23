@@ -594,7 +594,7 @@ impl MdlFile {
         // Animations
         let mut animations = Vec::new();
         for animated_sequence in &sequences {
-            let name = null_terminated_bytes_to_str(&animated_sequence.name);
+            let name = null_terminated_bytes_to_str(&animated_sequence.name).unwrap();
 
             // TODO: Load other files
             if animated_sequence.sequence_group == 0 {
@@ -753,11 +753,31 @@ fn create_image(
     .unwrap()
 }
 
-pub fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> &'a str {
-    let name = std::str::from_utf8(bytes).unwrap();
-    let end = name.find('\0').unwrap_or(name.len());
-    let name = &name[..end];
-    name
+#[derive(Debug)]
+pub struct NullTerminatedStrError {
+    pub end: usize,
+    pub str_error: std::str::Utf8Error,
+}
+
+impl std::fmt::Display for NullTerminatedStrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for NullTerminatedStrError {}
+
+pub fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> std::result::Result<&'a str, NullTerminatedStrError> {
+    let end = bytes.iter().position(|x| *x == 0).unwrap_or(bytes.len());
+    match std::str::from_utf8(&bytes[..end]) {
+        Ok(string) => Ok(string),
+        Err(err) => {
+            Err(NullTerminatedStrError {
+                end,
+                str_error: err
+            })
+        }
+    }
 }
 
 // TODO: This code is bananas, write a safer version

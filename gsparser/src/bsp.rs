@@ -261,8 +261,12 @@ impl BspReader {
         self.read_lump(LUMP_PLANES)
     }
 
-    pub fn read_entities(&self) -> &str {
-        null_terminated_bytes_to_str(self.read_lump(LUMP_ENTITIES))
+    pub fn read_entities(&self) -> &[u8] {
+        self.read_lump(LUMP_ENTITIES)
+    }
+
+    pub fn read_entities_str(&self) -> &str {
+        null_terminated_bytes_to_str(self.read_entities()).unwrap()
     }
 
     pub fn read_models(&self) -> &[BspModel] {
@@ -364,7 +368,7 @@ impl<'a> BspMipTextureReader<'a> {
     }
 
     pub fn get_image_name(&self) -> &'a str {
-        null_terminated_bytes_to_str(&self.header.name)
+        null_terminated_bytes_to_str(&self.header.name).unwrap()
     }
 
     pub fn has_local_image_data(&self) -> bool {

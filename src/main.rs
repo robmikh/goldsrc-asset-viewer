@@ -536,7 +536,7 @@ fn show_ui(cli: Cli) {
                                             panic!()
                                         };
                                         let entities = BspEntity::parse_entities(
-                                            bsp_file.reader.read_entities(),
+                                            bsp_file.reader.read_entities_str(),
                                         );
                                         let entities_string = format!("{:#?}", entities);
                                         std::fs::write(new_path, entities_string).unwrap();

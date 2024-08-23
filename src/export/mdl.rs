@@ -57,8 +57,8 @@ pub fn export<P: AsRef<Path>>(
     if let Some(log) = &mut log {
         writeln!(log, "Animation Sequence Groups:").unwrap();
         for group in &file.animation_sequence_groups {
-            let name = null_terminated_bytes_to_str(group.name());
-            let label = null_terminated_bytes_to_str(&group.label);
+            let name = null_terminated_bytes_to_str(group.name()).unwrap();
+            let label = null_terminated_bytes_to_str(&group.label).unwrap();
 
             writeln!(log, "  {} - {}", label, name).unwrap();
         }
@@ -98,7 +98,7 @@ pub fn export<P: AsRef<Path>>(
         let bone_component_transform = ComponentTransform::new(bone_pos, bone_angles);
         let bone_transform = bone_component_transform.to_mat4();
 
-        bone_names.push(null_terminated_bytes_to_str(&bone.name).to_owned());
+        bone_names.push(null_terminated_bytes_to_str(&bone.name).unwrap().to_owned());
         local_bone_transforms.push(bone_transform);
         local_bone_component_transforms.push(bone_component_transform);
     }

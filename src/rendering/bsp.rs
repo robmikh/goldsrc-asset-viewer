@@ -171,7 +171,7 @@ impl MapData {
         };
 
         let entities: Vec<HashMap<String, String>> =
-            BspEntity::parse_entities(reader.read_entities())
+            BspEntity::parse_entities(reader.read_entities_str())
                 .iter()
                 .map(|x| {
                     let mut result = HashMap::new();
@@ -314,7 +314,7 @@ impl MapData {
 
     fn get_start_position(&self, reader: &BspReader) -> Vec3 {
         // Find the "info_player_start" entity
-        let entities = BspEntity::parse_entities(reader.read_entities());
+        let entities = BspEntity::parse_entities(reader.read_entities_str());
         let mut player_start_entity = None;
         for entity in &entities {
             if let Some(value) = entity.0.get("classname") {
@@ -587,7 +587,7 @@ impl BspRenderer {
                 let (model_index, intersection_point) = closest_intersection?;
 
                 let mut found = None;
-                let entities = BspEntity::parse_entities(file_info.reader.read_entities());
+                let entities = BspEntity::parse_entities(file_info.reader.read_entities_str());
                 for (entity_index, entity) in entities.iter().enumerate() {
                     if let Some(value) = entity.0.get("model") {
                         if value.starts_with('*') {
@@ -1261,5 +1261,48 @@ fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> M
             texture_index,
             indices_range,
         }],
+    }
+}
+
+
+#[cfg(test)]
+mod experiments {
+    use gsparser::{bsp::{BspEntity, BspReader}, mdl::null_terminated_bytes_to_str};
+
+    // Turns out https://developer.valvesoftware.com/wiki/BSP_(GoldSrc)#Entities says that all
+    // entities must have a classname. But we did learn that c1a3d contains invalid utf8 in the
+    // entities string.
+    #[test]
+    fn all_entities_have_classnames() {
+        let base_path = "testdata/Half-Life/valve/maps";
+
+        for item in std::fs::read_dir(base_path).unwrap() {
+            let item = item.unwrap();
+            let item_path = item.path();
+            if let Some(extension) = item_path.extension() {
+                let extension = extension.to_str().unwrap();
+                if extension == "bsp" {
+                    println!("Validating {}...", item_path.display());
+
+                    let bsp_bytes = std::fs::read(&item_path).unwrap();
+                    let reader = BspReader::read(bsp_bytes);
+                    let entities_bytes = reader.read_entities();
+                    let entities_str = match null_terminated_bytes_to_str(entities_bytes) {
+                        Ok(entities) => entities.to_owned(),
+                        Err(error) => {
+                            println!("  WARNING: {:?}", error);
+                            let start = error.str_error.valid_up_to();
+                            let end = start + error.str_error.error_len().unwrap_or(1);
+                            println!("           error bytes: {:?}", &entities_bytes[start..end]);
+                            String::from_utf8_lossy(&entities_bytes[..error.end]).to_string()
+                        },
+                    };
+                    let entities = BspEntity::parse_entities(&entities_str);
+                    for entity in entities {
+                        let _ = entity.0.get("classname").unwrap();
+                    }
+                }
+            }
+        }
     }
 }
