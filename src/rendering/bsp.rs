@@ -1264,18 +1264,22 @@ fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> M
     }
 }
 
-
 #[cfg(test)]
 mod experiments {
-    use gsparser::{bsp::{BspEntity, BspReader}, mdl::null_terminated_bytes_to_str};
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+    };
 
-    // Turns out https://developer.valvesoftware.com/wiki/BSP_(GoldSrc)#Entities says that all
-    // entities must have a classname. But we did learn that c1a3d contains invalid utf8 in the
-    // entities string.
-    #[test]
-    fn all_entities_have_classnames() {
-        let base_path = "testdata/Half-Life/valve/maps";
+    use gsparser::{
+        bsp::{BspEntity, BspReader},
+        mdl::null_terminated_bytes_to_str,
+    };
 
+    fn process_all_entities<F: FnMut(&PathBuf, &BspEntity), P: AsRef<Path>>(
+        base_path: P,
+        mut process_entity: F,
+    ) {
         for item in std::fs::read_dir(base_path).unwrap() {
             let item = item.unwrap();
             let item_path = item.path();
@@ -1295,14 +1299,56 @@ mod experiments {
                             let end = start + error.str_error.error_len().unwrap_or(1);
                             println!("           error bytes: {:?}", &entities_bytes[start..end]);
                             String::from_utf8_lossy(&entities_bytes[..error.end]).to_string()
-                        },
+                        }
                     };
                     let entities = BspEntity::parse_entities(&entities_str);
                     for entity in entities {
-                        let _ = entity.0.get("classname").unwrap();
+                        process_entity(&item_path, &entity);
                     }
                 }
             }
+        }
+    }
+
+    // Turns out https://developer.valvesoftware.com/wiki/BSP_(GoldSrc)#Entities says that all
+    // entities must have a classname. But we did learn that c1a3d contains invalid utf8 in the
+    // entities string.
+    #[test]
+    fn all_entities_have_class_names() {
+        let base_path = "testdata/Half-Life/valve/maps";
+        process_all_entities(base_path, |_item_path, entity| {
+            let _ = entity.0.get("classname").unwrap();
+        });
+    }
+
+    #[test]
+    fn audit_class_names() {
+        let base_path = "testdata/Half-Life/valve/maps";
+        let mut class_names = HashMap::<String, usize>::new();
+        process_all_entities(base_path, |_item_path, entity| {
+            let class_name = entity.0.get("classname").unwrap();
+            if let Some(count) = class_names.get_mut(*class_name) {
+                *count += 1;
+            } else {
+                class_names.insert(class_name.to_string(), 1);
+            }
+        });
+        println!();
+
+        let sorted_class_names = {
+            let mut class_names = class_names.iter().collect::<Vec<_>>();
+            class_names.sort_by(|a, b| {
+                let count_ordering = a.1.cmp(b.1);
+                match count_ordering {
+                    std::cmp::Ordering::Equal => a.0.cmp(b.0),
+                    _ => count_ordering,
+                }
+            });
+            class_names
+        };
+        println!("Class names:");
+        for (class_name, count) in sorted_class_names {
+            println!("  {:<25}     {:>5}", class_name, count);
         }
     }
 }
