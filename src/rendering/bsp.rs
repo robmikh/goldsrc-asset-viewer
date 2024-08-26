@@ -278,7 +278,7 @@ impl MapData {
         }
     }
 
-    fn get_start_position(&self) -> Vec3 {
+    fn get_start_position_and_orientation(&self) -> (Vec3, f32) {
         // Find the "info_player_start" entity
         for entity in &self.entities {
             match entity.ex {
@@ -290,7 +290,14 @@ impl MapData {
                         println!("WARNING: No origin found on info_player_start entity!");
                         Vec3::ZERO
                     };
-                    return origin;
+                    let angle = if let Some(angle) = entity.angle.as_ref() {
+                        let angle_in_radians = (*angle as f32).to_radians();
+                        angle_in_radians
+                    } else {
+                        println!("WARNING: No angle found on info_player_start entity!");
+                        0.0
+                    };
+                    return (origin, angle);
                 }
                 _ => {}
             }
@@ -365,7 +372,7 @@ impl BspRenderer {
         queue: &wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let renderer = super::renderer::Renderer::new(device, config);
+        let mut renderer = super::renderer::Renderer::new(device, config);
 
         let map_data = MapData::new(
             &renderer,
@@ -378,7 +385,8 @@ impl BspRenderer {
 
         let camera_start = {
             // Find the "info_player_start" entity
-            let mut camera_start = map_data.get_start_position() - CROUCH_HEIGHT;
+            let (start_position, angle) = map_data.get_start_position_and_orientation();
+            let mut camera_start = start_position - CROUCH_HEIGHT;
             // Check to see if we have something underneath us...
             let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
             let has_ground_underneath = hittest_clip_node(
@@ -403,6 +411,11 @@ impl BspRenderer {
                     println!("Falling through the floor...");
                 }
             }
+
+            let mut yaw_pitch_roll = renderer.camera().yaw_pitch_roll();
+            yaw_pitch_roll.x += angle;
+            renderer.camera_mut().set_yaw_pitch_roll(yaw_pitch_roll);
+
             camera_start + CROUCH_HEIGHT
         };
         println!("Start position: {:?}", camera_start);

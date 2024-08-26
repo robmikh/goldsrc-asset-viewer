@@ -142,6 +142,7 @@ parse_entity_struct!(Entity {
     // TODO: What to do with common properties?
     ("rendermode") render_mode: Option<RenderMode>,
     ("renderamt") render_amount: Option<i32>,
+    ("angle") angle: Option<i32>, // https://developer.valvesoftware.com/wiki/Info_player_start_(GoldSrc) says info_player_start has angles but c1a0 uses angle
 
     ex: EntityEx,
 });
