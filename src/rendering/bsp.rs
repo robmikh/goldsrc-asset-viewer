@@ -17,6 +17,7 @@ use crate::{
         coordinates::convert_coordinates,
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo},
+    logic::entity::{Entity, ModelReference, ParseEntity, ParseEntityValue},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -59,25 +60,6 @@ pub enum DrawMode {
     LitTexture = 2,
 }
 
-impl DrawMode {
-    pub fn from_number(number: i32) -> Option<Self> {
-        match number {
-            0 => Some(Self::Texture),
-            1 => Some(Self::Lightmap),
-            2 => Some(Self::LitTexture),
-            _ => None,
-        }
-    }
-
-    pub fn cycle(&self) -> Self {
-        match self {
-            Self::Texture => Self::Lightmap,
-            Self::Lightmap => Self::LitTexture,
-            Self::LitTexture => Self::Texture,
-        }
-    }
-}
-
 basic_enum! {
     RenderMode: i32 {
         Normal = 0,
@@ -86,6 +68,14 @@ basic_enum! {
         Glow = 3,
         TransparentAlpha = 4,
         TransparentAdd = 5,
+    }
+}
+
+impl ParseEntityValue for RenderMode {
+    fn parse(name: &str, values: &HashMap<&str, &str>) -> Self {
+        let str_value = values.get(name).unwrap();
+        let value: RenderMode = str_value.parse().unwrap();
+        value
     }
 }
 
@@ -98,7 +88,7 @@ struct MapData {
     _lightmap_texture: wgpu::Texture,
     lightmap_view: wgpu::TextureView,
 
-    entities: Vec<HashMap<String, String>>,
+    entities: Vec<Entity>,
     model_to_entity: HashMap<usize, usize>,
 }
 
@@ -170,26 +160,18 @@ impl MapData {
             (texture, view)
         };
 
-        let entities: Vec<HashMap<String, String>> =
-            BspEntity::parse_entities(reader.read_entities_str())
-                .iter()
-                .map(|x| {
-                    let mut result = HashMap::new();
-                    for (key, value) in &x.0 {
-                        result.insert((*key).to_owned(), (*value).to_owned());
-                    }
-                    result
-                })
-                .collect();
+        let entities: Vec<Entity> = BspEntity::parse_entities(reader.read_entities_str())
+            .iter()
+            .map(|x| Entity::parse(&x.0))
+            .collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
         let mut model_to_entity = HashMap::new();
         for (entity_index, entity) in entities.iter().enumerate() {
-            if let Some(model_value) = entity.get("model") {
-                if model_value.starts_with('*') {
-                    let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
-                    let old = model_to_entity.insert(model_index, entity_index);
+            if let Some(model_index) = entity.model.as_ref() {
+                if let ModelReference::Index(model_index) = model_index {
+                    let old = model_to_entity.insert(*model_index, entity_index);
                     assert!(old.is_none());
                 }
             }
@@ -205,24 +187,15 @@ impl MapData {
 
                     if let Some(entity_index) = model_to_entity.get(&i) {
                         let entity = &entities[*entity_index];
-                        if let Some(origin_str) = entity.get("origin") {
-                            let mut parts = origin_str.split_whitespace();
-                            let hl_x: isize = parts.next().unwrap().parse().unwrap();
-                            let hl_y: isize = parts.next().unwrap().parse().unwrap();
-                            let hl_z: isize = parts.next().unwrap().parse().unwrap();
-
-                            let coord = convert_coordinates([hl_x, hl_y, hl_z]);
+                        if let Some(hl_origin) = entity.origin.as_ref() {
+                            let coord = convert_coordinates(*hl_origin);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
-                        if let Some(render_mode) = entity.get("rendermode") {
-                            if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
-                                if render_mode != RenderMode::Normal {
-                                    if let Some(render_amt) = entity.get("renderamt") {
-                                        if let Ok(render_amt) = render_amt.parse::<i32>() {
-                                            if render_amt != 0 && render_amt != 255 {
-                                                alpha = render_amt as f32 / 255.0;
-                                            }
-                                        }
+                        if let Some(render_mode) = entity.render_mode.as_ref() {
+                            if *render_mode != RenderMode::Normal {
+                                if let Some(render_amt) = entity.render_amount.as_ref() {
+                                    if *render_amt != 0 && *render_amt != 255 {
+                                        alpha = *render_amt as f32 / 255.0;
                                     }
                                 }
                             }
@@ -249,49 +222,42 @@ impl MapData {
         let mut models_to_render: Vec<usize> = (0..map_models.len()).collect();
         let mut transparent_models = HashSet::new();
         for entity in &entities {
-            if let Some(model_value) = entity.get("model") {
-                if model_value.starts_with('*') {
-                    let model_index: usize = model_value.trim_start_matches('*').parse().unwrap();
+            if let Some(model_index) = entity.model.as_ref() {
+                if let ModelReference::Index(model_index) = model_index {
+                    let model_index: usize = *model_index;
 
-                    if let Some(render_mode) = entity.get("rendermode") {
-                        if let Ok(render_mode) = render_mode.parse::<RenderMode>() {
-                            if render_mode != RenderMode::Normal {
-                                if let Some(render_amt) = entity.get("renderamt") {
-                                    if let Ok(render_amt) = render_amt.parse::<i32>() {
-                                        if render_amt != 0 && render_amt != 255 {
-                                            transparent_models.insert(model_index);
-                                            if let Some(position) = models_to_render
-                                                .iter()
-                                                .position(|x| *x == model_index)
-                                            {
-                                                models_to_render.remove(position);
-                                                continue;
-                                            }
-                                        } else if render_amt == 0 {
-                                            if let Some(position) = models_to_render
-                                                .iter()
-                                                .position(|x| *x == model_index)
-                                            {
-                                                models_to_render.remove(position);
-                                                continue;
-                                            }
-                                        }
+                    if let Some(render_mode) = entity.render_mode.as_ref() {
+                        if *render_mode != RenderMode::Normal {
+                            if let Some(render_amt) = entity.render_amount.as_ref() {
+                                let render_amt = *render_amt;
+                                if render_amt != 0 && render_amt != 255 {
+                                    transparent_models.insert(model_index);
+                                    if let Some(position) =
+                                        models_to_render.iter().position(|x| *x == model_index)
+                                    {
+                                        models_to_render.remove(position);
+                                        continue;
+                                    }
+                                } else if render_amt == 0 {
+                                    if let Some(position) =
+                                        models_to_render.iter().position(|x| *x == model_index)
+                                    {
+                                        models_to_render.remove(position);
+                                        continue;
                                     }
                                 }
                             }
                         }
                     }
 
-                    if let Some(class_name) = entity.get("classname") {
-                        if class_name.starts_with("trigger")
-                            || class_name.starts_with("func_ladder")
+                    if entity.class_name.starts_with("trigger")
+                        || entity.class_name.starts_with("func_ladder")
+                    {
+                        if let Some(position) =
+                            models_to_render.iter().position(|x| *x == model_index)
                         {
-                            if let Some(position) =
-                                models_to_render.iter().position(|x| *x == model_index)
-                            {
-                                models_to_render.remove(position);
-                                continue;
-                            }
+                            models_to_render.remove(position);
+                            continue;
                         }
                     }
                 }
@@ -458,10 +424,8 @@ impl BspRenderer {
                     let mut is_func_wall = false;
                     if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
                         let entity = &self.map_data.entities[*entity_index];
-                        if let Some(class_name) = entity.get("classname") {
-                            if class_name == "func_wall" {
-                                is_func_wall = true;
-                            }
+                        if entity.class_name == "func_wall" {
+                            is_func_wall = true;
                         }
                     }
                     is_func_wall
@@ -619,42 +583,41 @@ impl BspRenderer {
             self.find_model_with_entity(pos, ray, file_info)
         {
             let entity = &self.map_data.entities[entity_index];
-            if let Some(class_name) = entity.get("classname") {
-                if class_name == "trigger_changelevel" {
-                    let map_name = entity
-                        .get("map")
-                        .expect("Expected map property on trigger_changelevel entity.");
-                    let landmark = entity
-                        .get("landmark")
-                        .expect("Expected landmark property on trigger_changelevel entity.");
+            if entity.class_name == "trigger_changelevel" {
+                let values = match &entity.ex {
+                    crate::logic::entity::EntityEx::Unknown(values) => values,
+                    _ => panic!(),
+                };
+                let map_name = values
+                    .0
+                    .get("map")
+                    .expect("Expected map property on trigger_changelevel entity.");
+                let landmark = values
+                    .0
+                    .get("landmark")
+                    .expect("Expected landmark property on trigger_changelevel entity.");
 
-                    // Calculate the relative position
-                    let landmark_entity = self
-                        .map_data
-                        .entities
-                        .iter()
-                        .find(|x| {
-                            if let Some(target_name) = x.get("targetname") {
-                                target_name == landmark
-                            } else {
-                                false
-                            }
-                        })
-                        .expect("Expected entity with matching targetname to trigger landmark");
-                    let origin = if let Some(origin_str) = landmark_entity.get("origin") {
-                        let mut parts = origin_str.split_whitespace();
-                        let hl_x: isize = parts.next().unwrap().parse().unwrap();
-                        let hl_y: isize = parts.next().unwrap().parse().unwrap();
-                        let hl_z: isize = parts.next().unwrap().parse().unwrap();
+                // Calculate the relative position
+                let landmark_entity = self
+                    .map_data
+                    .entities
+                    .iter()
+                    .find(|x| {
+                        if let Some(target_name) = x.name.as_ref() {
+                            target_name == landmark
+                        } else {
+                            false
+                        }
+                    })
+                    .expect("Expected entity with matching targetname to trigger landmark");
+                let origin = if let Some(hl_origin) = landmark_entity.origin.as_ref() {
+                    let coord = convert_coordinates(*hl_origin);
+                    Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                } else {
+                    Vec3::ZERO
+                };
 
-                        let coord = convert_coordinates([hl_x, hl_y, hl_z]);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
-                    } else {
-                        Vec3::ZERO
-                    };
-
-                    new_map = Some((map_name.clone(), landmark.clone(), origin));
-                }
+                new_map = Some((map_name.clone(), landmark.clone(), origin));
             }
         }
         new_map
@@ -1113,20 +1076,15 @@ impl Renderer for BspRenderer {
             .entities
             .iter()
             .find(|x| {
-                if let Some(target_name) = x.get("targetname") {
+                if let Some(target_name) = x.name.as_ref() {
                     target_name == landmark
                 } else {
                     false
                 }
             })
             .expect("Expected entity with matching targetname to previous map landmark");
-        let origin = if let Some(origin_str) = landmark_entity.get("origin") {
-            let mut parts = origin_str.split_whitespace();
-            let hl_x: isize = parts.next().unwrap().parse().unwrap();
-            let hl_y: isize = parts.next().unwrap().parse().unwrap();
-            let hl_z: isize = parts.next().unwrap().parse().unwrap();
-
-            let coord = convert_coordinates([hl_x, hl_y, hl_z]);
+        let origin = if let Some(hl_origin) = landmark_entity.origin.as_ref() {
+            let coord = convert_coordinates(*hl_origin);
             Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
         } else {
             Vec3::ZERO

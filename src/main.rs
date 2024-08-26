@@ -3,6 +3,7 @@ mod cli;
 mod export;
 mod graphics;
 mod hittest;
+mod logic;
 mod mdl_viewer;
 mod mouse;
 mod numerics;
