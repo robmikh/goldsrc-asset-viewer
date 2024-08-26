@@ -839,7 +839,7 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> (Vec<LightmapFaceData>, V
             let face_lightmap = &data[data_start..data_end];
             face_lightmap
         } else {
-            println!("WARNING: Face found with no lightmap, not fully implemented!");
+            // TODO: Handle faces without a lightmap more gracefully
             &[]
         };
 
