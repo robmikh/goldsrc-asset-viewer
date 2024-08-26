@@ -17,7 +17,7 @@ use crate::{
         coordinates::convert_coordinates,
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo},
-    logic::entity::{Entity, ModelReference, ParseEntity, ParseEntityValue},
+    logic::entity::{Entity, EntityEx, ModelReference, ParseEntity, ParseEntityValue},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -278,29 +278,30 @@ impl MapData {
         }
     }
 
-    fn get_start_position(&self, reader: &BspReader) -> Vec3 {
+    fn get_start_position(&self) -> Vec3 {
         // Find the "info_player_start" entity
-        let entities = BspEntity::parse_entities(reader.read_entities_str());
-        let mut player_start_entity = None;
-        for entity in &entities {
-            if let Some(value) = entity.0.get("classname") {
-                if *value == "info_player_start" {
-                    player_start_entity = Some(entity);
+        // TODO: Switch to the first matching entity
+        // When I first implemented this, I accidently went with the last info_player_start
+        // entity. If we change this to the first matching entity, we fall through the floor in c1a0.
+        let mut start_position = None;
+        for entity in &self.entities {
+            match entity.ex {
+                EntityEx::InfoPlayerStart(_) => {
+                    let origin = if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        println!("WARNING: No origin found on info_player_start entity!");
+                        Vec3::ZERO
+                    };
+                    //return origin;
+                    start_position = Some(origin);
                 }
+                _ => {}
             }
         }
-        let camera_start = {
-            let entity = player_start_entity.unwrap();
-            let value = entity.0.get("origin").unwrap();
-            let mut split = value.split(" ");
-            let x: f32 = split.next().unwrap().parse().unwrap();
-            let y: f32 = split.next().unwrap().parse().unwrap();
-            let z: f32 = split.next().unwrap().parse().unwrap();
-            let coord = [x, y, z];
-            let coord = convert_coordinates(coord);
-            Vec3::from_array(coord)
-        };
-        camera_start
+        //panic!("No info_player_start entities found!");
+        start_position.expect("No info_player_start entities found!")
     }
 
     fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
@@ -382,7 +383,7 @@ impl BspRenderer {
         );
 
         // Find the "info_player_start" entity
-        let camera_start = map_data.get_start_position(reader);
+        let camera_start = map_data.get_start_position();
         println!("Start position: {:?}", camera_start);
         let player = MovingEntity::new(camera_start);
 
@@ -424,7 +425,7 @@ impl BspRenderer {
                     let mut is_func_wall = false;
                     if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
                         let entity = &self.map_data.entities[*entity_index];
-                        if entity.class_name == "func_wall" {
+                        if let EntityEx::FuncWall(_) = entity.ex {
                             is_func_wall = true;
                         }
                     }
@@ -583,19 +584,9 @@ impl BspRenderer {
             self.find_model_with_entity(pos, ray, file_info)
         {
             let entity = &self.map_data.entities[entity_index];
-            if entity.class_name == "trigger_changelevel" {
-                let values = match &entity.ex {
-                    crate::logic::entity::EntityEx::Unknown(values) => values,
-                    _ => panic!(),
-                };
-                let map_name = values
-                    .0
-                    .get("map")
-                    .expect("Expected map property on trigger_changelevel entity.");
-                let landmark = values
-                    .0
-                    .get("landmark")
-                    .expect("Expected landmark property on trigger_changelevel entity.");
+            if let EntityEx::TriggerChangeLevel(trigger_entity) = &entity.ex {
+                let map_name = &trigger_entity.map;
+                let landmark = &trigger_entity.landmark;
 
                 // Calculate the relative position
                 let landmark_entity = self
@@ -604,7 +595,7 @@ impl BspRenderer {
                     .iter()
                     .find(|x| {
                         if let Some(target_name) = x.name.as_ref() {
-                            target_name == landmark
+                            target_name == &landmark.0
                         } else {
                             false
                         }
@@ -617,7 +608,7 @@ impl BspRenderer {
                     Vec3::ZERO
                 };
 
-                new_map = Some((map_name.clone(), landmark.clone(), origin));
+                new_map = Some((map_name.clone(), landmark.0.clone(), origin));
             }
         }
         new_map

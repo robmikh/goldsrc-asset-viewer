@@ -190,7 +190,15 @@ impl ParseEntity for UnknownEntityValues {
 parse_entity_enum!(
     EntityEx {
         ("func_wall") FuncWall(FuncWall),
+        ("info_player_start") InfoPlayerStart(InfoPlayerStart),
+        ("trigger_changelevel") TriggerChangeLevel(TriggerChangeLevel),
     }
 );
 
 parse_entity_struct!(FuncWall {});
+parse_entity_struct!(InfoPlayerStart {});
+parse_entity_struct!(TriggerChangeLevel {
+    ("map") map: String,
+    ("landmark") landmark: TargetName,
+    ("changetarget") change_target: Option<TargetName>,
+});
