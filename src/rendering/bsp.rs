@@ -280,10 +280,6 @@ impl MapData {
 
     fn get_start_position(&self) -> Vec3 {
         // Find the "info_player_start" entity
-        // TODO: Switch to the first matching entity
-        // When I first implemented this, I accidently went with the last info_player_start
-        // entity. If we change this to the first matching entity, we fall through the floor in c1a0.
-        let mut start_position = None;
         for entity in &self.entities {
             match entity.ex {
                 EntityEx::InfoPlayerStart(_) => {
@@ -294,14 +290,12 @@ impl MapData {
                         println!("WARNING: No origin found on info_player_start entity!");
                         Vec3::ZERO
                     };
-                    //return origin;
-                    start_position = Some(origin);
+                    return origin;
                 }
                 _ => {}
             }
         }
-        //panic!("No info_player_start entities found!");
-        start_position.expect("No info_player_start entities found!")
+        panic!("No info_player_start entities found!");
     }
 
     fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
@@ -382,8 +376,35 @@ impl BspRenderer {
             queue,
         );
 
-        // Find the "info_player_start" entity
-        let camera_start = map_data.get_start_position();
+        let camera_start = {
+            // Find the "info_player_start" entity
+            let mut camera_start = map_data.get_start_position() - CROUCH_HEIGHT;
+            // Check to see if we have something underneath us...
+            let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+            let has_ground_underneath = hittest_clip_node(
+                reader,
+                clip_node_index,
+                camera_start,
+                camera_start - Vec3::new(0.0, 1.0, 0.0),
+            )
+            .is_some();
+            if !has_ground_underneath {
+                println!("Adjusting start position...");
+                let adjust = 2.0 * CROUCH_HEIGHT;
+                // Try again but place the player further up
+                if let Some(intersection) = hittest_clip_node(
+                    reader,
+                    clip_node_index,
+                    camera_start + adjust,
+                    camera_start - Vec3::new(0.0, 1.0, 0.0),
+                ) {
+                    camera_start = intersection.position;
+                } else {
+                    println!("Falling through the floor...");
+                }
+            }
+            camera_start + CROUCH_HEIGHT
+        };
         println!("Start position: {:?}", camera_start);
         let player = MovingEntity::new(camera_start);
 
