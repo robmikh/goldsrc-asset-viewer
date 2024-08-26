@@ -833,9 +833,15 @@ fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> (Vec<LightmapFaceData>, V
         let mins = Vec2::new(imins[0] as f32, imins[1] as f32);
         let maxs = Vec2::new(imaxs[0] as f32, imaxs[1] as f32);
 
-        let data_start = face.lightmap_offset as usize;
-        let data_end = data_start + (width * height * 3) as usize;
-        let face_lightmap = &data[data_start..data_end];
+        let face_lightmap = if face.lightmap_offset >= 0 {
+            let data_start = face.lightmap_offset as usize;
+            let data_end = data_start + (width * height * 3) as usize;
+            let face_lightmap = &data[data_start..data_end];
+            face_lightmap
+        } else {
+            println!("WARNING: Face found with no lightmap, not fully implemented!");
+            &[]
+        };
 
         lightmap_face_data.push(LightmapFaceData {
             width: width as u32,
@@ -945,20 +951,22 @@ fn construct_atlas(face_datas: &[LightmapFaceData], mins_maxs: &[(Vec2, Vec2)]) 
     for (i, face_data) in face_datas.iter().enumerate() {
         let image = &images[i];
 
-        let x = image.x as usize;
-        let y = image.y as usize;
-        let atlas_offset = (y * atlas_stride) + (x * bytes_per_pixel);
+        if face_data.data.len() != 0 {
+            let x = image.x as usize;
+            let y = image.y as usize;
+            let atlas_offset = (y * atlas_stride) + (x * bytes_per_pixel);
 
-        let data_stride = face_data.width as usize * bytes_per_pixel;
-        let rows = face_data.height as usize;
-        for row in 0..rows {
-            let atlas_row_start = atlas_offset + (row * atlas_stride);
-            let atlas_row_end = atlas_row_start + data_stride;
-            let dest = &mut atlas_data[atlas_row_start..atlas_row_end];
-            let source_start = row * data_stride;
-            let source_end = source_start + data_stride;
-            let source = &face_data.data[source_start..source_end];
-            dest.copy_from_slice(source);
+            let data_stride = face_data.width as usize * bytes_per_pixel;
+            let rows = face_data.height as usize;
+            for row in 0..rows {
+                let atlas_row_start = atlas_offset + (row * atlas_stride);
+                let atlas_row_end = atlas_row_start + data_stride;
+                let dest = &mut atlas_data[atlas_row_start..atlas_row_end];
+                let source_start = row * data_stride;
+                let source_end = source_start + data_stride;
+                let source = &face_data.data[source_start..source_end];
+                dest.copy_from_slice(source);
+            }
         }
     }
 
