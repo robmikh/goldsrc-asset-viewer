@@ -122,8 +122,6 @@ fn hittest_node_for_leaf_impl<
 
     if let Some(side) = side {
         let child = current_node.children()[side];
-        //let plane_normal = normal;
-        //let normal = if side == 0 { plane_normal } else { -plane_normal };
         return hittest_node_for_leaf_impl(
             reader,
             nodes,

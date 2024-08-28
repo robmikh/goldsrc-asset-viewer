@@ -446,7 +446,7 @@ impl BspRenderer {
         }
     }
 
-    fn find_closest_model_intersection(
+    fn find_closest_clipnode_model_intersection(
         &self,
         reader: &BspReader,
         start_position: Vec3,
@@ -494,7 +494,7 @@ impl BspRenderer {
         let mut collisions = 0;
 
         if let Some((model_index, _intersection)) =
-            self.find_closest_model_intersection(reader, start_position, end_position)
+            self.find_closest_clipnode_model_intersection(reader, start_position, end_position)
         {
             let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
 
@@ -554,6 +554,67 @@ impl BspRenderer {
         (position, velocity, collisions > 0)
     }
 
+    fn find_closest_model_intersection(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        reader: &BspReader,
+    ) -> Option<(usize, Vec3)> {
+        let models = reader.read_models();
+        let mut closest_intersection = None;
+        for (i, model) in models.iter().enumerate() {
+            let node_index = model.head_nodes[0] as usize;
+            if let Some((intersection_point, _leaf_index)) =
+                hittest_node_for_leaf(reader, node_index, pos, ray)
+            {
+                let distance = pos.distance(intersection_point);
+                if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                    let old_distance = pos.distance(old_intersection);
+                    if distance < old_distance {
+                        closest_intersection = Some((i, intersection_point));
+                    } else {
+                        closest_intersection = Some((old_i, old_intersection));
+                    }
+                } else {
+                    closest_intersection = Some((i, intersection_point));
+                }
+            }
+        }
+        closest_intersection
+    }
+
+    fn find_closest_model_intersection_with_filter(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        reader: &BspReader,
+        model_filter: &[usize],
+    ) -> Option<(usize, Vec3)> {
+        let models = reader.read_models();
+        let mut closest_intersection = None;
+        for i in model_filter {
+            let i = *i;
+            let model = models[i];
+            let node_index = model.head_nodes[0] as usize;
+            if let Some((intersection_point, _leaf_index)) =
+                hittest_node_for_leaf(reader, node_index, pos, ray)
+            {
+                let distance = pos.distance(intersection_point);
+                if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                    let old_distance = pos.distance(old_intersection);
+                    if distance < old_distance {
+                        closest_intersection = Some((i, intersection_point));
+                    } else {
+                        closest_intersection = Some((old_i, old_intersection));
+                    }
+                } else {
+                    closest_intersection = Some((i, intersection_point));
+                }
+            }
+        }
+        closest_intersection
+    }
+
     fn find_model_with_entity(
         &self,
         pos: Vec3,
@@ -562,45 +623,10 @@ impl BspRenderer {
     ) -> Option<(usize, usize, Vec3)> {
         match file_info {
             FileInfo::BspFile(file_info) => {
-                let models = file_info.reader.read_models();
-                let mut closest_intersection = None;
-                for (i, model) in models.iter().enumerate() {
-                    let node_index = model.head_nodes[0] as usize;
-                    if let Some((intersection_point, _leaf_index)) =
-                        hittest_node_for_leaf(&file_info.reader, node_index, pos, ray)
-                    {
-                        let distance = pos.distance(intersection_point);
-                        if let Some((old_i, old_intersection)) = closest_intersection.take() {
-                            let old_distance = pos.distance(old_intersection);
-                            if distance < old_distance {
-                                closest_intersection = Some((i, intersection_point));
-                            } else {
-                                closest_intersection = Some((old_i, old_intersection));
-                            }
-                        } else {
-                            closest_intersection = Some((i, intersection_point));
-                        }
-                    }
-                }
-
+                let closest_intersection =
+                    self.find_closest_model_intersection(pos, ray, &file_info.reader);
                 let (model_index, intersection_point) = closest_intersection?;
-
-                let mut found = None;
-                let entities = BspEntity::parse_entities(file_info.reader.read_entities_str());
-                for (entity_index, entity) in entities.iter().enumerate() {
-                    if let Some(value) = entity.0.get("model") {
-                        if value.starts_with('*') {
-                            let model_ref: usize = value.trim_start_matches('*').parse().unwrap();
-                            if model_ref == model_index {
-                                found = Some(entity_index);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                let entity_index = found?;
-
+                let entity_index = *self.map_data.model_to_entity.get(&model_index)?;
                 Some((model_index, entity_index, intersection_point))
             }
             _ => panic!(),
@@ -1022,9 +1048,41 @@ impl Renderer for BspRenderer {
         println!("pos: {:?}    ray: {:?}", pos, ray);
 
         if let Some(file_info) = file_info.as_ref() {
-            if let Some((model_index, entity_index, intersection_point)) =
-                self.find_model_with_entity(pos, ray, file_info)
-            {
+            let reader = match file_info {
+                FileInfo::BspFile(file) => &file.reader,
+                _ => panic!(),
+            };
+            let mut intersection_info = None;
+
+            // Try not to select the model/entity we're already inside of.
+            // At a maximum, we could be inside every model.
+            let mut model_indices: Vec<usize> = (0..self.map_data.map_models.len()).collect();
+            // Keep checking as long as we hit something that matches our position.
+            while !model_indices.is_empty() {
+                if let Some((model_index, intersection_point)) = self
+                    .find_closest_model_intersection_with_filter(pos, ray, reader, &model_indices)
+                {
+                    let entity_index = if let Some(entity_index) =
+                        self.map_data.model_to_entity.get(&model_index)
+                    {
+                        *entity_index
+                    } else {
+                        continue;
+                    };
+
+                    if intersection_point == pos {
+                        let position = model_indices.iter().position(|x| *x == model_index);
+                        if let Some(position) = position {
+                            model_indices.remove(position);
+                        }
+                    } else {
+                        intersection_info = Some((model_index, entity_index, intersection_point));
+                        break;
+                    }
+                }
+            }
+
+            if let Some((model_index, entity_index, intersection_point)) = intersection_info {
                 self.set_debug_point(intersection_point);
                 println!("Intersection: {:?}", intersection_point);
                 println!("Hit something... {}", model_index);
