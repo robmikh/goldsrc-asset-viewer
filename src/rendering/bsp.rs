@@ -1580,11 +1580,15 @@ mod experiments {
         let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true).expect("Expected intersection!");
         println!("{:?}", intersection);
 
-        let start = intersection.position;
-        assert_eq!(start, Vec3::new(450.3606, -267.95654, 2109.9773));
+        let start_2 = intersection.position;
+        assert_eq!(start_2, Vec3::new(450.3606, -267.95654, 2109.9773));
         // Our last known position from colliding with the railing in process_movement
-        let end = Vec3::new(450.96432, -267.95654, 2108.5144);
-        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true).expect("Expected intersection!");
+        let lkg_position = Vec3::new(450.96432, -267.95654, 2108.5144);
+        assert!(hittest_clip_node(&reader, head_clip_node, start_2, lkg_position, true).is_none(), "Did not expect intersection!");
+        
+        let start_3 = lkg_position;
+        let final_end = end;
+        let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end, true).expect("Expected intersection!");
         println!("{:?}", intersection);
     }
 }
