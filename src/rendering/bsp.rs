@@ -524,6 +524,8 @@ impl BspRenderer {
                 let entity = &self.map_data.entities[*entity_index];
                 if entity.class_name == "func_wall" {
                     println!("Hit a func_wall! Normal: {:?}", intersection.normal);
+                    println!("start_position: {:?}", start_position);
+                    println!("end_position:   {:?}", end_position);
                     should_log = true;
                 }
             }
@@ -1424,10 +1426,14 @@ mod experiments {
         path::{Path, PathBuf},
     };
 
+    use glam::Vec3;
     use gsparser::{
         bsp::{BspEntity, BspReader},
         mdl::null_terminated_bytes_to_str,
     };
+    use wgpu::COPY_BUFFER_ALIGNMENT;
+
+    use crate::{hittest::hittest_clip_node, rendering::bsp::CROUCH_HEIGHT};
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
@@ -1539,5 +1545,46 @@ mod experiments {
                 println!("{}{}", indent_str, node);
             }
         }
+    }
+
+    #[test]
+    fn func_wall_move_test() {
+        let model_index = 8;
+        let map_name = "c1a0e.bsp";
+        let map_path = {
+            let mut path = PathBuf::from(HALF_LIFE_BASE_PATH);
+            path.push(map_name);
+            path
+        };
+
+        let bsp_bytes = std::fs::read(&map_path).unwrap();
+        let reader = BspReader::read(bsp_bytes);
+
+        let model = &reader.read_models()[model_index];
+        let head_clip_node = model.head_nodes[1] as usize;
+
+        // Based on this output:
+        //
+        // Hit a func_wall! Normal: Vec3(0.9243739, 0.0, 0.38148767)
+        // start_position: Vec3(450.5545, -267.95654, 2110.265)
+        // end_position:   Vec3(449.47562, -267.95654, 2108.6653)
+        // Trace: QuakeTrace { plane: QuakePlane { normal: Vec3(0.38148767, 0.9243739, 0.0), dist: 1221.2007 }, intersection: Vec3(2109.9773, 450.3606, -267.95654), all_solid: false, start_solid: false, in_open: true, in_water: false }
+        // Desired end: Vec3(449.47562, -267.95654, 2108.6653)
+        // New end: Vec3(450.3606, -267.95654, 2109.9773)
+        //     (8) distance: 0.34686163
+        //   Vec3(449.47562, -267.95654, 2108.6653) -> Vec3(450.3606, -267.95654, 2109.9773)
+        //   no intersection! Vec3(450.96432, -267.95654, 2108.5144)
+
+        let start = Vec3::new(450.5545, -267.95654, 2110.265);
+        let end = Vec3::new(449.47562, -267.95654, 2108.6653);
+        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true).expect("Expected intersection!");
+        println!("{:?}", intersection);
+
+        let start = intersection.position;
+        assert_eq!(start, Vec3::new(450.3606, -267.95654, 2109.9773));
+        // Our last known position from colliding with the railing in process_movement
+        let end = Vec3::new(450.96432, -267.95654, 2108.5144);
+        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true).expect("Expected intersection!");
+        println!("{:?}", intersection);
     }
 }
