@@ -512,7 +512,19 @@ impl BspRenderer {
         mut velocity: Vec3,
         project_collision: bool,
     ) -> (Vec3, Vec3, bool) {
+        static DEBUG_TRACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
         let mut should_log = false;
+        let mut should_track = false;
+
+        if project_collision {
+            if DEBUG_TRACK.load(std::sync::atomic::Ordering::SeqCst) {
+                println!("Tracked movement!");
+                println!("start_position: {:?}", start_position);
+                println!("end_position:   {:?}", end_position);
+                should_log = true;
+            }
+        }
 
         let mut position = end_position;
         let mut collisions = 0;
@@ -520,13 +532,16 @@ impl BspRenderer {
         if let Some((model_index, intersection)) =
             self.find_closest_clipnode_model_intersection(reader, start_position, end_position, false)
         {
-            if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
-                let entity = &self.map_data.entities[*entity_index];
-                if entity.class_name == "func_wall" {
-                    println!("Hit a func_wall! Normal: {:?}", intersection.normal);
-                    println!("start_position: {:?}", start_position);
-                    println!("end_position:   {:?}", end_position);
-                    should_log = true;
+            if project_collision {
+                if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
+                    let entity = &self.map_data.entities[*entity_index];
+                    if entity.class_name == "func_wall" {
+                        println!("Hit a func_wall! Normal: {:?}", intersection.normal);
+                        println!("start_position: {:?}", start_position);
+                        println!("end_position:   {:?}", end_position);
+                        should_log = true;
+                        should_track = true;
+                    }
                 }
             }
 
@@ -599,6 +614,10 @@ impl BspRenderer {
                     break;
                 }
             }
+        } else {
+            if should_log {
+                println!("  no top-level intersection! {:?}", position);
+            }
         }
 
         //if let Some((model_index, intersection)) = self.find_closest_model_intersection_with_filter(position, Vec3::ZERO, 0.0, reader, 1, |i| -> bool {
@@ -617,6 +636,27 @@ impl BspRenderer {
         //}) {
         //    println!("aaah! ({})", model_index);
         //}
+
+        if DEBUG_TRACK.load(std::sync::atomic::Ordering::SeqCst) {
+            if project_collision {
+                DEBUG_TRACK.store(false, std::sync::atomic::Ordering::SeqCst);
+            } else {
+                println!("Tracked gravity!");
+                println!("start_position: {:?}", start_position);
+                println!("end_position:   {:?}", end_position);
+                println!("position:       {:?}", position);
+                println!();
+            }
+        }
+        
+
+        if should_track {
+            DEBUG_TRACK.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        if should_log {
+            println!();
+        }
 
         (position, velocity, collisions > 0)
     }
@@ -947,40 +987,41 @@ impl Renderer for BspRenderer {
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
 
+                    // TODO: This code causes us to walk through railings on c1a0e
                     // If we've collided with something, check to see if we can move without a collision
                     // if we were a bit higher. This is an attempt to allow movement over small bumps.
                     // TODO: This needs to be limited to only walls
-                    if colided {
-                        let nudged_start_position =
-                            start_position + (surface_normal * AUTO_STEP_HEIGHT);
-                        let nudged_end_position =
-                            nudged_start_position + (previous_velocity * delta.as_secs_f32());
-                        if hittest_clip_node(
-                            reader,
-                            clip_node_index,
-                            nudged_start_position,
-                            nudged_end_position,
-                            false,
-                        )
-                        .is_none()
-                        {
-                            position = nudged_end_position;
-                            velocity = previous_velocity;
-
-                            if is_touching_ground {
-                                if let Some(intersection) = hittest_clip_node(
-                                    reader,
-                                    clip_node_index,
-                                    nudged_end_position,
-                                    nudged_end_position
-                                        - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
-                                        false,
-                                ) {
-                                    position = intersection.position;
-                                }
-                            }
-                        }
-                    }
+                    //if colided {
+                    //    let nudged_start_position =
+                    //        start_position + (surface_normal * AUTO_STEP_HEIGHT);
+                    //    let nudged_end_position =
+                    //        nudged_start_position + (previous_velocity * delta.as_secs_f32());
+                    //    if hittest_clip_node(
+                    //        reader,
+                    //        clip_node_index,
+                    //        nudged_start_position,
+                    //        nudged_end_position,
+                    //        false,
+                    //    )
+                    //    .is_none()
+                    //    {
+                    //        position = nudged_end_position;
+                    //        velocity = previous_velocity;
+                    //
+                    //        if is_touching_ground {
+                    //            if let Some(intersection) = hittest_clip_node(
+                    //                reader,
+                    //                clip_node_index,
+                    //                nudged_end_position,
+                    //                nudged_end_position
+                    //                    - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                    //                    false,
+                    //            ) {
+                    //                position = intersection.position;
+                    //            }
+                    //        }
+                    //    }
+                    //}
                 }
 
                 if self.gravity {
