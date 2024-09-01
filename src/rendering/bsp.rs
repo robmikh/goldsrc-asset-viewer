@@ -573,7 +573,7 @@ impl BspRenderer {
                         let dist = start_position.distance(intersection.position);
                         distance -= dist;
 
-                        if distance <= 0.0 || (dist <= 0.0 && distance / full_distance != 1.0) {
+                        if distance <= 0.0 || (dist <= 0.0 && distance / full_distance < 1.0) {
                             position = intersection.position;
                             break;
                         }
@@ -590,6 +590,7 @@ impl BspRenderer {
                         }
                     }
                 } else {
+                    position = end_position;
                     if should_log {
                         println!("  no intersection! {:?}", position);
                     }
