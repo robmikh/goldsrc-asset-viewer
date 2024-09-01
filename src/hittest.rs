@@ -3,14 +3,17 @@ use gsparser::bsp::{BspClipNode, BspContents, BspNode, BspReader, FromValue};
 
 use crate::export::coordinates::{convert_vec3_to_gltf, convert_vec3_to_half_life};
 
+pub const REALLY_FAR: f32 = 10000.0;
+
 pub fn hittest_node_for_leaf(
     reader: &BspReader,
     node_index: usize,
     pos: Vec3,
     ray: Vec3,
+    distance: f32,
 ) -> Option<(Vec3, usize)> {
     let p1 = pos;
-    let p2 = pos + (ray * 10000.0);
+    let p2 = pos + (ray * distance);
     let nodes = reader.read_nodes();
     hittest_node_for_leaf_impl(
         reader,
@@ -36,6 +39,7 @@ pub fn hittest_clip_node(
     clip_node_index: usize,
     start: Vec3,
     end: Vec3,
+    debug: bool,
 ) -> Option<IntersectionInfo> {
     let p1 = convert_vec3_to_half_life(start);
     let p2 = convert_vec3_to_half_life(end);
@@ -44,17 +48,29 @@ pub fn hittest_clip_node(
     let mut trace = QuakeTrace::default();
     trace.all_solid = true;
     trace.intersection = p2;
-    if !trace_hull(reader, nodes, clip_node_index as i16, p1, p2, &mut trace) {
+    if !trace_hull(reader, nodes, clip_node_index,  clip_node_index as i16, p1, p2, &mut trace) {         
+        
+        
         let intersection = if trace.all_solid || trace.start_solid {
             p1
         } else {
             trace.intersection
         };
+        //assert_eq!(p1, trace.intersection);
+        //let intersection = trace.intersection;
+        if debug {
+            println!("Trace: {:?}", trace);
+            println!("Desired end: {:?}", end);
+            println!("New end: {:?}", convert_vec3_to_gltf(intersection));
+        }
         Some(IntersectionInfo {
             position: convert_vec3_to_gltf(intersection),
             normal: convert_vec3_to_gltf(trace.plane.normal),
         })
     } else {
+        if debug {
+            //println!("No intersection! clip_node: {}", clip_node_index);
+        }
         None
     }
 }
@@ -207,13 +223,13 @@ fn node_resolver(
 
 const DIST_EPSILON: f32 = 0.03125;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct QuakePlane {
     normal: Vec3,
     dist: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct QuakeTrace {
     plane: QuakePlane,
     intersection: Vec3,
@@ -226,6 +242,7 @@ struct QuakeTrace {
 fn trace_hull(
     reader: &BspReader,
     nodes: &[BspClipNode],
+    clip_node_root: usize,
     node_index: i16,
     p1: Vec3,
     p2: Vec3,
@@ -273,11 +290,11 @@ fn trace_hull(
 
     if t1 >= 0.0 && t2 >= 0.0 {
         let child = node.children[0];
-        return trace_hull(reader, nodes, child, p1, p2, trace);
+        return trace_hull(reader, nodes, clip_node_root, child, p1, p2, trace);
     }
     if t1 < 0.0 && t2 < 0.0 {
         let child = node.children[1];
-        return trace_hull(reader, nodes, child, p1, p2, trace);
+        return trace_hull(reader, nodes, clip_node_root, child, p1, p2, trace);
     }
 
     let frac = if t1 < 0.0 {
@@ -290,13 +307,13 @@ fn trace_hull(
     let side = if t1 >= 0.0 { 0 } else { 1 };
 
     let child = node.children[side];
-    if !trace_hull(reader, nodes, child, p1, mid, trace) {
+    if !trace_hull(reader, nodes, clip_node_root, child, p1, mid, trace) {
         return false;
     }
 
     let child = node.children[1 - side];
     if hull_point_contents(reader, nodes, child, mid) != BspContents::Solid as i16 {
-        return trace_hull(reader, nodes, child, mid, p2, trace);
+        return trace_hull(reader, nodes, clip_node_root, child, mid, p2, trace);
     }
 
     if trace.all_solid {
@@ -313,8 +330,7 @@ fn trace_hull(
         trace.plane.dist = -plane.dist;
     }
 
-    // TODO: Don't hard code
-    let clip_node_root = 0;
+    let clip_node_root = clip_node_root as i16;
     let contents =
         BspContents::from_value(hull_point_contents(reader, nodes, clip_node_root, mid) as i32)
             .unwrap();

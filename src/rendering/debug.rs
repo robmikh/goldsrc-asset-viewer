@@ -6,10 +6,10 @@ use gltf::add_and_get_index;
 
 pub fn create_debug_point(
     pos: Vec3,
+    size: i16,
     indices: &mut Vec<u32>,
     vertices: &mut Vec<ModelVertex>,
 ) -> Range<usize> {
-    let size = 5;
     let mins = [
         pos.x as i16 - size,
         pos.y as i16 - size,

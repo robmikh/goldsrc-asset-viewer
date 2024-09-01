@@ -16,7 +16,7 @@ use crate::{
         bsp::{decode_atlas, ModelVertex, TextureInfo},
         coordinates::convert_coordinates,
     },
-    hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo},
+    hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
     logic::entity::{Entity, EntityEx, ModelReference, ParseEntity, ParseEntityValue},
     rendering::movement::MovingEntity,
     FileInfo,
@@ -394,6 +394,7 @@ impl BspRenderer {
                 clip_node_index,
                 camera_start,
                 camera_start - Vec3::new(0.0, 1.0, 0.0),
+                false
             )
             .is_some();
             if !has_ground_underneath {
@@ -405,6 +406,7 @@ impl BspRenderer {
                     clip_node_index,
                     camera_start + adjust,
                     camera_start - Vec3::new(0.0, 1.0, 0.0),
+                    false
                 ) {
                     camera_start = intersection.position;
                 } else {
@@ -451,8 +453,9 @@ impl BspRenderer {
         reader: &BspReader,
         start_position: Vec3,
         end_position: Vec3,
+        debug: bool,
     ) -> Option<(usize, IntersectionInfo)> {
-        // TODO: Track closest intersection
+        let mut closest_intersection: Option<(usize, IntersectionInfo)> = None;
         for (i, model) in reader.read_models().iter().enumerate() {
             if i > 0 {
                 let is_func_wall = {
@@ -472,14 +475,33 @@ impl BspRenderer {
             }
 
             // TODO: Account for model transforms (e.g. origin entity property)
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+                let entity = &self.map_data.entities[*entity_index];
+                if entity.origin.is_some() {
+                    println!("WARNING! Wall with origin!");
+                }
+            }
             let clip_node_index = model.head_nodes[1] as usize;
             if let Some(intersection) =
-                hittest_clip_node(reader, clip_node_index, start_position, end_position)
+                hittest_clip_node(reader, clip_node_index, start_position, end_position, debug)
             {
-                return Some((i, intersection));
+                let distance = start_position.distance(intersection.position);
+                if debug {
+                    println!("    ({}) distance: {}", i, distance);
+                }
+                if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                    let old_distance = start_position.distance(old_intersection.position);
+                    if distance < old_distance {
+                        closest_intersection = Some((i, intersection));
+                    } else {
+                        closest_intersection = Some((old_i, old_intersection));
+                    }
+                } else {
+                    closest_intersection = Some((i, intersection));
+                }
             }
         }
-        None
+        closest_intersection
     }
 
     fn process_movement(
@@ -490,13 +512,23 @@ impl BspRenderer {
         mut velocity: Vec3,
         project_collision: bool,
     ) -> (Vec3, Vec3, bool) {
+        let mut should_log = false;
+
         let mut position = end_position;
         let mut collisions = 0;
 
-        if let Some((model_index, _intersection)) =
-            self.find_closest_clipnode_model_intersection(reader, start_position, end_position)
+        if let Some((model_index, intersection)) =
+            self.find_closest_clipnode_model_intersection(reader, start_position, end_position, false)
         {
-            let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
+                let entity = &self.map_data.entities[*entity_index];
+                if entity.class_name == "func_wall" {
+                    println!("Hit a func_wall! Normal: {:?}", intersection.normal);
+                    should_log = true;
+                }
+            }
+
+            //let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
 
             let mut distance = start_position.distance(end_position);
             let full_distance = distance;
@@ -509,8 +541,10 @@ impl BspRenderer {
                     break;
                 }
 
-                if let Some(intersection) =
-                    hittest_clip_node(reader, clip_node_index, start_position, end_position)
+                //if let Some(intersection) =
+                //    hittest_clip_node(reader, clip_node_index, start_position, end_position)
+                if let Some((_model_index, intersection)) =
+                    self.find_closest_clipnode_model_intersection(reader, start_position, end_position, should_log)
                 {
                     collisions += 1;
                     if collisions > 4 {
@@ -518,11 +552,18 @@ impl BspRenderer {
                         break;
                     }
 
+                    if should_log {
+                        print!("  {:?} -> ", end_position);
+                    }
+
                     let direction = velocity.normalize();
                     let dot = direction.dot(intersection.normal);
                     if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
                         velocity = Vec3::ZERO;
                         position = start_position;
+                        if should_log {
+                            println!("{:?} (No projection)", position);
+                        }
                         break;
                     } else {
                         // Calc our new position
@@ -543,13 +584,36 @@ impl BspRenderer {
 
                         start_position = intersection.position;
                         end_position = intersection.position + new_vector;
-                        position = end_position;
+                        position = start_position;
+                        if should_log {
+                            println!("{:?}", position);
+                        }
                     }
                 } else {
+                    if should_log {
+                        println!("  no intersection! {:?}", position);
+                    }
                     break;
                 }
             }
         }
+
+        //if let Some((model_index, intersection)) = self.find_closest_model_intersection_with_filter(position, Vec3::ZERO, 0.0, reader, 1, |i| -> bool {
+        //    if i == 0 {
+        //        return true;
+        //    }
+        //    
+        //    if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+        //        let entity = &self.map_data.entities[*entity_index];
+        //        if let EntityEx::FuncWall(_) = entity.ex {
+        //            return true;
+        //        }
+        //    }
+//
+        //    false
+        //}) {
+        //    println!("aaah! ({})", model_index);
+        //}
 
         (position, velocity, collisions > 0)
     }
@@ -558,14 +622,16 @@ impl BspRenderer {
         &self,
         pos: Vec3,
         ray: Vec3,
+        distance: f32,
         reader: &BspReader,
+        head_node_index: usize,
     ) -> Option<(usize, Vec3)> {
         let models = reader.read_models();
         let mut closest_intersection = None;
         for (i, model) in models.iter().enumerate() {
-            let node_index = model.head_nodes[0] as usize;
+            let node_index = model.head_nodes[head_node_index] as usize;
             if let Some((intersection_point, _leaf_index)) =
-                hittest_node_for_leaf(reader, node_index, pos, ray)
+                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
             {
                 let distance = pos.distance(intersection_point);
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
@@ -583,11 +649,13 @@ impl BspRenderer {
         closest_intersection
     }
 
-    fn find_closest_model_intersection_with_filter(
+    fn find_closest_model_intersection_from_models(
         &self,
         pos: Vec3,
         ray: Vec3,
+        distance: f32,
         reader: &BspReader,
+        head_node_index: usize,
         model_filter: &[usize],
     ) -> Option<(usize, Vec3)> {
         let models = reader.read_models();
@@ -595,9 +663,44 @@ impl BspRenderer {
         for i in model_filter {
             let i = *i;
             let model = models[i];
-            let node_index = model.head_nodes[0] as usize;
+            let node_index = model.head_nodes[head_node_index] as usize;
             if let Some((intersection_point, _leaf_index)) =
-                hittest_node_for_leaf(reader, node_index, pos, ray)
+                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
+            {
+                let distance = pos.distance(intersection_point);
+                if let Some((old_i, old_intersection)) = closest_intersection.take() {
+                    let old_distance = pos.distance(old_intersection);
+                    if distance < old_distance {
+                        closest_intersection = Some((i, intersection_point));
+                    } else {
+                        closest_intersection = Some((old_i, old_intersection));
+                    }
+                } else {
+                    closest_intersection = Some((i, intersection_point));
+                }
+            }
+        }
+        closest_intersection
+    }
+
+    fn find_closest_model_intersection_with_filter<F: Fn(usize) -> bool>(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        distance: f32,
+        reader: &BspReader,
+        head_node_index: usize,
+        model_filter: F,
+    ) -> Option<(usize, Vec3)> {
+        let models = reader.read_models();
+        let mut closest_intersection = None;
+        for (i, model) in models.iter().enumerate() {
+            if !model_filter(i) {
+                continue;
+            }
+            let node_index = model.head_nodes[head_node_index] as usize;
+            if let Some((intersection_point, _leaf_index)) =
+                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
             {
                 let distance = pos.distance(intersection_point);
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
@@ -624,7 +727,7 @@ impl BspRenderer {
         match file_info {
             FileInfo::BspFile(file_info) => {
                 let closest_intersection =
-                    self.find_closest_model_intersection(pos, ray, &file_info.reader);
+                    self.find_closest_model_intersection(pos, ray, REALLY_FAR, &file_info.reader, 0);
                 let (model_index, intersection_point) = closest_intersection?;
                 let entity_index = *self.map_data.model_to_entity.get(&model_index)?;
                 Some((model_index, entity_index, intersection_point))
@@ -811,6 +914,7 @@ impl Renderer for BspRenderer {
                         clip_node_index,
                         start_position,
                         start_position - Vec3::new(0.0, 1.0, 0.0),
+                        false
                     )
                     .is_some();
 
@@ -820,6 +924,7 @@ impl Renderer for BspRenderer {
                         clip_node_index,
                         start_position,
                         start_position - CROUCH_HEIGHT * 2.0,
+                        false,
                     ) {
                         if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
                             let new_direction = (direction
@@ -852,6 +957,7 @@ impl Renderer for BspRenderer {
                             clip_node_index,
                             nudged_start_position,
                             nudged_end_position,
+                            false,
                         )
                         .is_none()
                         {
@@ -865,6 +971,7 @@ impl Renderer for BspRenderer {
                                     nudged_end_position,
                                     nudged_end_position
                                         - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                                        false,
                                 ) {
                                     position = intersection.position;
                                 }
@@ -1060,7 +1167,7 @@ impl Renderer for BspRenderer {
             // Keep checking as long as we hit something that matches our position.
             while !model_indices.is_empty() {
                 if let Some((model_index, intersection_point)) = self
-                    .find_closest_model_intersection_with_filter(pos, ray, reader, &model_indices)
+                    .find_closest_model_intersection_from_models(pos, ray, REALLY_FAR, reader, 0, &model_indices)
                 {
                     let entity_index = if let Some(entity_index) =
                         self.map_data.model_to_entity.get(&model_index)
@@ -1107,11 +1214,15 @@ impl Renderer for BspRenderer {
             FileInfo::BspFile(file) => &file.reader,
             _ => panic!(),
         };
-        let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-        if let Some(intersection) =
-            hittest_clip_node(reader, clip_node_index, pos, pos + (ray * 10000.0))
-        {
-            println!("intersection: {:?}", intersection);
+        //let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+        //if let Some(intersection) =
+        //    hittest_clip_node(reader, clip_node_index, pos, pos + (ray * 10000.0))
+        //{
+        //    println!("intersection: {:?}", intersection);
+        //    self.set_debug_pyramid(intersection.position, intersection.normal);
+        //}
+        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(reader, pos, pos+(ray * REALLY_FAR), false) {
+            println!("model: {}    intersection: {:?}", model_index, intersection);
             self.set_debug_pyramid(intersection.position, intersection.normal);
         }
     }
@@ -1280,7 +1391,7 @@ fn create_gpu_model_for_model(
 fn create_debug_point_model(point: Vec3, texture_index: usize) -> Model<ModelVertex> {
     let mut indices = Vec::new();
     let mut vertices = Vec::new();
-    let indices_range = create_debug_point(point, &mut indices, &mut vertices);
+    let indices_range = create_debug_point(point, 1, &mut indices, &mut vertices);
     Model {
         indices,
         vertices,
@@ -1308,7 +1419,7 @@ fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> M
 #[cfg(test)]
 mod experiments {
     use std::{
-        collections::HashMap,
+        collections::{HashMap, VecDeque},
         path::{Path, PathBuf},
     };
 
@@ -1316,6 +1427,8 @@ mod experiments {
         bsp::{BspEntity, BspReader},
         mdl::null_terminated_bytes_to_str,
     };
+
+    const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
     fn process_all_entities<F: FnMut(&PathBuf, &BspEntity), P: AsRef<Path>>(
         base_path: P,
@@ -1356,17 +1469,15 @@ mod experiments {
     // entities string.
     #[test]
     fn all_entities_have_class_names() {
-        let base_path = "testdata/Half-Life/valve/maps";
-        process_all_entities(base_path, |_item_path, entity| {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, entity| {
             let _ = entity.0.get("classname").unwrap();
         });
     }
 
     #[test]
     fn audit_class_names() {
-        let base_path = "testdata/Half-Life/valve/maps";
         let mut class_names = HashMap::<String, usize>::new();
-        process_all_entities(base_path, |_item_path, entity| {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, entity| {
             let class_name = entity.0.get("classname").unwrap();
             if let Some(count) = class_names.get_mut(*class_name) {
                 *count += 1;
@@ -1390,6 +1501,42 @@ mod experiments {
         println!("Class names:");
         for (class_name, count) in sorted_class_names {
             println!("  {:<25}     {:>5}", class_name, count);
+        }
+    }
+
+    #[test]
+    fn clip_node_reconstruction() {
+        let model_index = 8;
+        let map_name = "c1a0e.bsp";
+        let map_path = {
+            let mut path = PathBuf::from(HALF_LIFE_BASE_PATH);
+            path.push(map_name);
+            path
+        };
+
+        let bsp_bytes = std::fs::read(&map_path).unwrap();
+        let reader = BspReader::read(bsp_bytes);
+
+        let model = &reader.read_models()[model_index];
+        let head_clip_node = model.head_nodes[1] as i16;
+        let nodes = reader.read_clip_nodes();
+        let planes = reader.read_planes();
+
+        let mut stack = VecDeque::new();
+        stack.push_back((0, head_clip_node));
+        while let Some((indent, node)) = stack.pop_back() {
+            let indent_str = "  ".repeat(indent);
+            if node >= 0 {
+                let clip_node = &nodes[node as usize];
+                stack.push_back((indent + 1, clip_node.children[0]));
+                stack.push_back((indent + 1, clip_node.children[1]));
+
+                let plane = &planes[clip_node.plane_index as usize];
+                
+                println!("{}{} - {:?}", indent_str, node, plane);
+            } else {
+                println!("{}{}", indent_str, node);
+            }
         }
     }
 }
