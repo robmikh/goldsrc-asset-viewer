@@ -28,10 +28,10 @@ use super::{
     Renderer,
 };
 
-// On c1a0, we start at -166 and fall to -179.96875 without adjustments
-const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 13.97, 0.0);
+// This was eyeballed, but the camera fov doesn't quite match so this is imperfect.
+const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 30.0, 0.0);
 // This gets me up the stairs in c1a0d
-const AUTO_STEP_HEIGHT: f32 = 8.0;
+const AUTO_STEP_HEIGHT: f32 = 18.0;
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -950,35 +950,56 @@ impl Renderer for BspRenderer {
                 };
                 if velocity.length() > 0.0 {
                     let direction = velocity.normalize();
-                    let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
+                    //let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
 
-                    let is_touching_ground = hittest_clip_node(
-                        reader,
-                        clip_node_index,
-                        start_position,
-                        start_position - Vec3::new(0.0, 1.0, 0.0),
-                        false
-                    )
-                    .is_some();
+                    let is_touching_ground = self.find_closest_clipnode_model_intersection(
+                        reader, 
+                        start_position, 
+                        start_position - Vec3::new(0.0, 1.0, 0.0), 
+                        false).is_some();
+
+                    //let is_touching_ground = hittest_clip_node(
+                    //    reader,
+                    //    clip_node_index,
+                    //    start_position,
+                    //    start_position - Vec3::new(0.0, 1.0, 0.0),
+                    //    false
+                    //)
+                    //.is_some();
 
                     // Project our movement along the surface we're standing on
-                    let surface_normal = if let Some(intersection) = hittest_clip_node(
-                        reader,
-                        clip_node_index,
-                        start_position,
-                        start_position - CROUCH_HEIGHT * 2.0,
-                        false,
-                    ) {
-                        if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
-                            let new_direction = (direction
-                                - intersection.normal * direction.dot(intersection.normal))
-                            .normalize();
-                            velocity = new_direction * velocity.length();
-                        }
-                        intersection.normal
-                    } else {
-                        Vec3::new(0.0, 1.0, 0.0)
-                    };
+                    let surface_normal = if let Some((_, intersection)) = self.find_closest_clipnode_model_intersection(
+                        reader, 
+                        start_position, 
+                        start_position - CROUCH_HEIGHT * 2.0, 
+                        false) {
+                            if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
+                                let new_direction = (direction
+                                    - intersection.normal * direction.dot(intersection.normal))
+                                .normalize();
+                                velocity = new_direction * velocity.length();
+                            }
+                            intersection.normal
+                        } else {
+                            Vec3::new(0.0, 1.0, 0.0)
+                        };
+                    //let surface_normal = if let Some(intersection) = hittest_clip_node(
+                    //    reader,
+                    //    clip_node_index,
+                    //    start_position,
+                    //    start_position - CROUCH_HEIGHT * 2.0,
+                    //    false,
+                    //) {
+                    //    if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
+                    //        let new_direction = (direction
+                    //            - intersection.normal * direction.dot(intersection.normal))
+                    //        .normalize();
+                    //        velocity = new_direction * velocity.length();
+                    //    }
+                    //    intersection.normal
+                    //} else {
+                    //    Vec3::new(0.0, 1.0, 0.0)
+                    //};
 
                     let previous_velocity = velocity;
                     let end_position = start_position + (velocity * delta.as_secs_f32());
@@ -991,37 +1012,56 @@ impl Renderer for BspRenderer {
                     // If we've collided with something, check to see if we can move without a collision
                     // if we were a bit higher. This is an attempt to allow movement over small bumps.
                     // TODO: This needs to be limited to only walls
-                    //if colided {
-                    //    let nudged_start_position =
-                    //        start_position + (surface_normal * AUTO_STEP_HEIGHT);
-                    //    let nudged_end_position =
-                    //        nudged_start_position + (previous_velocity * delta.as_secs_f32());
-                    //    if hittest_clip_node(
-                    //        reader,
-                    //        clip_node_index,
-                    //        nudged_start_position,
-                    //        nudged_end_position,
-                    //        false,
-                    //    )
-                    //    .is_none()
-                    //    {
-                    //        position = nudged_end_position;
-                    //        velocity = previous_velocity;
-                    //
-                    //        if is_touching_ground {
-                    //            if let Some(intersection) = hittest_clip_node(
-                    //                reader,
-                    //                clip_node_index,
-                    //                nudged_end_position,
-                    //                nudged_end_position
-                    //                    - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
-                    //                    false,
-                    //            ) {
-                    //                position = intersection.position;
-                    //            }
-                    //        }
-                    //    }
-                    //}
+                    if colided {
+                        let nudged_start_position =
+                            start_position + (surface_normal * AUTO_STEP_HEIGHT);
+                        let nudged_end_position =
+                            nudged_start_position + (previous_velocity * delta.as_secs_f32());
+
+                        if self.find_closest_clipnode_model_intersection(
+                            reader, nudged_start_position, nudged_end_position, false).is_none() {
+                                position = nudged_end_position;
+                            velocity = previous_velocity;
+                    
+                            if is_touching_ground {
+                                if let Some((_, intersection)) = self.find_closest_clipnode_model_intersection(
+                                    reader,
+                                    nudged_end_position,
+                                    nudged_end_position
+                                        - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                                        false,
+                                ) {
+                                    position = intersection.position;
+                                }
+                            }
+                            }
+
+                        //if hittest_clip_node(
+                        //    reader,
+                        //    clip_node_index,
+                        //    nudged_start_position,
+                        //    nudged_end_position,
+                        //    false,
+                        //)
+                        //.is_none()
+                        //{
+                        //    position = nudged_end_position;
+                        //    velocity = previous_velocity;
+                        //
+                        //    if is_touching_ground {
+                        //        if let Some(intersection) = hittest_clip_node(
+                        //            reader,
+                        //            clip_node_index,
+                        //            nudged_end_position,
+                        //            nudged_end_position
+                        //                - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                        //                false,
+                        //        ) {
+                        //            position = intersection.position;
+                        //        }
+                        //    }
+                        //}
+                    }
                 }
 
                 if self.gravity {
