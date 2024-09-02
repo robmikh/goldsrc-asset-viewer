@@ -458,18 +458,20 @@ impl BspRenderer {
         let mut closest_intersection: Option<(usize, IntersectionInfo)> = None;
         for (i, model) in reader.read_models().iter().enumerate() {
             if i > 0 {
-                let is_func_wall = {
-                    let mut is_func_wall = false;
+                let can_collide = {
+                    let mut can_collide = false;
                     if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
                         let entity = &self.map_data.entities[*entity_index];
                         if let EntityEx::FuncWall(_) = entity.ex {
-                            is_func_wall = true;
+                            can_collide = true;
+                        } else if entity.class_name == "func_door" {
+                            can_collide = true;
                         }
                     }
-                    is_func_wall
+                    can_collide
                 };
 
-                if !is_func_wall {
+                if !can_collide {
                     continue;
                 }
             }
