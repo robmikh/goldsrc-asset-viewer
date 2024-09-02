@@ -394,7 +394,6 @@ impl BspRenderer {
                 clip_node_index,
                 camera_start,
                 camera_start - Vec3::new(0.0, 1.0, 0.0),
-                false,
             )
             .is_some();
             if !has_ground_underneath {
@@ -406,7 +405,6 @@ impl BspRenderer {
                     clip_node_index,
                     camera_start + adjust,
                     camera_start - Vec3::new(0.0, 1.0, 0.0),
-                    false,
                 ) {
                     camera_start = intersection.position;
                 } else {
@@ -453,7 +451,6 @@ impl BspRenderer {
         reader: &BspReader,
         start_position: Vec3,
         end_position: Vec3,
-        debug: bool,
     ) -> Option<(usize, IntersectionInfo)> {
         let mut closest_intersection: Option<(usize, IntersectionInfo)> = None;
         for (i, model) in reader.read_models().iter().enumerate() {
@@ -483,12 +480,9 @@ impl BspRenderer {
             }
             let clip_node_index = model.head_nodes[1] as usize;
             if let Some(intersection) =
-                hittest_clip_node(reader, clip_node_index, start_position, end_position, debug)
+                hittest_clip_node(reader, clip_node_index, start_position, end_position)
             {
                 let distance = start_position.distance(intersection.position);
-                if debug {
-                    println!("    ({}) distance: {}", i, distance);
-                }
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
                     let old_distance = start_position.distance(old_intersection.position);
                     if distance < old_distance {
@@ -512,45 +506,12 @@ impl BspRenderer {
         mut velocity: Vec3,
         project_collision: bool,
     ) -> (Vec3, Vec3, bool) {
-        static DEBUG_TRACK: std::sync::atomic::AtomicBool =
-            std::sync::atomic::AtomicBool::new(false);
-
-        let mut should_log = false;
-        let mut should_track = false;
-
-        if project_collision {
-            if DEBUG_TRACK.load(std::sync::atomic::Ordering::SeqCst) {
-                println!("Tracked movement!");
-                println!("start_position: {:?}", start_position);
-                println!("end_position:   {:?}", end_position);
-                should_log = true;
-            }
-        }
-
         let mut position = end_position;
         let mut collisions = 0;
 
-        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(
-            reader,
-            start_position,
-            end_position,
-            false,
-        ) {
-            if project_collision {
-                if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
-                    let entity = &self.map_data.entities[*entity_index];
-                    if entity.class_name == "func_wall" {
-                        println!("Hit a func_wall! Normal: {:?}", intersection.normal);
-                        println!("start_position: {:?}", start_position);
-                        println!("end_position:   {:?}", end_position);
-                        should_log = true;
-                        should_track = true;
-                    }
-                }
-            }
-
-            //let clip_node_index = reader.read_models()[model_index].head_nodes[1] as usize;
-
+        if let Some((model_index, intersection)) =
+            self.find_closest_clipnode_model_intersection(reader, start_position, end_position)
+        {
             let mut distance = start_position.distance(end_position);
             let full_distance = distance;
             let mut start_position = start_position;
@@ -562,15 +523,8 @@ impl BspRenderer {
                     break;
                 }
 
-                //if let Some(intersection) =
-                //    hittest_clip_node(reader, clip_node_index, start_position, end_position)
                 if let Some((_model_index, intersection)) = self
-                    .find_closest_clipnode_model_intersection(
-                        reader,
-                        start_position,
-                        end_position,
-                        should_log,
-                    )
+                    .find_closest_clipnode_model_intersection(reader, start_position, end_position)
                 {
                     collisions += 1;
                     if collisions > 4 {
@@ -578,18 +532,11 @@ impl BspRenderer {
                         break;
                     }
 
-                    if should_log {
-                        print!("  {:?} -> ", end_position);
-                    }
-
                     let direction = velocity.normalize();
                     let dot = direction.dot(intersection.normal);
                     if !project_collision || dot == -1.0 || intersection.normal.length() == 0.0 {
                         velocity = Vec3::ZERO;
                         position = start_position;
-                        if should_log {
-                            println!("{:?} (No projection)", position);
-                        }
                         break;
                     } else {
                         // Calc our new position
@@ -611,42 +558,12 @@ impl BspRenderer {
                         start_position = intersection.position;
                         end_position = intersection.position + new_vector;
                         position = start_position;
-                        if should_log {
-                            println!("{:?}", position);
-                        }
                     }
                 } else {
                     position = end_position;
-                    if should_log {
-                        println!("  no intersection! {:?}", position);
-                    }
                     break;
                 }
             }
-        } else {
-            if should_log {
-                println!("  no top-level intersection! {:?}", position);
-            }
-        }
-
-        if DEBUG_TRACK.load(std::sync::atomic::Ordering::SeqCst) {
-            if project_collision {
-                DEBUG_TRACK.store(false, std::sync::atomic::Ordering::SeqCst);
-            } else {
-                println!("Tracked gravity!");
-                println!("start_position: {:?}", start_position);
-                println!("end_position:   {:?}", end_position);
-                println!("position:       {:?}", position);
-                println!();
-            }
-        }
-
-        if should_track {
-            DEBUG_TRACK.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-
-        if should_log {
-            println!();
         }
 
         (position, velocity, collisions > 0)
@@ -953,7 +870,6 @@ impl Renderer for BspRenderer {
                             reader,
                             start_position,
                             start_position - Vec3::new(0.0, 1.0, 0.0),
-                            false,
                         )
                         .is_some();
 
@@ -963,7 +879,6 @@ impl Renderer for BspRenderer {
                             reader,
                             start_position,
                             start_position - CROUCH_HEIGHT * 2.0,
-                            false,
                         ) {
                         if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
                             let new_direction = (direction
@@ -997,7 +912,6 @@ impl Renderer for BspRenderer {
                                 reader,
                                 nudged_start_position,
                                 nudged_end_position,
-                                false,
                             )
                             .is_none()
                         {
@@ -1011,7 +925,6 @@ impl Renderer for BspRenderer {
                                         nudged_end_position,
                                         nudged_end_position
                                             - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
-                                        false,
                                     )
                                 {
                                     position = intersection.position;
@@ -1262,19 +1175,9 @@ impl Renderer for BspRenderer {
             FileInfo::BspFile(file) => &file.reader,
             _ => panic!(),
         };
-        //let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-        //if let Some(intersection) =
-        //    hittest_clip_node(reader, clip_node_index, pos, pos + (ray * 10000.0))
-        //{
-        //    println!("intersection: {:?}", intersection);
-        //    self.set_debug_pyramid(intersection.position, intersection.normal);
-        //}
-        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(
-            reader,
-            pos,
-            pos + (ray * REALLY_FAR),
-            false,
-        ) {
+        if let Some((model_index, intersection)) =
+            self.find_closest_clipnode_model_intersection(reader, pos, pos + (ray * REALLY_FAR))
+        {
             println!("model: {}    intersection: {:?}", model_index, intersection);
             self.set_debug_pyramid(intersection.position, intersection.normal);
         }
@@ -1627,8 +1530,8 @@ mod experiments {
 
         let start = Vec3::new(450.5545, -267.95654, 2110.265);
         let end = Vec3::new(449.47562, -267.95654, 2108.6653);
-        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true)
-            .expect("Expected intersection!");
+        let intersection =
+            hittest_clip_node(&reader, head_clip_node, start, end).expect("Expected intersection!");
         println!("{:?}", intersection);
 
         let start_2 = intersection.position;
@@ -1636,13 +1539,13 @@ mod experiments {
         // Our last known position from colliding with the railing in process_movement
         let lkg_position = Vec3::new(450.96432, -267.95654, 2108.5144);
         assert!(
-            hittest_clip_node(&reader, head_clip_node, start_2, lkg_position, true).is_none(),
+            hittest_clip_node(&reader, head_clip_node, start_2, lkg_position).is_none(),
             "Did not expect intersection!"
         );
 
         let start_3 = lkg_position;
         let final_end = end;
-        let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end, true)
+        let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end)
             .expect("Expected intersection!");
         println!("{:?}", intersection);
     }

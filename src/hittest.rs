@@ -39,7 +39,6 @@ pub fn hittest_clip_node(
     clip_node_index: usize,
     start: Vec3,
     end: Vec3,
-    debug: bool,
 ) -> Option<IntersectionInfo> {
     let p1 = convert_vec3_to_half_life(start);
     let p2 = convert_vec3_to_half_life(end);
@@ -62,21 +61,11 @@ pub fn hittest_clip_node(
         } else {
             trace.intersection
         };
-        //assert_eq!(p1, trace.intersection);
-        //let intersection = trace.intersection;
-        if debug {
-            println!("Trace: {:?}", trace);
-            println!("Desired end: {:?}", end);
-            println!("New end: {:?}", convert_vec3_to_gltf(intersection));
-        }
         Some(IntersectionInfo {
             position: convert_vec3_to_gltf(intersection),
             normal: convert_vec3_to_gltf(trace.plane.normal),
         })
     } else {
-        if debug {
-            //println!("No intersection! clip_node: {}", clip_node_index);
-        }
         None
     }
 }
