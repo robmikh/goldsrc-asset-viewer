@@ -1110,8 +1110,8 @@ impl Renderer for BspRenderer {
 
         if let Some(debug_point) = self.debug_point_position.clone() {
             ui.window("Debug Point")
-                .position([600.0, 25.0], imgui::Condition::FirstUseEver)
-                .size([300.0, 400.0], imgui::Condition::FirstUseEver)
+                .position([840.0, 785.0], imgui::Condition::FirstUseEver)
+                .size([600.0, 75.0], imgui::Condition::FirstUseEver)
                 .build(|| {
                     let mut point = debug_point.to_array();
                     if ui.input_float3("Position", &mut point).build() {
