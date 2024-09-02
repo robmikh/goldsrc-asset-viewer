@@ -1153,18 +1153,25 @@ impl Renderer for BspRenderer {
                     {
                         *entity_index
                     } else {
-                        continue;
-                    };
-
-                    if intersection_point == pos {
                         let position = model_indices.iter().position(|x| *x == model_index);
                         if let Some(position) = position {
                             model_indices.remove(position);
                         }
+                        continue;
+                    };
+
+                    if intersection_point == pos {
+                        let position = model_indices
+                            .iter()
+                            .position(|x| *x == model_index)
+                            .unwrap();
+                        model_indices.remove(position);
                     } else {
                         intersection_info = Some((model_index, entity_index, intersection_point));
                         break;
                     }
+                } else {
+                    break;
                 }
             }
 
