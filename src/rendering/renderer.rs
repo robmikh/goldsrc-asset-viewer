@@ -38,7 +38,7 @@ pub struct Renderer {
     depth_view: wgpu::TextureView,
     depth_sampler: wgpu::Sampler,
 
-    bind_group_layout: wgpu::BindGroupLayout,
+    _bind_group_layout: wgpu::BindGroupLayout,
     _draw_params_bind_group_layout: wgpu::BindGroupLayout,
     model_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group_layout: wgpu::BindGroupLayout,
@@ -270,7 +270,7 @@ impl Renderer {
             depth_view,
             depth_sampler,
 
-            bind_group_layout: bind_group_layout,
+            _bind_group_layout: bind_group_layout,
             _draw_params_bind_group_layout: draw_params_bind_group_layout,
             model_bind_group_layout,
             texture_bind_group_layout: texture_bind_group_layout,
@@ -282,10 +282,6 @@ impl Renderer {
 
             camera,
         }
-    }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
     }
 
     pub fn model_bind_group_layout(&self) -> &wgpu::BindGroupLayout {

@@ -509,7 +509,7 @@ impl BspRenderer {
         let mut position = end_position;
         let mut collisions = 0;
 
-        if let Some((model_index, intersection)) =
+        if let Some((_model_index, _intersection)) =
             self.find_closest_clipnode_model_intersection(reader, start_position, end_position)
         {
             let mut distance = start_position.distance(end_position);
@@ -614,41 +614,6 @@ impl BspRenderer {
         for i in model_filter {
             let i = *i;
             let model = models[i];
-            let node_index = model.head_nodes[head_node_index] as usize;
-            if let Some((intersection_point, _leaf_index)) =
-                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
-            {
-                let distance = pos.distance(intersection_point);
-                if let Some((old_i, old_intersection)) = closest_intersection.take() {
-                    let old_distance = pos.distance(old_intersection);
-                    if distance < old_distance {
-                        closest_intersection = Some((i, intersection_point));
-                    } else {
-                        closest_intersection = Some((old_i, old_intersection));
-                    }
-                } else {
-                    closest_intersection = Some((i, intersection_point));
-                }
-            }
-        }
-        closest_intersection
-    }
-
-    fn find_closest_model_intersection_with_filter<F: Fn(usize) -> bool>(
-        &self,
-        pos: Vec3,
-        ray: Vec3,
-        distance: f32,
-        reader: &BspReader,
-        head_node_index: usize,
-        model_filter: F,
-    ) -> Option<(usize, Vec3)> {
-        let models = reader.read_models();
-        let mut closest_intersection = None;
-        for (i, model) in models.iter().enumerate() {
-            if !model_filter(i) {
-                continue;
-            }
             let node_index = model.head_nodes[head_node_index] as usize;
             if let Some((intersection_point, _leaf_index)) =
                 hittest_node_for_leaf(reader, node_index, pos, ray, distance)
@@ -1384,9 +1349,8 @@ mod experiments {
         bsp::{BspEntity, BspReader},
         mdl::null_terminated_bytes_to_str,
     };
-    use wgpu::COPY_BUFFER_ALIGNMENT;
 
-    use crate::{hittest::hittest_clip_node, rendering::bsp::CROUCH_HEIGHT};
+    use crate::hittest::hittest_clip_node;
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 

@@ -1,15 +1,9 @@
 use std::collections::HashMap;
 
-use crate::graphics::*;
 use crate::BspFile;
 use glam::Vec3;
 use gsparser::bsp::BspEntity;
-use gsparser::mdl::MdlTexture;
 use imgui::*;
-use imgui_wgpu::Renderer;
-
-#[derive(Clone)]
-pub struct ExtraTextureData {}
 
 #[derive(Copy, Clone)]
 pub struct BspViewerState {
@@ -98,12 +92,9 @@ impl BspViewer {
     }
 
     pub fn build_ui(&mut self, ui: &Ui, file_info: &BspFile) {
-        let mut force_new_selection = false;
-
         if self.last_file_path != file_info.path {
             self.last_file_path = file_info.path.clone();
             self.reset_listbox_index();
-            force_new_selection = true;
 
             self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities_str())
                 .iter()
@@ -157,29 +148,5 @@ impl BspViewer {
     pub fn set_position(&mut self, position: Vec3, facing: Vec3) {
         self.state.position = position;
         self.state.direction = facing;
-    }
-}
-
-pub fn get_texture_bundle(
-    texture: &MdlTexture,
-    device: &mut wgpu::Device,
-    queue: &mut wgpu::Queue,
-    renderer: &mut Renderer,
-) -> TextureBundle<ExtraTextureData> {
-    let width = texture.width;
-    let height = texture.height;
-
-    let texture = create_imgui_texture(device, queue, renderer, texture.image_data.clone());
-    let texture_id = renderer.textures.insert(texture);
-
-    let textures = vec![MipTexture {
-        texture_id: texture_id,
-        width: width,
-        height: height,
-    }];
-
-    TextureBundle {
-        mip_textures: textures,
-        extra_data: ExtraTextureData {},
     }
 }
