@@ -394,7 +394,7 @@ impl BspRenderer {
                 clip_node_index,
                 camera_start,
                 camera_start - Vec3::new(0.0, 1.0, 0.0),
-                false
+                false,
             )
             .is_some();
             if !has_ground_underneath {
@@ -406,7 +406,7 @@ impl BspRenderer {
                     clip_node_index,
                     camera_start + adjust,
                     camera_start - Vec3::new(0.0, 1.0, 0.0),
-                    false
+                    false,
                 ) {
                     camera_start = intersection.position;
                 } else {
@@ -512,7 +512,8 @@ impl BspRenderer {
         mut velocity: Vec3,
         project_collision: bool,
     ) -> (Vec3, Vec3, bool) {
-        static DEBUG_TRACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        static DEBUG_TRACK: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
 
         let mut should_log = false;
         let mut should_track = false;
@@ -529,9 +530,12 @@ impl BspRenderer {
         let mut position = end_position;
         let mut collisions = 0;
 
-        if let Some((model_index, intersection)) =
-            self.find_closest_clipnode_model_intersection(reader, start_position, end_position, false)
-        {
+        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(
+            reader,
+            start_position,
+            end_position,
+            false,
+        ) {
             if project_collision {
                 if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
                     let entity = &self.map_data.entities[*entity_index];
@@ -560,8 +564,13 @@ impl BspRenderer {
 
                 //if let Some(intersection) =
                 //    hittest_clip_node(reader, clip_node_index, start_position, end_position)
-                if let Some((_model_index, intersection)) =
-                    self.find_closest_clipnode_model_intersection(reader, start_position, end_position, should_log)
+                if let Some((_model_index, intersection)) = self
+                    .find_closest_clipnode_model_intersection(
+                        reader,
+                        start_position,
+                        end_position,
+                        should_log,
+                    )
                 {
                     collisions += 1;
                     if collisions > 4 {
@@ -620,23 +629,6 @@ impl BspRenderer {
             }
         }
 
-        //if let Some((model_index, intersection)) = self.find_closest_model_intersection_with_filter(position, Vec3::ZERO, 0.0, reader, 1, |i| -> bool {
-        //    if i == 0 {
-        //        return true;
-        //    }
-        //    
-        //    if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
-        //        let entity = &self.map_data.entities[*entity_index];
-        //        if let EntityEx::FuncWall(_) = entity.ex {
-        //            return true;
-        //        }
-        //    }
-//
-        //    false
-        //}) {
-        //    println!("aaah! ({})", model_index);
-        //}
-
         if DEBUG_TRACK.load(std::sync::atomic::Ordering::SeqCst) {
             if project_collision {
                 DEBUG_TRACK.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -648,7 +640,6 @@ impl BspRenderer {
                 println!();
             }
         }
-        
 
         if should_track {
             DEBUG_TRACK.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -769,8 +760,13 @@ impl BspRenderer {
     ) -> Option<(usize, usize, Vec3)> {
         match file_info {
             FileInfo::BspFile(file_info) => {
-                let closest_intersection =
-                    self.find_closest_model_intersection(pos, ray, REALLY_FAR, &file_info.reader, 0);
+                let closest_intersection = self.find_closest_model_intersection(
+                    pos,
+                    ray,
+                    REALLY_FAR,
+                    &file_info.reader,
+                    0,
+                );
                 let (model_index, intersection_point) = closest_intersection?;
                 let entity_index = *self.map_data.model_to_entity.get(&model_index)?;
                 Some((model_index, entity_index, intersection_point))
@@ -952,54 +948,33 @@ impl Renderer for BspRenderer {
                     let direction = velocity.normalize();
                     //let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
 
-                    let is_touching_ground = self.find_closest_clipnode_model_intersection(
-                        reader, 
-                        start_position, 
-                        start_position - Vec3::new(0.0, 1.0, 0.0), 
-                        false).is_some();
-
-                    //let is_touching_ground = hittest_clip_node(
-                    //    reader,
-                    //    clip_node_index,
-                    //    start_position,
-                    //    start_position - Vec3::new(0.0, 1.0, 0.0),
-                    //    false
-                    //)
-                    //.is_some();
+                    let is_touching_ground = self
+                        .find_closest_clipnode_model_intersection(
+                            reader,
+                            start_position,
+                            start_position - Vec3::new(0.0, 1.0, 0.0),
+                            false,
+                        )
+                        .is_some();
 
                     // Project our movement along the surface we're standing on
-                    let surface_normal = if let Some((_, intersection)) = self.find_closest_clipnode_model_intersection(
-                        reader, 
-                        start_position, 
-                        start_position - CROUCH_HEIGHT * 2.0, 
-                        false) {
-                            if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
-                                let new_direction = (direction
-                                    - intersection.normal * direction.dot(intersection.normal))
-                                .normalize();
-                                velocity = new_direction * velocity.length();
-                            }
-                            intersection.normal
-                        } else {
-                            Vec3::new(0.0, 1.0, 0.0)
-                        };
-                    //let surface_normal = if let Some(intersection) = hittest_clip_node(
-                    //    reader,
-                    //    clip_node_index,
-                    //    start_position,
-                    //    start_position - CROUCH_HEIGHT * 2.0,
-                    //    false,
-                    //) {
-                    //    if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
-                    //        let new_direction = (direction
-                    //            - intersection.normal * direction.dot(intersection.normal))
-                    //        .normalize();
-                    //        velocity = new_direction * velocity.length();
-                    //    }
-                    //    intersection.normal
-                    //} else {
-                    //    Vec3::new(0.0, 1.0, 0.0)
-                    //};
+                    let surface_normal = if let Some((_, intersection)) = self
+                        .find_closest_clipnode_model_intersection(
+                            reader,
+                            start_position,
+                            start_position - CROUCH_HEIGHT * 2.0,
+                            false,
+                        ) {
+                        if intersection.normal != Vec3::new(0.0, 1.0, 0.0) {
+                            let new_direction = (direction
+                                - intersection.normal * direction.dot(intersection.normal))
+                            .normalize();
+                            velocity = new_direction * velocity.length();
+                        }
+                        intersection.normal
+                    } else {
+                        Vec3::new(0.0, 1.0, 0.0)
+                    };
 
                     let previous_velocity = velocity;
                     let end_position = start_position + (velocity * delta.as_secs_f32());
@@ -1008,7 +983,6 @@ impl Renderer for BspRenderer {
                     position = new_position;
                     velocity = Vec3::new(new_velocity.x, velocity.y, new_velocity.z);
 
-                    // TODO: This code causes us to walk through railings on c1a0e
                     // If we've collided with something, check to see if we can move without a collision
                     // if we were a bit higher. This is an attempt to allow movement over small bumps.
                     // TODO: This needs to be limited to only walls
@@ -1018,49 +992,32 @@ impl Renderer for BspRenderer {
                         let nudged_end_position =
                             nudged_start_position + (previous_velocity * delta.as_secs_f32());
 
-                        if self.find_closest_clipnode_model_intersection(
-                            reader, nudged_start_position, nudged_end_position, false).is_none() {
-                                position = nudged_end_position;
+                        if self
+                            .find_closest_clipnode_model_intersection(
+                                reader,
+                                nudged_start_position,
+                                nudged_end_position,
+                                false,
+                            )
+                            .is_none()
+                        {
+                            position = nudged_end_position;
                             velocity = previous_velocity;
-                    
+
                             if is_touching_ground {
-                                if let Some((_, intersection)) = self.find_closest_clipnode_model_intersection(
-                                    reader,
-                                    nudged_end_position,
-                                    nudged_end_position
-                                        - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
+                                if let Some((_, intersection)) = self
+                                    .find_closest_clipnode_model_intersection(
+                                        reader,
+                                        nudged_end_position,
+                                        nudged_end_position
+                                            - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
                                         false,
-                                ) {
+                                    )
+                                {
                                     position = intersection.position;
                                 }
                             }
-                            }
-
-                        //if hittest_clip_node(
-                        //    reader,
-                        //    clip_node_index,
-                        //    nudged_start_position,
-                        //    nudged_end_position,
-                        //    false,
-                        //)
-                        //.is_none()
-                        //{
-                        //    position = nudged_end_position;
-                        //    velocity = previous_velocity;
-                        //
-                        //    if is_touching_ground {
-                        //        if let Some(intersection) = hittest_clip_node(
-                        //            reader,
-                        //            clip_node_index,
-                        //            nudged_end_position,
-                        //            nudged_end_position
-                        //                - Vec3::new(0.0, AUTO_STEP_HEIGHT * 2.0, 0.0),
-                        //                false,
-                        //        ) {
-                        //            position = intersection.position;
-                        //        }
-                        //    }
-                        //}
+                        }
                     }
                 }
 
@@ -1251,7 +1208,14 @@ impl Renderer for BspRenderer {
             // Keep checking as long as we hit something that matches our position.
             while !model_indices.is_empty() {
                 if let Some((model_index, intersection_point)) = self
-                    .find_closest_model_intersection_from_models(pos, ray, REALLY_FAR, reader, 0, &model_indices)
+                    .find_closest_model_intersection_from_models(
+                        pos,
+                        ray,
+                        REALLY_FAR,
+                        reader,
+                        0,
+                        &model_indices,
+                    )
                 {
                     let entity_index = if let Some(entity_index) =
                         self.map_data.model_to_entity.get(&model_index)
@@ -1305,7 +1269,12 @@ impl Renderer for BspRenderer {
         //    println!("intersection: {:?}", intersection);
         //    self.set_debug_pyramid(intersection.position, intersection.normal);
         //}
-        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(reader, pos, pos+(ray * REALLY_FAR), false) {
+        if let Some((model_index, intersection)) = self.find_closest_clipnode_model_intersection(
+            reader,
+            pos,
+            pos + (ray * REALLY_FAR),
+            false,
+        ) {
             println!("model: {}    intersection: {:?}", model_index, intersection);
             self.set_debug_pyramid(intersection.position, intersection.normal);
         }
@@ -1620,7 +1589,7 @@ mod experiments {
                 stack.push_back((indent + 1, clip_node.children[1]));
 
                 let plane = &planes[clip_node.plane_index as usize];
-                
+
                 println!("{}{} - {:?}", indent_str, node, plane);
             } else {
                 println!("{}{}", indent_str, node);
@@ -1658,18 +1627,23 @@ mod experiments {
 
         let start = Vec3::new(450.5545, -267.95654, 2110.265);
         let end = Vec3::new(449.47562, -267.95654, 2108.6653);
-        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true).expect("Expected intersection!");
+        let intersection = hittest_clip_node(&reader, head_clip_node, start, end, true)
+            .expect("Expected intersection!");
         println!("{:?}", intersection);
 
         let start_2 = intersection.position;
         assert_eq!(start_2, Vec3::new(450.3606, -267.95654, 2109.9773));
         // Our last known position from colliding with the railing in process_movement
         let lkg_position = Vec3::new(450.96432, -267.95654, 2108.5144);
-        assert!(hittest_clip_node(&reader, head_clip_node, start_2, lkg_position, true).is_none(), "Did not expect intersection!");
-        
+        assert!(
+            hittest_clip_node(&reader, head_clip_node, start_2, lkg_position, true).is_none(),
+            "Did not expect intersection!"
+        );
+
         let start_3 = lkg_position;
         let final_end = end;
-        let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end, true).expect("Expected intersection!");
+        let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end, true)
+            .expect("Expected intersection!");
         println!("{:?}", intersection);
     }
 }

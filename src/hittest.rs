@@ -48,9 +48,15 @@ pub fn hittest_clip_node(
     let mut trace = QuakeTrace::default();
     trace.all_solid = true;
     trace.intersection = p2;
-    if !trace_hull(reader, nodes, clip_node_index,  clip_node_index as i16, p1, p2, &mut trace) {         
-        
-        
+    if !trace_hull(
+        reader,
+        nodes,
+        clip_node_index,
+        clip_node_index as i16,
+        p1,
+        p2,
+        &mut trace,
+    ) {
         let intersection = if trace.all_solid || trace.start_solid {
             p1
         } else {
