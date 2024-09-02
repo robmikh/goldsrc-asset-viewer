@@ -191,6 +191,7 @@ impl ParseEntity for UnknownEntityValues {
 parse_entity_enum!(
     EntityEx {
         ("func_wall") FuncWall(FuncWall),
+        ("func_door") FuncDoor(FuncDoor),
         ("info_player_start") InfoPlayerStart(InfoPlayerStart),
         ("trigger_changelevel") TriggerChangeLevel(TriggerChangeLevel),
     }
@@ -202,4 +203,9 @@ parse_entity_struct!(TriggerChangeLevel {
     ("map") map: String,
     ("landmark") landmark: TargetName,
     ("changetarget") change_target: Option<TargetName>,
+});
+parse_entity_struct!(FuncDoor {
+    ("angle") angle: i32,
+    ("lip") lip: i32,
+    ("speed") speed: i32,
 });
