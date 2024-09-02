@@ -168,6 +168,50 @@ fn show_ui(cli: Cli) {
     };
     surface.configure(&device, &surface_config);
 
+    // Clear before we load anything else
+    let clear_color = wgpu::Color {
+        r: 0.1,
+        g: 0.2,
+        b: 0.3,
+        a: 1.0,
+    };
+    match surface.get_current_texture() {
+        Ok(frame) => {
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+
+            let clear_op = wgpu::Operations {
+                load: wgpu::LoadOp::Clear(clear_color),
+                store: wgpu::StoreOp::Store,
+            };
+
+            let mut encoder: wgpu::CommandEncoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            {
+                let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: None,
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: clear_op,
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+
+            queue.submit(Some(encoder.finish()));
+            frame.present();
+        }
+        Err(e) => {
+            eprintln!("dropped frame: {:?}", e);
+            return;
+        }
+    };
+
     renderer = load_renderer(file_info.as_ref(), &device, &queue, surface_config.clone());
 
     let mut imgui = imgui::Context::create();
@@ -190,13 +234,6 @@ fn show_ui(cli: Cli) {
             ..Default::default()
         }),
     }]);
-
-    let clear_color = wgpu::Color {
-        r: 0.1,
-        g: 0.2,
-        b: 0.3,
-        a: 1.0,
-    };
 
     let renderer_config = RendererConfig {
         texture_format: surface_config.format,
