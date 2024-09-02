@@ -149,4 +149,22 @@ impl BspViewer {
         self.state.position = position;
         self.state.direction = facing;
     }
+
+    pub fn build_spawn_window(&self, ui: &Ui, spawns: &[(Vec3, f32)]) -> Option<usize> {
+        let mut pressed = None;
+        ui.window("Spawns")
+            .position([1140.0, 25.0], Condition::FirstUseEver)
+            .size([300.0, 150.0], Condition::FirstUseEver)
+            .build(|| {
+                for (i, (position, angle)) in spawns.iter().enumerate() {
+                    if ui.button(format!(
+                        "{}, {}, {} ({})",
+                        position.x, position.y, position.z, angle
+                    )) {
+                        pressed = Some(i);
+                    }
+                }
+            });
+        pressed
+    }
 }

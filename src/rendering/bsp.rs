@@ -90,6 +90,8 @@ struct MapData {
 
     entities: Vec<Entity>,
     model_to_entity: HashMap<usize, usize>,
+
+    spawns: Vec<(Vec3, f32)>,
 }
 
 impl MapData {
@@ -264,6 +266,8 @@ impl MapData {
             }
         }
 
+        let spawns = Self::collect_start_positions_and_orientations(&entities);
+
         Self {
             models_to_render,
             transparent_models,
@@ -275,10 +279,12 @@ impl MapData {
 
             entities,
             model_to_entity,
+
+            spawns,
         }
     }
 
-    fn get_start_position_and_orientation(&self) -> (Vec3, f32) {
+    fn get_default_start_position_and_orientation(&self) -> (Vec3, f32) {
         // Find the "info_player_start" entity
         for entity in &self.entities {
             match entity.ex {
@@ -303,6 +309,34 @@ impl MapData {
             }
         }
         panic!("No info_player_start entities found!");
+    }
+
+    fn collect_start_positions_and_orientations(entities: &[Entity]) -> Vec<(Vec3, f32)> {
+        let mut starts = Vec::new();
+        // Find the "info_player_start" entity
+        for entity in entities {
+            match entity.ex {
+                EntityEx::InfoPlayerStart(_) => {
+                    let origin = if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        println!("WARNING: No origin found on info_player_start entity!");
+                        Vec3::ZERO
+                    };
+                    let angle = if let Some(angle) = entity.angle.as_ref() {
+                        let angle_in_radians = (*angle as f32).to_radians();
+                        angle_in_radians
+                    } else {
+                        println!("WARNING: No angle found on info_player_start entity!");
+                        0.0
+                    };
+                    starts.push((origin, angle));
+                }
+                _ => {}
+            }
+        }
+        starts
     }
 
     fn render_model<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, model: &'a GpuModel) {
@@ -355,6 +389,8 @@ pub struct BspRenderer {
     new_debug_pyramid_location: Option<(Vec3, Vec3)>,
     debug_pyramid: Option<GpuModel>,
 
+    new_spawn_point: Option<(Vec3, f32)>,
+
     draw_mode: DrawMode,
     draw_mode_update: Option<DrawMode>,
     render_all: bool,
@@ -372,7 +408,7 @@ impl BspRenderer {
         queue: &wgpu::Queue,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let mut renderer = super::renderer::Renderer::new(device, config);
+        let renderer = super::renderer::Renderer::new(device, config);
 
         let map_data = MapData::new(
             &renderer,
@@ -383,43 +419,8 @@ impl BspRenderer {
             queue,
         );
 
-        let camera_start = {
-            // Find the "info_player_start" entity
-            let (start_position, angle) = map_data.get_start_position_and_orientation();
-            let mut camera_start = start_position - CROUCH_HEIGHT;
-            // Check to see if we have something underneath us...
-            let clip_node_index = reader.read_models()[0].head_nodes[1] as usize;
-            let has_ground_underneath = hittest_clip_node(
-                reader,
-                clip_node_index,
-                camera_start,
-                camera_start - Vec3::new(0.0, 1.0, 0.0),
-            )
-            .is_some();
-            if !has_ground_underneath {
-                println!("Adjusting start position...");
-                let adjust = 2.0 * CROUCH_HEIGHT;
-                // Try again but place the player further up
-                if let Some(intersection) = hittest_clip_node(
-                    reader,
-                    clip_node_index,
-                    camera_start + adjust,
-                    camera_start - Vec3::new(0.0, 1.0, 0.0),
-                ) {
-                    camera_start = intersection.position;
-                } else {
-                    println!("Falling through the floor...");
-                }
-            }
-
-            let mut yaw_pitch_roll = renderer.camera().yaw_pitch_roll();
-            yaw_pitch_roll.x += angle;
-            renderer.camera_mut().set_yaw_pitch_roll(yaw_pitch_roll);
-
-            camera_start + CROUCH_HEIGHT
-        };
-        println!("Start position: {:?}", camera_start);
-        let player = MovingEntity::new(camera_start);
+        let new_spawn_point = Some(map_data.get_default_start_position_and_orientation());
+        let player = MovingEntity::new(Vec3::ZERO);
 
         let draw_mode = DrawMode::LitTexture;
 
@@ -436,6 +437,8 @@ impl BspRenderer {
             debug_point: None,
             new_debug_pyramid_location: None,
             debug_pyramid: None,
+
+            new_spawn_point,
 
             draw_mode,
             draw_mode_update: None,
@@ -697,6 +700,42 @@ impl BspRenderer {
         }
         new_map
     }
+
+    fn reorient_player(&mut self, reader: &BspReader, position: Vec3, angle: f32) {
+        let mut camera_start = position - CROUCH_HEIGHT;
+        // Check to see if we have something underneath us...
+        let has_ground_underneath = self
+            .find_closest_clipnode_model_intersection(
+                reader,
+                camera_start,
+                camera_start - Vec3::new(0.0, 1.0, 0.0),
+            )
+            .is_some();
+        if !has_ground_underneath {
+            println!("Adjusting start position...");
+            let adjust = 2.0 * CROUCH_HEIGHT;
+            // Try again but place the player further up
+            if let Some((_, intersection)) = self.find_closest_clipnode_model_intersection(
+                reader,
+                camera_start + adjust,
+                camera_start - Vec3::new(0.0, 1.0, 0.0),
+            ) {
+                camera_start = intersection.position;
+            } else {
+                println!("Falling through the floor...");
+            }
+        }
+
+        let yaw_pitch_roll = Vec3::new(angle, 0.0, 0.0);
+        self.renderer
+            .camera_mut()
+            .set_yaw_pitch_roll(yaw_pitch_roll);
+
+        let start_position = camera_start + CROUCH_HEIGHT;
+        println!("Start position: {:?}", camera_start);
+        self.player.set_position(start_position);
+        self.renderer.camera_mut().set_position(start_position);
+    }
 }
 
 impl Renderer for BspRenderer {
@@ -746,6 +785,15 @@ impl Renderer for BspRenderer {
         mouse_delta: Option<Vec2>,
         file_info: &Option<FileInfo>,
     ) -> Option<(String, String, Vec3)> {
+        // First move the player if requested
+        if let Some((position, angle)) = self.new_spawn_point.take() {
+            let reader = match file_info.as_ref().unwrap() {
+                FileInfo::BspFile(file) => &file.reader,
+                _ => panic!(),
+            };
+            self.reorient_player(reader, position, angle)
+        }
+
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
 
@@ -1053,6 +1101,9 @@ impl Renderer for BspRenderer {
                 _ => panic!(),
             };
             viewer.build_ui(ui, bsp_file);
+            if let Some(spawn_index) = viewer.build_spawn_window(ui, &self.map_data.spawns) {
+                self.new_spawn_point = Some(self.map_data.spawns[spawn_index]);
+            }
         }
 
         if let Some(debug_point) = self.debug_point_position.clone() {
