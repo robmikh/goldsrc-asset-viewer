@@ -249,6 +249,7 @@ fn show_ui(cli: Cli) {
     let mut mdl_viewer = MdlViewer::new();
 
     let mut pending_path: Option<PathBuf> = None;
+    let mut stored_input_mode = None;
 
     let mut mouse_controller = MouseInputController::new();
     let mut down_keys = HashSet::<KeyCode>::new();
@@ -385,6 +386,28 @@ fn show_ui(cli: Cli) {
                                         &file_info,
                                         &queue,
                                     );
+                                }
+                            }
+                        }
+                    }
+
+                    if button == winit::event::MouseButton::Right {
+                        match state {
+                            ElementState::Pressed => {
+                                if !down_keys.contains(&KeyCode::ShiftLeft) {
+                                    stored_input_mode = Some(mouse_controller.input_mode());
+                                    let new_input_mode = MouseInputMode::CameraLook;
+                                    println!("Mouse input mode switched to {:?}", new_input_mode);
+                                    mouse_controller.set_input_mode(&window, new_input_mode);
+                                }
+                            }
+                            ElementState::Released => {
+                                if let Some(stored_input_mode) = stored_input_mode.take() {
+                                    println!(
+                                        "Mouse input mode switched to {:?}",
+                                        stored_input_mode
+                                    );
+                                    mouse_controller.set_input_mode(&window, stored_input_mode);
                                 }
                             }
                         }

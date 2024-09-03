@@ -165,10 +165,18 @@ impl MapData {
             (texture, view)
         };
 
-        let entities: Vec<Entity> = BspEntity::parse_entities(reader.read_entities_str())
-            .iter()
-            .map(|x| Entity::parse(&x.0))
-            .collect();
+        let raw_entities = BspEntity::parse_entities(reader.read_entities_str());
+        //{
+        //    let items: Vec<_> = raw_entities
+        //        .iter()
+        //        .enumerate()
+        //        .map(|(i, x)| format!("{} - {:#?}", i, x))
+        //        .collect();
+        //    let entities_str = items.join("\n");
+        //    std::fs::write("testoutput/entities.txt", entities_str).unwrap();
+        //}
+
+        let entities: Vec<Entity> = raw_entities.iter().map(|x| Entity::parse(&x.0)).collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
@@ -276,28 +284,37 @@ impl MapData {
             .map(|x| match &x.ex {
                 EntityEx::FuncDoor(door) => {
                     // Get the direction of movement
-                    let direction = if door.angle >= 0 {
-                        let angle_in_degrees = door.angle as f32;
-                        let mut direction = Vec3::new(0.0, 0.0, 1.0);
-                        direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians())
-                            * direction.extend(0.0))
-                        .xyz();
-                        direction = direction.normalize();
-                        direction
-                    } else {
-                        if door.angle == -1 {
-                            Vec3::new(0.0, 1.0, 0.0)
-                        } else if door.angle == -2 {
-                            Vec3::new(0.0, -1.0, 0.0)
+                    let direction = {
+                        let door_angle = door.angle();
+                        if door_angle >= 0 {
+                            let angle_in_degrees = door_angle as f32;
+                            let mut direction = Vec3::new(0.0, 0.0, 1.0);
+                            direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians())
+                                * direction.extend(0.0))
+                            .xyz();
+                            direction = direction.normalize();
+                            direction
                         } else {
-                            println!("Negative door angle \"{}\" not suppported!", door.angle);
-                            return EntityState::None;
+                            if door_angle == -1 {
+                                Vec3::new(0.0, 1.0, 0.0)
+                            } else if door_angle == -2 {
+                                Vec3::new(0.0, -1.0, 0.0)
+                            } else {
+                                println!("Negative door angle \"{}\" not suppported!", door_angle);
+                                return EntityState::None;
+                            }
                         }
                     };
 
-                    // TODO: Incorporate origin
-                    assert_eq!(x.origin, None);
-                    let closed_offset = Vec3::ZERO;
+                    // Get our starting offset
+                    let origin = if let Some(hl_origin) = x.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        Vec3::ZERO
+                    };
+                    let offset = origin;
+                    let closed_offset = offset;
 
                     // In order to project each vertex onto our direction vector,
                     // we'll create two points on that line.
@@ -341,6 +358,7 @@ impl MapData {
                     let open_offset = closed_offset + movement;
 
                     EntityState::FuncDoor(FuncDoorState {
+                        offset,
                         closed_offset,
                         open_offset,
                         is_open: false,
@@ -505,6 +523,11 @@ impl BspRenderer {
         let new_spawn_point = Some(map_data.get_default_start_position_and_orientation());
         let player = MovingEntity::new(Vec3::ZERO);
 
+        let mut ui = Some(BspViewer::new());
+        if let Some(viewer) = ui.as_mut() {
+            viewer.set_new_file(reader, &map_data.entities, &loaded_map_models);
+        }
+
         let draw_mode = DrawMode::LitTexture;
 
         Self {
@@ -528,7 +551,7 @@ impl BspRenderer {
             render_all: false,
             disable_level_change: true,
 
-            ui: Some(BspViewer::new()),
+            ui,
         }
     }
 
@@ -559,17 +582,43 @@ impl BspRenderer {
                 }
             }
 
+            let mut adjustment = Vec3::ZERO;
+            let mut adjusted_start_position = start_position;
+            let mut adjusted_end_position = end_position;
+
             // TODO: Account for model transforms (e.g. origin entity property)
             if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
                 let entity = &self.map_data.entities[*entity_index];
-                if entity.origin.is_some() {
-                    println!("WARNING! Wall with origin!");
+
+                let offset = if let EntityState::FuncDoor(entity_state) =
+                    &self.map_data.entity_states[*entity_index]
+                {
+                    entity_state.offset
+                } else {
+                    if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        Vec3::ZERO
+                    }
+                };
+
+                adjustment = offset;
+                adjusted_start_position -= offset;
+                adjusted_end_position -= offset;
+
+                if entity.angles.is_some() {
+                    println!("WARNING! Collidable entity with angles!");
                 }
             }
             let clip_node_index = model.head_nodes[1] as usize;
-            if let Some(intersection) =
-                hittest_clip_node(reader, clip_node_index, start_position, end_position)
-            {
+            if let Some(mut intersection) = hittest_clip_node(
+                reader,
+                clip_node_index,
+                adjusted_start_position,
+                adjusted_end_position,
+            ) {
+                intersection.position += adjustment;
                 let distance = start_position.distance(intersection.position);
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
                     let old_distance = start_position.distance(old_intersection.position);
@@ -669,9 +718,39 @@ impl BspRenderer {
         let mut closest_intersection = None;
         for (i, model) in models.iter().enumerate() {
             let node_index = model.head_nodes[head_node_index] as usize;
-            if let Some((intersection_point, _leaf_index)) =
-                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
+
+            let mut adjustment = Vec3::ZERO;
+            let mut adjusted_start_position = pos;
+
+            // TODO: Account for model transforms (e.g. origin entity property)
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+                let entity = &self.map_data.entities[*entity_index];
+
+                let offset = if let EntityState::FuncDoor(entity_state) =
+                    &self.map_data.entity_states[*entity_index]
+                {
+                    entity_state.offset
+                } else {
+                    if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        Vec3::ZERO
+                    }
+                };
+
+                adjustment = offset;
+                adjusted_start_position -= offset;
+
+                if entity.angles.is_some() {
+                    println!("WARNING! Collidable entity with angles!");
+                }
+            }
+
+            if let Some((mut intersection_point, _leaf_index)) =
+                hittest_node_for_leaf(reader, node_index, adjusted_start_position, ray, distance)
             {
+                intersection_point += adjustment;
                 let distance = pos.distance(intersection_point);
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
                     let old_distance = pos.distance(old_intersection);
@@ -703,9 +782,39 @@ impl BspRenderer {
             let i = *i;
             let model = models[i];
             let node_index = model.head_nodes[head_node_index] as usize;
-            if let Some((intersection_point, _leaf_index)) =
-                hittest_node_for_leaf(reader, node_index, pos, ray, distance)
+
+            let mut adjustment = Vec3::ZERO;
+            let mut adjusted_start_position = pos;
+
+            // TODO: Account for model transforms (e.g. origin entity property)
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+                let entity = &self.map_data.entities[*entity_index];
+
+                let offset = if let EntityState::FuncDoor(entity_state) =
+                    &self.map_data.entity_states[*entity_index]
+                {
+                    entity_state.offset
+                } else {
+                    if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    } else {
+                        Vec3::ZERO
+                    }
+                };
+
+                adjustment = offset;
+                adjusted_start_position -= offset;
+
+                if entity.angles.is_some() {
+                    println!("WARNING! Collidable entity with angles!");
+                }
+            }
+
+            if let Some((mut intersection_point, _leaf_index)) =
+                hittest_node_for_leaf(reader, node_index, adjusted_start_position, ray, distance)
             {
+                intersection_point += adjustment;
                 let distance = pos.distance(intersection_point);
                 if let Some((old_i, old_intersection)) = closest_intersection.take() {
                     let old_distance = pos.distance(old_intersection);
@@ -1053,7 +1162,7 @@ impl Renderer for BspRenderer {
                     }
                 }
             } else {
-                position = start_position + (velocity * delta.as_secs_f32());
+                position = start_position + ((velocity * 2.0) * delta.as_secs_f32());
             }
 
             position = position + CROUCH_HEIGHT;
@@ -1185,7 +1294,9 @@ impl Renderer for BspRenderer {
                 FileInfo::BspFile(file) => file,
                 _ => panic!(),
             };
-            viewer.build_ui(ui, bsp_file);
+            if let Some(new_position) = viewer.build_ui(ui, bsp_file) {
+                self.new_spawn_point = Some((new_position, 0.0));
+            }
             if let Some(spawn_index) = viewer.build_spawn_window(ui, &self.map_data.spawns) {
                 self.new_spawn_point = Some(self.map_data.spawns[spawn_index]);
             }
@@ -1312,6 +1423,7 @@ impl Renderer for BspRenderer {
                         } else {
                             entity_state.closed_offset
                         };
+                        entity_state.offset = offset;
 
                         // Move the model
                         let model = &self.map_data.map_models[model_index];
@@ -1366,6 +1478,10 @@ impl Renderer for BspRenderer {
         self.debug_point = None;
         self.debug_point_position = None;
         self.debug_pyramid = None;
+
+        if let Some(viewer) = self.ui.as_mut() {
+            viewer.set_new_file(&file.reader, &self.map_data.entities, &map_models);
+        }
 
         // Move both player and camera
         let landmark_entity = self
@@ -1536,7 +1652,7 @@ mod experiments {
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
-    fn process_all_entities<F: FnMut(&PathBuf, &BspEntity), P: AsRef<Path>>(
+    fn process_all_entities<F: FnMut(&PathBuf, usize, &BspEntity), P: AsRef<Path>>(
         base_path: P,
         mut process_entity: F,
     ) {
@@ -1562,8 +1678,8 @@ mod experiments {
                         }
                     };
                     let entities = BspEntity::parse_entities(&entities_str);
-                    for entity in entities {
-                        process_entity(&item_path, &entity);
+                    for (i, entity) in entities.iter().enumerate() {
+                        process_entity(&item_path, i, entity);
                     }
                 }
             }
@@ -1575,7 +1691,7 @@ mod experiments {
     // entities string.
     #[test]
     fn all_entities_have_class_names() {
-        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, entity| {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, _, entity| {
             let _ = entity.0.get("classname").unwrap();
         });
     }
@@ -1583,7 +1699,7 @@ mod experiments {
     #[test]
     fn audit_class_names() {
         let mut class_names = HashMap::<String, usize>::new();
-        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, entity| {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, _, entity| {
             let class_name = entity.0.get("classname").unwrap();
             if let Some(count) = class_names.get_mut(*class_name) {
                 *count += 1;
@@ -1694,5 +1810,35 @@ mod experiments {
         let intersection = hittest_clip_node(&reader, head_clip_node, start_3, final_end)
             .expect("Expected intersection!");
         println!("{:?}", intersection);
+    }
+
+    #[test]
+    fn door_search() {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, i, entity| {
+            let class_name = *entity.0.get("classname").unwrap();
+            if class_name == "func_door" {
+                let has_origin = entity.0.get("origin").is_some();
+                if has_origin {
+                    println!("  {}", i);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn visible_model_with_origin_search() {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, i, entity| {
+            let class_name = *entity.0.get("classname").unwrap();
+            if !(class_name.starts_with("trigger") || class_name.starts_with("func_ladder")) {
+                let has_origin = entity.0.get("origin").is_some();
+                if let Some(model_ref) = entity.0.get("model") {
+                    if model_ref.starts_with("*") {
+                        if has_origin {
+                            println!("  {} - {}", i, class_name);
+                        }
+                    }
+                }
+            }
+        });
     }
 }

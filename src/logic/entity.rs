@@ -207,7 +207,7 @@ parse_entity_struct!(TriggerChangeLevel {
     ("changetarget") change_target: Option<TargetName>,
 });
 parse_entity_struct!(FuncDoor {
-    ("angle") angle: i32,
+    ("angle") angle: Option<i32>,
     ("lip") lip: i32,
     ("speed") speed: i32,
 });
@@ -218,7 +218,14 @@ pub enum EntityState {
 }
 
 pub struct FuncDoorState {
+    pub offset: Vec3,
     pub closed_offset: Vec3,
     pub open_offset: Vec3,
     pub is_open: bool,
+}
+
+impl FuncDoor {
+    pub fn angle(&self) -> i32 {
+        self.angle.unwrap_or(0)
+    }
 }

@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 
-use crate::BspFile;
+use crate::{
+    export::{bsp::ModelVertex, coordinates::convert_coordinates},
+    logic::entity::{Entity, ModelReference},
+    BspFile,
+};
 use glam::Vec3;
-use gsparser::bsp::BspEntity;
+use gltf::Model;
+use gsparser::bsp::{BspEntity, BspReader};
 use imgui::*;
 
 #[derive(Copy, Clone)]
@@ -32,18 +37,18 @@ impl BspViewerState {
 
 pub struct BspViewer {
     state: BspViewerState,
-    last_file_path: String,
     cached_entities: Vec<HashMap<String, String>>,
-    entities: String,
+    entities: Vec<String>,
+    entity_positions: HashMap<usize, Vec3>,
 }
 
 impl BspViewer {
     pub fn new() -> Self {
         Self {
             state: BspViewerState::new(),
-            last_file_path: String::new(),
             cached_entities: Vec::new(),
-            entities: String::new(),
+            entities: Vec::new(),
+            entity_positions: HashMap::new(),
         }
     }
 
@@ -91,24 +96,71 @@ impl BspViewer {
         });
     }
 
-    pub fn build_ui(&mut self, ui: &Ui, file_info: &BspFile) {
-        if self.last_file_path != file_info.path {
-            self.last_file_path = file_info.path.clone();
-            self.reset_listbox_index();
+    pub fn set_new_file(
+        &mut self,
+        reader: &BspReader,
+        entities: &[Entity],
+        models: &[Model<ModelVertex>],
+    ) {
+        self.reset_listbox_index();
 
-            self.cached_entities = BspEntity::parse_entities(file_info.reader.read_entities_str())
-                .iter()
-                .map(|x| {
-                    let mut result = HashMap::new();
-                    for (key, value) in &x.0 {
-                        result.insert((*key).to_owned(), (*value).to_owned());
+        self.cached_entities = BspEntity::parse_entities(reader.read_entities_str())
+            .iter()
+            .map(|x| {
+                let mut result = HashMap::new();
+                for (key, value) in &x.0 {
+                    result.insert((*key).to_owned(), (*value).to_owned());
+                }
+                result
+            })
+            .collect();
+
+        self.entities = self
+            .cached_entities
+            .iter()
+            .map(|x| format!("{:#?}", x))
+            .collect();
+
+        self.entity_positions = HashMap::new();
+        for (i, entity) in entities.iter().enumerate() {
+            let position = {
+                let mut model_position = None;
+                if let Some(model_ref) = entity.model.as_ref() {
+                    if let ModelReference::Index(model_index) = model_ref {
+                        let model = &models[*model_index];
+                        // Average the offests
+                        let offset = model
+                            .vertices
+                            .iter()
+                            .map(|x| Vec3::from_array(x.pos))
+                            .sum::<Vec3>()
+                            / model.vertices.len() as f32;
+                        model_position = Some(offset);
                     }
-                    result
-                })
-                .collect();
+                }
 
-            self.entities = format!("{:#?}", self.cached_entities);
+                let origin = entity.origin.map(|hl_origin| {
+                    let coord = convert_coordinates(hl_origin);
+                    Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                });
+
+                if model_position.is_some() && origin.is_some() {
+                    Some(model_position.unwrap() + origin.unwrap())
+                } else if model_position.is_some() {
+                    model_position
+                } else {
+                    origin
+                }
+            };
+
+            if let Some(position) = position {
+                self.entity_positions.insert(i, position);
+            }
         }
+    }
+
+    pub fn build_ui(&mut self, ui: &Ui, file_info: &BspFile) -> Option<Vec3> {
+        let mut new_position = None;
 
         ui.window("Map Info")
             .position([25.0, 25.0], Condition::FirstUseEver)
@@ -137,8 +189,34 @@ impl BspViewer {
             .position([25.0, 450.0], Condition::FirstUseEver)
             .size([300.0, 400.0], Condition::FirstUseEver)
             .build(|| {
-                ui.text(&self.entities);
+                let mut value = self.state.selected_entity_index;
+                if ui.input_int("Entity Index", &mut value).build() {
+                    if value < 0 || value < self.entities.len() as i32 {
+                        self.state.selected_entity_index = value;
+                    }
+                }
+
+                if self.state.selected_entity_index >= 0 {
+                    if let Some(position) = self
+                        .entity_positions
+                        .get(&(self.state.selected_entity_index as usize))
+                    {
+                        if ui.button("Jump To Entity") {
+                            new_position = Some(*position);
+                        }
+                    }
+                }
+
+                let entities: Vec<_> = self.entities.iter().collect();
+                if ui.list_box(
+                    "Entities",
+                    &mut self.state.selected_entity_index,
+                    &entities,
+                    self.entities.len() as i32,
+                ) {}
             });
+
+        new_position
     }
 
     pub fn select_entity(&mut self, index: i32) {
