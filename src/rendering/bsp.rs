@@ -285,9 +285,14 @@ impl MapData {
                         direction = direction.normalize();
                         direction
                     } else {
-                        // TODO: Support negative angles (up/down)
-                        println!("Negative angle values not imlemented yet!");
-                        return EntityState::None;
+                        if door.angle == -1 {
+                            Vec3::new(0.0, 1.0, 0.0)
+                        } else if door.angle == -2 {
+                            Vec3::new(0.0, -1.0, 0.0)
+                        } else {
+                            println!("Negative door angle \"{}\" not suppported!", door.angle);
+                            return EntityState::None;
+                        }
                     };
 
                     // TODO: Incorporate origin
