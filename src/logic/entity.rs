@@ -220,4 +220,5 @@ pub enum EntityState {
 pub struct FuncDoorState {
     pub closed_offset: Vec3,
     pub open_offset: Vec3,
+    pub is_open: bool,
 }

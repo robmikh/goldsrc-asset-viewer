@@ -343,6 +343,7 @@ impl MapData {
                     EntityState::FuncDoor(FuncDoorState {
                         closed_offset,
                         open_offset,
+                        is_open: false,
                     })
                 }
                 _ => EntityState::None,
@@ -1298,17 +1299,23 @@ impl Renderer for BspRenderer {
                 let entity = &self.map_data.entities[*entity_index];
                 match &entity.ex {
                     EntityEx::FuncDoor(_) => {
-                        let entity_state = &self.map_data.entity_states[*entity_index];
+                        let entity_state = &mut self.map_data.entity_states[*entity_index];
                         let entity_state = if let EntityState::FuncDoor(state) = entity_state {
                             state
                         } else {
                             println!("Door not implemented!");
                             return;
                         };
+                        entity_state.is_open = !entity_state.is_open;
+                        let offset = if entity_state.is_open {
+                            entity_state.open_offset
+                        } else {
+                            entity_state.closed_offset
+                        };
 
-                        // Move the model to the open state
+                        // Move the model
                         let model = &self.map_data.map_models[model_index];
-                        let transform = Mat4::from_translation(entity_state.open_offset);
+                        let transform = Mat4::from_translation(offset);
                         let transform_ref: &[f32; 16] = transform.as_ref();
                         // Our transform is at the beginning of the ModelBuffer struct
                         queue.write_buffer(
