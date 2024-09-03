@@ -17,7 +17,9 @@ use crate::{
         coordinates::convert_coordinates,
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
-    logic::entity::{Entity, EntityEx, EntityState, FuncDoorState, ModelReference, ParseEntity, ParseEntityValue},
+    logic::entity::{
+        Entity, EntityEx, EntityState, FuncDoorState, ModelReference, ParseEntity, ParseEntityValue,
+    },
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -269,36 +271,78 @@ impl MapData {
 
         let spawns = Self::collect_start_positions_and_orientations(&entities);
 
-        let entity_states: Vec<_> = entities.iter().map(|x| match &x.ex {
-            EntityEx::FuncDoor(door) => {
-                // Get the direction of movement
-                let direction = if door.angle >= 0 {
-                    let angle_in_degrees = door.angle as f32;
-                    let mut direction = Vec3::new(0.0, 0.0, 1.0);
-                    direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians()) * direction.extend(0.0)).xyz();
-                    direction = direction.normalize();
-                    direction
-                } else {
-                    // TODO: Support negative angles (up/down)
-                    println!("Negative angle values not imlemented yet!");
-                    return EntityState::None;
-                };
+        let entity_states: Vec<_> = entities
+            .iter()
+            .map(|x| match &x.ex {
+                EntityEx::FuncDoor(door) => {
+                    // Get the direction of movement
+                    let direction = if door.angle >= 0 {
+                        let angle_in_degrees = door.angle as f32;
+                        let mut direction = Vec3::new(0.0, 0.0, 1.0);
+                        direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians())
+                            * direction.extend(0.0))
+                        .xyz();
+                        direction = direction.normalize();
+                        direction
+                    } else {
+                        // TODO: Support negative angles (up/down)
+                        println!("Negative angle values not imlemented yet!");
+                        return EntityState::None;
+                    };
 
-                // TODO: Keep track of the current offset
-                assert_eq!(x.origin, None);
-                let offset = Vec3::ZERO;
+                    // TODO: Incorporate origin
+                    assert_eq!(x.origin, None);
+                    let closed_offset = Vec3::ZERO;
 
-                // Move the model 10 units
-                let movement = direction * 10.0;
-                let open_offset = offset + movement;
+                    // In order to project each vertex onto our direction vector,
+                    // we'll create two points on that line.
+                    let line_start = closed_offset;
+                    let line_end = (direction * 10.0) + line_start;
 
-                EntityState::FuncDoor(FuncDoorState {
-                    offset,
-                    open_offset,
-                })
-            }
-            _ => EntityState::None,
-        }).collect();
+                    // Get the model for this entity
+                    let model_ref = x
+                        .model
+                        .as_ref()
+                        .expect("Expected model reference for door!");
+                    // TODO: Support external models
+                    let source_model = match model_ref {
+                        ModelReference::Index(index) => &loaded_map_models[*index],
+                        _ => {
+                            println!("External models not supported in door preprocessing!");
+                            return EntityState::None;
+                        }
+                    };
+
+                    // Project each vertex
+                    let mut min_distance = f32::MAX;
+                    let mut max_distance = f32::MIN;
+                    for vertex in &source_model.vertices {
+                        let pos = Vec3::from_array(vertex.pos);
+                        let ap = pos - line_start;
+                        let ab = line_end - line_start;
+                        let projected = line_start + ap.dot(ab) / ab.dot(ab) * ab;
+                        let distance = line_start.distance(projected);
+                        if max_distance < distance {
+                            max_distance = distance;
+                        }
+                        if min_distance > distance {
+                            min_distance = distance;
+                        }
+                    }
+                    let computed_distance = max_distance - min_distance;
+
+                    // Move the model
+                    let movement = direction * (computed_distance - door.lip as f32);
+                    let open_offset = closed_offset + movement;
+
+                    EntityState::FuncDoor(FuncDoorState {
+                        closed_offset,
+                        open_offset,
+                    })
+                }
+                _ => EntityState::None,
+            })
+            .collect();
 
         Self {
             models_to_render,
@@ -1225,7 +1269,12 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>, queue: &wgpu::Queue) {
+    fn process_shift_right_click(
+        &mut self,
+        screen_space: Vec2,
+        file_info: &Option<FileInfo>,
+        queue: &wgpu::Queue,
+    ) {
         let (pos, ray) = self.world_pos_and_ray_from_screen_pos(screen_space);
         println!("pos: {:?}    ray: {:?}", pos, ray);
 
@@ -1257,7 +1306,11 @@ impl Renderer for BspRenderer {
                         let transform = Mat4::from_translation(entity_state.open_offset);
                         let transform_ref: &[f32; 16] = transform.as_ref();
                         // Our transform is at the beginning of the ModelBuffer struct
-                        queue.write_buffer(&model.model_buffer, 0, bytemuck::cast_slice(transform_ref));
+                        queue.write_buffer(
+                            &model.model_buffer,
+                            0,
+                            bytemuck::cast_slice(transform_ref),
+                        );
                     }
                     _ => (),
                 }
