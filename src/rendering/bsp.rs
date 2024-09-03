@@ -17,7 +17,7 @@ use crate::{
         coordinates::convert_coordinates,
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
-    logic::entity::{Entity, EntityEx, ModelReference, ParseEntity, ParseEntityValue},
+    logic::entity::{Entity, EntityEx, EntityState, FuncDoorState, ModelReference, ParseEntity, ParseEntityValue},
     rendering::movement::MovingEntity,
     FileInfo,
 };
@@ -92,6 +92,7 @@ struct MapData {
     model_to_entity: HashMap<usize, usize>,
 
     spawns: Vec<(Vec3, f32)>,
+    entity_states: Vec<EntityState>,
 }
 
 impl MapData {
@@ -268,6 +269,37 @@ impl MapData {
 
         let spawns = Self::collect_start_positions_and_orientations(&entities);
 
+        let entity_states: Vec<_> = entities.iter().map(|x| match &x.ex {
+            EntityEx::FuncDoor(door) => {
+                // Get the direction of movement
+                let direction = if door.angle >= 0 {
+                    let angle_in_degrees = door.angle as f32;
+                    let mut direction = Vec3::new(0.0, 0.0, 1.0);
+                    direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians()) * direction.extend(0.0)).xyz();
+                    direction = direction.normalize();
+                    direction
+                } else {
+                    // TODO: Support negative angles (up/down)
+                    println!("Negative angle values not imlemented yet!");
+                    return EntityState::None;
+                };
+
+                // TODO: Keep track of the current offset
+                assert_eq!(x.origin, None);
+                let offset = Vec3::ZERO;
+
+                // Move the model 10 units
+                let movement = direction * 10.0;
+                let open_offset = offset + movement;
+
+                EntityState::FuncDoor(FuncDoorState {
+                    offset,
+                    open_offset,
+                })
+            }
+            _ => EntityState::None,
+        }).collect();
+
         Self {
             models_to_render,
             transparent_models,
@@ -281,6 +313,7 @@ impl MapData {
             model_to_entity,
 
             spawns,
+            entity_states,
         }
     }
 
@@ -1210,25 +1243,18 @@ impl Renderer for BspRenderer {
             if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
                 let entity = &self.map_data.entities[*entity_index];
                 match &entity.ex {
-                    EntityEx::FuncDoor(door) => {
-                        if door.angle < 0 {
-                            println!("Negative angle values not imlemented yet!");
+                    EntityEx::FuncDoor(_) => {
+                        let entity_state = &self.map_data.entity_states[*entity_index];
+                        let entity_state = if let EntityState::FuncDoor(state) = entity_state {
+                            state
+                        } else {
+                            println!("Door not implemented!");
                             return;
-                        }
-                        let angle_in_degrees = door.angle as f32;
+                        };
 
-                        let mut direction = Vec3::new(0.0, 0.0, 1.0);
-                        direction = (Mat4::from_rotation_y(angle_in_degrees.to_radians()) * direction.extend(0.0)).xyz();
-                        direction = direction.normalize();
-
-                        assert_eq!(entity.origin, None);
-                        let current_offset = Vec3::ZERO;
-                    
-                        // Move the model 10 units
+                        // Move the model to the open state
                         let model = &self.map_data.map_models[model_index];
-                        let movement = direction * 10.0;
-                        let new_offset = current_offset + movement;
-                        let transform = Mat4::from_translation(new_offset);
+                        let transform = Mat4::from_translation(entity_state.open_offset);
                         let transform_ref: &[f32; 16] = transform.as_ref();
                         // Our transform is at the beginning of the ModelBuffer struct
                         queue.write_buffer(&model.model_buffer, 0, bytemuck::cast_slice(transform_ref));

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use glam::Vec3;
+
 use crate::rendering::bsp::RenderMode;
 
 pub struct TargetName(pub String);
@@ -209,3 +211,13 @@ parse_entity_struct!(FuncDoor {
     ("lip") lip: i32,
     ("speed") speed: i32,
 });
+
+pub enum EntityState {
+    None,
+    FuncDoor(FuncDoorState),
+}
+
+pub struct FuncDoorState {
+    pub offset: Vec3,
+    pub open_offset: Vec3,
+}
