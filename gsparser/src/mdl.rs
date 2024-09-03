@@ -767,16 +767,16 @@ impl std::fmt::Display for NullTerminatedStrError {
 
 impl std::error::Error for NullTerminatedStrError {}
 
-pub fn null_terminated_bytes_to_str<'a>(bytes: &'a [u8]) -> std::result::Result<&'a str, NullTerminatedStrError> {
+pub fn null_terminated_bytes_to_str<'a>(
+    bytes: &'a [u8],
+) -> std::result::Result<&'a str, NullTerminatedStrError> {
     let end = bytes.iter().position(|x| *x == 0).unwrap_or(bytes.len());
     match std::str::from_utf8(&bytes[..end]) {
         Ok(string) => Ok(string),
-        Err(err) => {
-            Err(NullTerminatedStrError {
-                end,
-                str_error: err
-            })
-        }
+        Err(err) => Err(NullTerminatedStrError {
+            end,
+            str_error: err,
+        }),
     }
 }
 

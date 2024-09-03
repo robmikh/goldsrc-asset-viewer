@@ -34,7 +34,7 @@ const LUMP_ENTITIES: usize = 0;
 const LUMP_PLANES: usize = 1;
 const LUMP_TEXTURES: usize = 2;
 const LUMP_VERTICES: usize = 3;
-const LUMP_VISIBILITY: usize = 4;
+//const LUMP_VISIBILITY: usize = 4;
 const LUMP_NODES: usize = 5;
 const LUMP_TEXINFO: usize = 6;
 const LUMP_FACES: usize = 7;
@@ -433,21 +433,21 @@ pub struct BspPixel {
 }
 
 pub struct BspBitmap<'a> {
-    width: usize,
-    height: usize,
-    data: &'a [u8],
+    _width: usize,
+    _height: usize,
+    _data: &'a [u8],
 }
 
 impl<'a> BspBitmap<'a> {
     fn new(width: usize, height: usize, data: &'a [u8]) -> Self {
         Self {
-            width,
-            height,
-            data,
+            _width: width,
+            _height: height,
+            _data: data,
         }
     }
 
-    pub fn decode(&self, palette_reader: &BspPaletteReader<'a>) -> Vec<BspPixel> {
+    pub fn decode(&self, _palette_reader: &BspPaletteReader<'a>) -> Vec<BspPixel> {
         todo!()
     }
 }

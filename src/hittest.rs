@@ -231,7 +231,7 @@ struct QuakeTrace {
     all_solid: bool,
     start_solid: bool,
     in_open: bool,
-    in_water: bool,
+    _in_water: bool,
 }
 
 fn trace_hull(

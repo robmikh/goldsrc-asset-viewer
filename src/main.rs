@@ -6,7 +6,6 @@ mod hittest;
 mod logic;
 mod mdl_viewer;
 mod mouse;
-mod numerics;
 mod rendering;
 mod util;
 mod wad_viewer;
