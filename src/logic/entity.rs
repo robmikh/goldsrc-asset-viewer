@@ -55,6 +55,7 @@ impl ParseEntityValue for [i32; 3] {
 
 impl ParseEntityValue for i32 {
     fn parse(name: &str, values: &HashMap<&str, &str>) -> Self {
+        assert!(values.contains_key(name), "Expected \"{}\" value!", name);
         let str_value = values.get(name).unwrap();
         let value: i32 = str_value.parse().unwrap();
         value
@@ -213,8 +214,8 @@ parse_entity_struct!(TriggerChangeLevel {
 });
 parse_entity_struct!(FuncDoor {
     ("angle") angle: Option<i32>,
-    ("lip") lip: i32,
-    ("speed") speed: i32,
+    ("lip") lip: Option<i32>,
+    ("speed") speed: Option<i32>,
 });
 
 pub enum EntityState {

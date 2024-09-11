@@ -354,7 +354,7 @@ impl MapData {
                     let computed_distance = max_distance - min_distance;
 
                     // Move the model
-                    let movement = direction * (computed_distance - door.lip as f32);
+                    let movement = direction * (computed_distance - door.lip.unwrap_or(0) as f32);
                     let open_offset = closed_offset + movement;
 
                     EntityState::FuncDoor(FuncDoorState {
@@ -1638,6 +1638,7 @@ fn create_debug_pyramid_model(point: Vec3, dir: Vec3, texture_index: usize) -> M
 #[cfg(test)]
 mod experiments {
     use std::{
+        borrow::Cow,
         collections::{HashMap, VecDeque},
         path::{Path, PathBuf},
     };
@@ -1652,9 +1653,9 @@ mod experiments {
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
-    fn process_all_entities<F: FnMut(&PathBuf, usize, &BspEntity), P: AsRef<Path>>(
+    fn process_all_maps<F: FnMut(&PathBuf, &BspReader), P: AsRef<Path>>(
         base_path: P,
-        mut process_entity: F,
+        mut process_map: F,
     ) {
         for item in std::fs::read_dir(base_path).unwrap() {
             let item = item.unwrap();
@@ -1662,28 +1663,40 @@ mod experiments {
             if let Some(extension) = item_path.extension() {
                 let extension = extension.to_str().unwrap();
                 if extension == "bsp" {
-                    println!("Validating {}...", item_path.display());
-
                     let bsp_bytes = std::fs::read(&item_path).unwrap();
                     let reader = BspReader::read(bsp_bytes);
-                    let entities_bytes = reader.read_entities();
-                    let entities_str = match null_terminated_bytes_to_str(entities_bytes) {
-                        Ok(entities) => entities.to_owned(),
-                        Err(error) => {
-                            println!("  WARNING: {:?}", error);
-                            let start = error.str_error.valid_up_to();
-                            let end = start + error.str_error.error_len().unwrap_or(1);
-                            println!("           error bytes: {:?}", &entities_bytes[start..end]);
-                            String::from_utf8_lossy(&entities_bytes[..error.end]).to_string()
-                        }
-                    };
-                    let entities = BspEntity::parse_entities(&entities_str);
-                    for (i, entity) in entities.iter().enumerate() {
-                        process_entity(&item_path, i, entity);
-                    }
+                    process_map(&item_path, &reader);
                 }
             }
         }
+    }
+
+    fn resolve_map_entity_string<'a>(reader: &'a BspReader) -> Cow<'a, str> {
+        let entities_bytes = reader.read_entities();
+        match null_terminated_bytes_to_str(entities_bytes) {
+            Ok(entities) => Cow::Borrowed(entities),
+            Err(error) => {
+                println!("  WARNING: {:?}", error);
+                let start = error.str_error.valid_up_to();
+                let end = start + error.str_error.error_len().unwrap_or(1);
+                println!("           error bytes: {:?}", &entities_bytes[start..end]);
+                String::from_utf8_lossy(&entities_bytes[..error.end])
+            }
+        }
+    }
+
+    fn process_all_entities<F: FnMut(&PathBuf, usize, &BspEntity), P: AsRef<Path>>(
+        base_path: P,
+        mut process_entity: F,
+    ) {
+        process_all_maps(base_path, |item_path, reader| {
+            println!("Validating {}...", item_path.display());
+            let entities_str = resolve_map_entity_string(reader);
+            let entities = BspEntity::parse_entities(&entities_str);
+            for (i, entity) in entities.iter().enumerate() {
+                process_entity(&item_path, i, entity);
+            }
+        });
     }
 
     // Turns out https://developer.valvesoftware.com/wiki/BSP_(GoldSrc)#Entities says that all
@@ -1839,6 +1852,42 @@ mod experiments {
                     }
                 }
             }
+        });
+    }
+
+    #[test]
+    fn dump_map_entities() {
+        let output_base_path = PathBuf::from("testoutput/entities");
+        let _ = std::fs::create_dir_all(&output_base_path);
+
+        let mut output_path = {
+            let mut path = output_base_path.clone();
+            path.push("dummy");
+            path
+        };
+        process_all_maps(HALF_LIFE_BASE_PATH, |item_path, reader| {
+            let map_stem = item_path.file_stem().unwrap();
+            let map_stem = map_stem.to_str().unwrap();
+
+            let entities_str = resolve_map_entity_string(reader);
+            let entities = BspEntity::parse_entities(&entities_str);
+            let items: Vec<_> = entities
+                .iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    let mut values: Vec<_> = x.0.iter().collect();
+                    values.sort();
+                    let values_strs: Vec<_> = values
+                        .iter()
+                        .map(|(k, v)| format!("  \"{}\" : \"{}\"", k, v))
+                        .collect();
+                    let values_str = values_strs.join(",\n");
+                    format!("{} - [\n{}\n]", i, values_str)
+                })
+                .collect();
+            let entities_str = items.join("\n");
+            output_path.set_file_name(format!("{}.txt", map_stem));
+            std::fs::write(&output_path, entities_str).unwrap();
         });
     }
 }
