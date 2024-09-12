@@ -18,7 +18,7 @@ use crate::{
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
     logic::entity::{
-        Entity, EntityEx, EntityState, FuncDoorState, ModelReference, ParseEntity, ParseEntityValue,
+        Entity, EntityEx, EntityParseError, EntityState, FuncDoorState, ModelReference, OkOr, ParseEntity, ParseEntityResult, ParseEntityValue
     },
     rendering::movement::MovingEntity,
     FileInfo,
@@ -74,10 +74,15 @@ basic_enum! {
 }
 
 impl ParseEntityValue for RenderMode {
-    fn parse(name: &str, values: &HashMap<&str, &str>) -> Self {
-        let str_value = values.get(name).unwrap();
-        let value: RenderMode = str_value.parse().unwrap();
-        value
+    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+        if let Some(str_value) = values.get(name) {
+            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
+            
+            let value: RenderMode = str_value.parse().ok_or(invalid_value_err)?;
+            Ok(value)
+        } else {
+            Err(EntityParseError::MissingValue { value_name: name })
+        }
     }
 }
 
@@ -176,7 +181,7 @@ impl MapData {
         //    std::fs::write("testoutput/entities.txt", entities_str).unwrap();
         //}
 
-        let entities: Vec<Entity> = raw_entities.iter().map(|x| Entity::parse(&x.0)).collect();
+        let entities: Vec<Entity> = raw_entities.iter().map(|x| Entity::parse(&x.0).unwrap()).collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
@@ -202,10 +207,10 @@ impl MapData {
                         let entity = &entities[*entity_index];
                         if let Some(hl_origin) = entity.origin.as_ref() {
                             let coord = convert_coordinates(*hl_origin);
-                            origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
+                            origin = Vec3::new(coord[0], coord[1], coord[2]);
                         }
                         if let Some(hl_angles) = entity.angles {
-                            if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                            if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
                                 println!("WARNING! Map model with non-zero angles! {:?}", hl_angles);
                             }
                         }
@@ -314,7 +319,7 @@ impl MapData {
                     // Get our starting offset
                     let origin = if let Some(hl_origin) = x.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         Vec3::ZERO
                     };
@@ -397,13 +402,13 @@ impl MapData {
                 EntityEx::InfoPlayerStart(_) => {
                     let origin = if let Some(hl_origin) = entity.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         println!("WARNING: No origin found on info_player_start entity!");
                         Vec3::ZERO
                     };
                     let angle = if let Some(angle) = entity.angle.as_ref() {
-                        let angle_in_radians = (*angle as f32).to_radians();
+                        let angle_in_radians = (*angle).to_radians();
                         angle_in_radians
                     } else {
                         println!("WARNING: No angle found on info_player_start entity!");
@@ -425,13 +430,13 @@ impl MapData {
                 EntityEx::InfoPlayerStart(_) => {
                     let origin = if let Some(hl_origin) = entity.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         println!("WARNING: No origin found on info_player_start entity!");
                         Vec3::ZERO
                     };
                     let angle = if let Some(angle) = entity.angle.as_ref() {
-                        let angle_in_radians = (*angle as f32).to_radians();
+                        let angle_in_radians = (*angle).to_radians();
                         angle_in_radians
                     } else {
                         println!("WARNING: No angle found on info_player_start entity!");
@@ -602,7 +607,7 @@ impl BspRenderer {
                 } else {
                     if let Some(hl_origin) = entity.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         Vec3::ZERO
                     }
@@ -613,7 +618,7 @@ impl BspRenderer {
                 adjusted_end_position -= offset;
 
                 if let Some(hl_angles) = entity.angles {
-                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                    if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
                         println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
                     }
                 }
@@ -740,7 +745,7 @@ impl BspRenderer {
                 } else {
                     if let Some(hl_origin) = entity.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         Vec3::ZERO
                     }
@@ -750,7 +755,7 @@ impl BspRenderer {
                 adjusted_start_position -= offset;
 
                 if let Some(hl_angles) = entity.angles {
-                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                    if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
                         println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
                     }
                 }
@@ -806,7 +811,7 @@ impl BspRenderer {
                 } else {
                     if let Some(hl_origin) = entity.origin.as_ref() {
                         let coord = convert_coordinates(*hl_origin);
-                        Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                        Vec3::new(coord[0], coord[1], coord[2])
                     } else {
                         Vec3::ZERO
                     }
@@ -816,7 +821,7 @@ impl BspRenderer {
                 adjusted_start_position -= offset;
 
                 if let Some(hl_angles) = entity.angles {
-                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                    if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
                         println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
                     }
                 }
@@ -895,7 +900,7 @@ impl BspRenderer {
                     .expect("Expected entity with matching targetname to trigger landmark");
                 let origin = if let Some(hl_origin) = landmark_entity.origin.as_ref() {
                     let coord = convert_coordinates(*hl_origin);
-                    Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+                    Vec3::new(coord[0], coord[1], coord[2])
                 } else {
                     Vec3::ZERO
                 };
@@ -1509,7 +1514,7 @@ impl Renderer for BspRenderer {
             .expect("Expected entity with matching targetname to previous map landmark");
         let origin = if let Some(hl_origin) = landmark_entity.origin.as_ref() {
             let coord = convert_coordinates(*hl_origin);
-            Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32)
+            Vec3::new(coord[0], coord[1], coord[2])
         } else {
             Vec3::ZERO
         };
@@ -1660,7 +1665,7 @@ mod experiments {
         mdl::null_terminated_bytes_to_str,
     };
 
-    use crate::hittest::hittest_clip_node;
+    use crate::{hittest::hittest_clip_node, logic::entity::{Entity, ParseEntity}};
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
@@ -1899,6 +1904,15 @@ mod experiments {
             let entities_str = items.join("\n");
             output_path.set_file_name(format!("{}.txt", map_stem));
             std::fs::write(&output_path, entities_str).unwrap();
+        });
+    }
+
+    #[test]
+    fn parse_all_entities() {
+        process_all_entities(HALF_LIFE_BASE_PATH, |_item_path, i, entity| {
+            if let Err(error) = Entity::parse(&entity.0) {
+                panic!("  {} - {:?}", i, error);
+            }
         });
     }
 }
