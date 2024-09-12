@@ -204,6 +204,9 @@ impl MapData {
                             let coord = convert_coordinates(*hl_origin);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
+                        if entity.angles.is_some() {
+                            println!("WARNING! Map model with angles!");
+                        }
                         if let Some(render_mode) = entity.render_mode.as_ref() {
                             if *render_mode != RenderMode::Normal {
                                 if let Some(render_amt) = entity.render_amount.as_ref() {
