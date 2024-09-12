@@ -204,8 +204,10 @@ impl MapData {
                             let coord = convert_coordinates(*hl_origin);
                             origin = Vec3::new(coord[0] as f32, coord[1] as f32, coord[2] as f32);
                         }
-                        if entity.angles.is_some() {
-                            println!("WARNING! Map model with angles!");
+                        if let Some(hl_angles) = entity.angles {
+                            if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                                println!("WARNING! Map model with non-zero angles! {:?}", hl_angles);
+                            }
                         }
                         if let Some(render_mode) = entity.render_mode.as_ref() {
                             if *render_mode != RenderMode::Normal {
@@ -610,8 +612,10 @@ impl BspRenderer {
                 adjusted_start_position -= offset;
                 adjusted_end_position -= offset;
 
-                if entity.angles.is_some() {
-                    println!("WARNING! Collidable entity with angles!");
+                if let Some(hl_angles) = entity.angles {
+                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                    }
                 }
             }
             let clip_node_index = model.head_nodes[1] as usize;
@@ -745,8 +749,10 @@ impl BspRenderer {
                 adjustment = offset;
                 adjusted_start_position -= offset;
 
-                if entity.angles.is_some() {
-                    println!("WARNING! Collidable entity with angles!");
+                if let Some(hl_angles) = entity.angles {
+                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                    }
                 }
             }
 
@@ -809,8 +815,10 @@ impl BspRenderer {
                 adjustment = offset;
                 adjusted_start_position -= offset;
 
-                if entity.angles.is_some() {
-                    println!("WARNING! Collidable entity with angles!");
+                if let Some(hl_angles) = entity.angles {
+                    if !(hl_angles[0] == 0 && hl_angles[1] == 0 && hl_angles[2] == 0) {
+                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                    }
                 }
             }
 
