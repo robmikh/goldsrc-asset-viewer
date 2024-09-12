@@ -19,14 +19,23 @@ pub enum EntityParseError<'a> {
     },
     MissingValue {
         value_name: &'a str,
-    }
+    },
 }
 
 impl<'a> std::fmt::Display for EntityParseError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntityParseError::InvalidValue { value_name, value_str } => write!(f, "InvalidValue{{ name: {}, value: {} }}", value_name, value_str),
-            EntityParseError::MissingValue { value_name } => write!(f, "MissingValue{{ name: {} }}", value_name),
+            EntityParseError::InvalidValue {
+                value_name,
+                value_str,
+            } => write!(
+                f,
+                "InvalidValue{{ name: {}, value: {} }}",
+                value_name, value_str
+            ),
+            EntityParseError::MissingValue { value_name } => {
+                write!(f, "MissingValue{{ name: {} }}", value_name)
+            }
         }
     }
 }
@@ -47,11 +56,17 @@ impl<T: std::str::FromStr> OkOr<T> for std::result::Result<T, T::Err> {
 }
 
 pub trait ParseEntityValue: Sized {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self>;
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self>;
 }
 
 impl ParseEntityValue for TargetName {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(value) = values.get(name) {
             Ok(Self(value.to_string()))
         } else {
@@ -61,7 +76,10 @@ impl ParseEntityValue for TargetName {
 }
 
 impl ParseEntityValue for String {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(value) = values.get(name) {
             Ok(value.to_string())
         } else {
@@ -71,14 +89,20 @@ impl ParseEntityValue for String {
 }
 
 impl ParseEntityValue for ModelReference {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
             if str_value.starts_with("*") {
                 let str_value = str_value.trim_start_matches('*');
                 if let Ok(model_index) = str_value.parse::<usize>() {
                     Ok(Self::Index(model_index))
                 } else {
-                    Err(EntityParseError::InvalidValue { value_name: name, value_str: str_value })
+                    Err(EntityParseError::InvalidValue {
+                        value_name: name,
+                        value_str: str_value,
+                    })
                 }
             } else {
                 Ok(Self::Path(str_value.to_string()))
@@ -90,12 +114,22 @@ impl ParseEntityValue for ModelReference {
 }
 
 impl ParseEntityValue for [i32; 3] {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
-            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
+            let invalid_value_err = EntityParseError::InvalidValue {
+                value_name: name,
+                value_str: str_value,
+            };
 
             let mut parts = str_value.split_whitespace();
-            let x: i32 = parts.next().ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
+            let x: i32 = parts
+                .next()
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
 
             // Special case a single zero as all zeroes
             let next = parts.next();
@@ -103,8 +137,15 @@ impl ParseEntityValue for [i32; 3] {
                 return Ok([0, 0, 0]);
             }
 
-            let y: i32 = next.ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
-            let z: i32 = parts.next().ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
+            let y: i32 = next
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
+            let z: i32 = parts
+                .next()
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
             assert_eq!(parts.next(), None);
             Ok([x, y, z])
         } else {
@@ -114,10 +155,16 @@ impl ParseEntityValue for [i32; 3] {
 }
 
 impl ParseEntityValue for i32 {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
-            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
-            
+            let invalid_value_err = EntityParseError::InvalidValue {
+                value_name: name,
+                value_str: str_value,
+            };
+
             let value: i32 = str_value.parse().ok_or(invalid_value_err)?;
             Ok(value)
         } else {
@@ -127,12 +174,22 @@ impl ParseEntityValue for i32 {
 }
 
 impl ParseEntityValue for [f32; 3] {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
-            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
+            let invalid_value_err = EntityParseError::InvalidValue {
+                value_name: name,
+                value_str: str_value,
+            };
 
             let mut parts = str_value.split_whitespace();
-            let x: f32 = parts.next().ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
+            let x: f32 = parts
+                .next()
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
 
             // Special case a single zero as all zeroes
             let next = parts.next();
@@ -140,8 +197,15 @@ impl ParseEntityValue for [f32; 3] {
                 return Ok([0.0, 0.0, 0.0]);
             }
 
-            let y: f32 = next.ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
-            let z: f32 = parts.next().ok_or(invalid_value_err)?.parse().ok_or(invalid_value_err)?;
+            let y: f32 = next
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
+            let z: f32 = parts
+                .next()
+                .ok_or(invalid_value_err)?
+                .parse()
+                .ok_or(invalid_value_err)?;
             assert_eq!(parts.next(), None);
             Ok([x, y, z])
         } else {
@@ -151,10 +215,16 @@ impl ParseEntityValue for [f32; 3] {
 }
 
 impl ParseEntityValue for f32 {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
-            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
-            
+            let invalid_value_err = EntityParseError::InvalidValue {
+                value_name: name,
+                value_str: str_value,
+            };
+
             let value: f32 = str_value.parse().ok_or(invalid_value_err)?;
             Ok(value)
         } else {
@@ -164,7 +234,10 @@ impl ParseEntityValue for f32 {
 }
 
 impl<T: ParseEntityValue> ParseEntityValue for Option<T> {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Option<T>> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Option<T>> {
         if values.contains_key(name) {
             let value = T::parse(name, values)?;
             Ok(Some(value))

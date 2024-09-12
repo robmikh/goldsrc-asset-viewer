@@ -18,7 +18,8 @@ use crate::{
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
     logic::entity::{
-        Entity, EntityEx, EntityParseError, EntityState, FuncDoorState, ModelReference, OkOr, ParseEntity, ParseEntityResult, ParseEntityValue
+        Entity, EntityEx, EntityParseError, EntityState, FuncDoorState, ModelReference, OkOr,
+        ParseEntity, ParseEntityResult, ParseEntityValue,
     },
     rendering::movement::MovingEntity,
     FileInfo,
@@ -74,10 +75,16 @@ basic_enum! {
 }
 
 impl ParseEntityValue for RenderMode {
-    fn parse<'a>(name: &'a str, values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+    fn parse<'a>(
+        name: &'a str,
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> ParseEntityResult<'a, Self> {
         if let Some(str_value) = values.get(name) {
-            let invalid_value_err = EntityParseError::InvalidValue { value_name: name, value_str: str_value };
-            
+            let invalid_value_err = EntityParseError::InvalidValue {
+                value_name: name,
+                value_str: str_value,
+            };
+
             let value: RenderMode = str_value.parse().ok_or(invalid_value_err)?;
             Ok(value)
         } else {
@@ -181,7 +188,10 @@ impl MapData {
         //    std::fs::write("testoutput/entities.txt", entities_str).unwrap();
         //}
 
-        let entities: Vec<Entity> = raw_entities.iter().map(|x| Entity::parse(&x.0).unwrap()).collect();
+        let entities: Vec<Entity> = raw_entities
+            .iter()
+            .map(|x| Entity::parse(&x.0).unwrap())
+            .collect();
 
         // Create a map of models to entities
         // TODO: Can we assume 1:1 (minus models not tied to any entities)?
@@ -210,8 +220,12 @@ impl MapData {
                             origin = Vec3::new(coord[0], coord[1], coord[2]);
                         }
                         if let Some(hl_angles) = entity.angles {
-                            if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
-                                println!("WARNING! Map model with non-zero angles! {:?}", hl_angles);
+                            if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0)
+                            {
+                                println!(
+                                    "WARNING! Map model with non-zero angles! {:?}",
+                                    hl_angles
+                                );
                             }
                         }
                         if let Some(render_mode) = entity.render_mode.as_ref() {
@@ -619,7 +633,10 @@ impl BspRenderer {
 
                 if let Some(hl_angles) = entity.angles {
                     if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
-                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                        println!(
+                            "WARNING! Collidable entity with non-zero angles! {:?}",
+                            hl_angles
+                        );
                     }
                 }
             }
@@ -756,7 +773,10 @@ impl BspRenderer {
 
                 if let Some(hl_angles) = entity.angles {
                     if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
-                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                        println!(
+                            "WARNING! Collidable entity with non-zero angles! {:?}",
+                            hl_angles
+                        );
                     }
                 }
             }
@@ -822,7 +842,10 @@ impl BspRenderer {
 
                 if let Some(hl_angles) = entity.angles {
                     if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
-                        println!("WARNING! Collidable entity with non-zero angles! {:?}", hl_angles);
+                        println!(
+                            "WARNING! Collidable entity with non-zero angles! {:?}",
+                            hl_angles
+                        );
                     }
                 }
             }
@@ -1665,7 +1688,10 @@ mod experiments {
         mdl::null_terminated_bytes_to_str,
     };
 
-    use crate::{hittest::hittest_clip_node, logic::entity::{Entity, ParseEntity}};
+    use crate::{
+        hittest::hittest_clip_node,
+        logic::entity::{Entity, ParseEntity},
+    };
 
     const HALF_LIFE_BASE_PATH: &str = "testdata/Half-Life/valve/maps";
 
