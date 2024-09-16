@@ -243,6 +243,7 @@ fn show_ui(cli: Cli) {
         imgui_wgpu::Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
     let mut last_frame = Instant::now();
+    let mut time_since_last_update = Duration::from_millis(0);
     let mut last_cursor = None;
     let mut wad_viewer = WadViewer::new();
     let mut mdl_viewer = MdlViewer::new();
@@ -461,38 +462,45 @@ fn show_ui(cli: Cli) {
                             mouse_delta
                         };
 
-                        let new_map = renderer.update(
-                            &device,
-                            &queue,
-                            delta,
-                            &down_keys,
-                            mouse_delta,
-                            &file_info,
-                        );
-                        if let Some((new_map, landmark, old_origin)) = new_map {
-                            println!("Changing level to {}...", new_map);
+                        // TODO: Fix input issues
+                        time_since_last_update += delta;
+                        if time_since_last_update.as_millis() >= 16 {
+                            let new_map = renderer.update(
+                                &device,
+                                &queue,
+                                time_since_last_update,
+                                &down_keys,
+                                mouse_delta,
+                                &file_info,
+                            );
+                            time_since_last_update = Duration::from_millis(0);
+                            if let Some((new_map, landmark, old_origin)) = new_map {
+                                println!("Changing level to {}...", new_map);
 
-                            let old_file = {
-                                let file_info = file_info.take().unwrap();
-                                match file_info {
-                                    FileInfo::BspFile(file) => file,
-                                    _ => panic!(),
-                                }
-                            };
+                                let old_file = {
+                                    let file_info = file_info.take().unwrap();
+                                    match file_info {
+                                        FileInfo::BspFile(file) => file,
+                                        _ => panic!(),
+                                    }
+                                };
 
-                            let map_path = {
-                                let mut path =
-                                    PathBuf::from(&old_file.path).canonicalize().unwrap();
-                                path.set_file_name(format!("{}.bsp", new_map));
-                                path
-                            };
+                                let map_path = {
+                                    let mut path =
+                                        PathBuf::from(&old_file.path).canonicalize().unwrap();
+                                    path.set_file_name(format!("{}.bsp", new_map));
+                                    path
+                                };
 
-                            file_info = load_file(map_path);
-                            renderer.load_file(&file_info, &landmark, old_origin, &device, &queue);
+                                file_info = load_file(map_path);
+                                renderer
+                                    .load_file(&file_info, &landmark, old_origin, &device, &queue);
 
-                            // Change the timestamp to cut out the load time
-                            last_frame = Instant::now();
+                                // Change the timestamp to cut out the load time
+                                last_frame = Instant::now();
+                            }
                         }
+
                         renderer.render(clear_color, &view, &device, &queue);
                         wgpu::Operations {
                             load: wgpu::LoadOp::Load,
