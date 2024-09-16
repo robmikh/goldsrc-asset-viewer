@@ -1531,7 +1531,12 @@ impl Renderer for BspRenderer {
             let mut model_indices: Vec<usize> = if self.render_all {
                 (0..self.map_data.map_models.len()).collect()
             } else {
-                self.map_data.models_to_render.clone()
+                self.map_data
+                    .models_to_render
+                    .iter()
+                    .chain(self.map_data.transparent_models.iter())
+                    .map(|x| *x)
+                    .collect()
             };
             // Keep checking as long as we hit something that matches our position.
             while !model_indices.is_empty() {
