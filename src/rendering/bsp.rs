@@ -988,16 +988,19 @@ impl BspRenderer {
                         let delta = direction * (elapsed.as_secs_f32() * speed);
                         entity_state.offset += delta;
                         let new_distance = end_offset - entity_state.offset;
-                        let finished = if new_distance.length().abs() == 0.0 {
+                        let finished = if new_distance.length().abs() <= f32::EPSILON {
                             true
                         } else {
                             let new_direction = new_distance.normalize();
-                            if (new_direction.x - direction.x).abs() > f32::EPSILON
-                                || (new_direction.y - direction.y).abs() > f32::EPSILON
+                            if (new_direction.x - direction.x).abs() >= f32::EPSILON
+                                || (new_direction.y - direction.y).abs() >= f32::EPSILON
+                                || (new_direction.z - direction.z).abs() >= f32::EPSILON
                             {
                                 entity_state.offset = end_offset;
+                                true
+                            } else {
+                                false
                             }
-                            entity_state.offset == end_offset
                         };
 
                         if finished {
@@ -1024,7 +1027,10 @@ impl BspRenderer {
                         );
                     }
                 }
-                _ => panic!("Entity animation queued for '{:?}'", entity_state),
+                _ => panic!(
+                    "Entity animation queued for unsupported entity '{:?}'",
+                    entity_state
+                ),
             }
         }
     }
@@ -1082,7 +1088,10 @@ impl BspRenderer {
         if !entity_state.is_animating {
             entity_state.is_animating = true;
             self.animating_entities.push(entity_index);
-            println!("Door animation queued for entity {}", entity_index);
+            println!(
+                "Door animation queued for entity {} ({:?})",
+                entity_index, entity_state
+            );
         }
     }
 }

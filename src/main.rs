@@ -26,7 +26,7 @@ use rendering::Renderer;
 use rfd::FileDialog;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::event::DeviceEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::{
@@ -416,7 +416,11 @@ fn show_ui(cli: Cli) {
                     ..
                 } => {
                     let now = Instant::now();
-                    let delta = now - last_frame;
+                    let delta = if std::env::var("FIXED_TIME_STEP").is_err() {
+                        Duration::from_millis(16)
+                    } else {
+                        now - last_frame
+                    };
                     last_frame = now;
 
                     let frame = match surface.get_current_texture() {
