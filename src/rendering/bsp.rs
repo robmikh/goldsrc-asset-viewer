@@ -1436,37 +1436,70 @@ impl Renderer for BspRenderer {
             self.set_debug_pyramid(intersection.position, intersection.normal);
 
             // DEBUG: Start experimenting with doors
+
+            // Some doors are built from multiple entities, which all share the same
+            // target name. Find the target name so that we can activate all of them
+            // together.
+            let mut door_target_name = None;
             if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
                 let entity = &self.map_data.entities[*entity_index];
                 match &entity.ex {
                     EntityEx::FuncDoor(_) => {
-                        let entity_state = &mut self.map_data.entity_states[*entity_index];
-                        let entity_state = if let EntityState::FuncDoor(state) = entity_state {
-                            state
-                        } else {
-                            println!("Door not implemented!");
-                            return;
-                        };
-                        entity_state.is_open = !entity_state.is_open;
-                        let offset = if entity_state.is_open {
-                            entity_state.open_offset
-                        } else {
-                            entity_state.closed_offset
-                        };
-                        entity_state.offset = offset;
-
-                        // Move the model
-                        let model = &self.map_data.map_models[model_index];
-                        let transform = Mat4::from_translation(offset);
-                        let transform_ref: &[f32; 16] = transform.as_ref();
-                        // Our transform is at the beginning of the ModelBuffer struct
-                        queue.write_buffer(
-                            &model.model_buffer,
-                            0,
-                            bytemuck::cast_slice(transform_ref),
-                        );
+                        door_target_name = entity.name.clone();
                     }
                     _ => (),
+                }
+            }
+
+            // Toggle the state of all entities with the same name
+            if let Some(door_target_name) = door_target_name {
+                for (i, entity) in self.map_data.entities.iter().enumerate() {
+                    // Scope to only doors
+                    match &entity.ex {
+                        EntityEx::FuncDoor(_) => {
+                            let triggered = if let Some(name) = entity.name.as_ref() {
+                                name.as_str() == door_target_name.as_str()
+                            } else {
+                                false
+                            };
+
+                            if triggered {
+                                let entity_state = &mut self.map_data.entity_states[i];
+                                let entity_state =
+                                    if let EntityState::FuncDoor(state) = entity_state {
+                                        state
+                                    } else {
+                                        println!("Door not implemented!");
+                                        return;
+                                    };
+                                entity_state.is_open = !entity_state.is_open;
+                                let offset = if entity_state.is_open {
+                                    entity_state.open_offset
+                                } else {
+                                    entity_state.closed_offset
+                                };
+                                entity_state.offset = offset;
+
+                                // Get the model for the entity
+                                let model_index = match entity.model.as_ref().unwrap() {
+                                    ModelReference::Index(model_index) => *model_index,
+                                    ModelReference::Path(_) => todo!(),
+                                };
+
+                                // Move the model
+                                let model = &self.map_data.map_models[model_index];
+                                let transform = Mat4::from_translation(offset);
+                                let transform_ref: &[f32; 16] = transform.as_ref();
+                                // Our transform is at the beginning of the ModelBuffer struct
+                                queue.write_buffer(
+                                    &model.model_buffer,
+                                    0,
+                                    bytemuck::cast_slice(transform_ref),
+                                );
+                            }
+                        }
+                        _ => (),
+                    }
                 }
             }
         }
