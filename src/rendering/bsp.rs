@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    time::Duration,
 };
 
 use glam::{Mat4, Vec2, Vec3, Vec4Swizzles};
@@ -377,6 +378,7 @@ impl MapData {
                         closed_offset,
                         open_offset,
                         is_open: false,
+                        is_animating: false,
                     })
                 }
                 _ => EntityState::None,
@@ -493,6 +495,7 @@ impl MapData {
 
 pub struct BspRenderer {
     map_data: MapData,
+    animating_entities: Vec<usize>,
 
     renderer: super::renderer::Renderer,
     player: MovingEntity,
@@ -547,6 +550,7 @@ impl BspRenderer {
 
         Self {
             map_data,
+            animating_entities: Vec::new(),
 
             renderer,
             player,
@@ -960,6 +964,127 @@ impl BspRenderer {
         self.player.set_position(start_position);
         self.renderer.camera_mut().set_position(start_position);
     }
+
+    fn process_entity_animations(&mut self, queue: &wgpu::Queue, elapsed: Duration) {
+        for animation_index in (0..self.animating_entities.len()).rev() {
+            let entity_index = self.animating_entities[animation_index];
+            let entity_state = &mut self.map_data.entity_states[entity_index];
+            match entity_state {
+                EntityState::FuncDoor(entity_state) => {
+                    if entity_state.is_animating {
+                        let entity = &self.map_data.entities[entity_index];
+                        let ex = match &entity.ex {
+                            EntityEx::FuncDoor(ex) => ex,
+                            _ => panic!(),
+                        };
+                        let speed = ex.speed.unwrap_or(100.0);
+                        let end_offset = if entity_state.is_open {
+                            entity_state.open_offset
+                        } else {
+                            entity_state.closed_offset
+                        };
+
+                        let direction = (end_offset - entity_state.offset).normalize();
+                        let delta = direction * (elapsed.as_secs_f32() * speed);
+                        entity_state.offset += delta;
+                        let new_distance = end_offset - entity_state.offset;
+                        let finished = if new_distance.length().abs() == 0.0 {
+                            true
+                        } else {
+                            let new_direction = new_distance.normalize();
+                            if (new_direction.x - direction.x).abs() > f32::EPSILON
+                                || (new_direction.y - direction.y).abs() > f32::EPSILON
+                            {
+                                entity_state.offset = end_offset;
+                            }
+                            entity_state.offset == end_offset
+                        };
+
+                        if finished {
+                            entity_state.is_animating = false;
+                            self.animating_entities.remove(animation_index);
+                            println!("Animation for entity {} finished", entity_index);
+                        }
+
+                        // Get the model for the entity
+                        let model_index = match entity.model.as_ref().unwrap() {
+                            ModelReference::Index(model_index) => *model_index,
+                            ModelReference::Path(_) => todo!(),
+                        };
+
+                        // Move the model
+                        let model = &self.map_data.map_models[model_index];
+                        let transform = Mat4::from_translation(entity_state.offset);
+                        let transform_ref: &[f32; 16] = transform.as_ref();
+                        // Our transform is at the beginning of the ModelBuffer struct
+                        queue.write_buffer(
+                            &model.model_buffer,
+                            0,
+                            bytemuck::cast_slice(transform_ref),
+                        );
+                    }
+                }
+                _ => panic!("Entity animation queued for '{:?}'", entity_state),
+            }
+        }
+    }
+
+    fn toggle_door(&mut self, selected_entity_index: usize) {
+        // Some doors are built from multiple entities, which all share the same
+        // target name. Find the target name so that we can activate all of them
+        // together.
+        let door_target_name = {
+            let entity = &self.map_data.entities[selected_entity_index];
+            match &entity.ex {
+                EntityEx::FuncDoor(_) => entity.name.clone(),
+                _ => panic!(
+                    "Entity {} ({:?}) is not a door!",
+                    selected_entity_index, entity.ex
+                ),
+            }
+        };
+
+        // Toggle the state of all entities with the same name
+        if let Some(door_target_name) = door_target_name {
+            for entity_index in 0..self.map_data.entities.len() {
+                let triggered = {
+                    let entity = &self.map_data.entities[entity_index];
+                    // Scope to only doors
+                    match &entity.ex {
+                        EntityEx::FuncDoor(_) => {
+                            if let Some(name) = entity.name.as_ref() {
+                                name.as_str() == door_target_name.as_str()
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false,
+                    }
+                };
+                if triggered {
+                    self.toggle_single_door(entity_index);
+                }
+            }
+        } else {
+            self.toggle_single_door(selected_entity_index);
+        }
+    }
+
+    fn toggle_single_door(&mut self, entity_index: usize) {
+        let entity_state = &mut self.map_data.entity_states[entity_index];
+        let entity_state = if let EntityState::FuncDoor(state) = entity_state {
+            state
+        } else {
+            println!("Door not implemented!");
+            return;
+        };
+        entity_state.is_open = !entity_state.is_open;
+        if !entity_state.is_animating {
+            entity_state.is_animating = true;
+            self.animating_entities.push(entity_index);
+            println!("Door animation queued for entity {}", entity_index);
+        }
+    }
 }
 
 impl Renderer for BspRenderer {
@@ -1017,6 +1142,9 @@ impl Renderer for BspRenderer {
             };
             self.reorient_player(reader, position, angle)
         }
+
+        // Process entity animations
+        self.process_entity_animations(queue, delta);
 
         let mut rotation = self.renderer.camera().yaw_pitch_roll();
         let old_rotation = rotation;
@@ -1344,6 +1472,38 @@ impl Renderer for BspRenderer {
                     }
                 });
         }
+
+        if let Some(viewer) = self.ui.as_ref() {
+            let entity_index = viewer.state().selected_entity_index;
+            if entity_index >= 0 {
+                let entity_index = entity_index as usize;
+                let entity = &self.map_data.entities[entity_index];
+                match &entity.ex {
+                    EntityEx::FuncDoor(_) => {
+                        ui.window("Entity Info")
+                            .position([1220.0, 200.0], imgui::Condition::FirstUseEver)
+                            .size([200.0, 75.0], imgui::Condition::FirstUseEver)
+                            .build(|| {
+                                if ui.button("Toggle Door") {
+                                    let entity_state =
+                                        &mut self.map_data.entity_states[entity_index];
+                                    let entity_state =
+                                        if let EntityState::FuncDoor(state) = entity_state {
+                                            state
+                                        } else {
+                                            println!("Door not implemented!");
+                                            return;
+                                        };
+                                    if !entity_state.is_animating {
+                                        self.toggle_door(entity_index);
+                                    }
+                                }
+                            });
+                    }
+                    _ => (),
+                }
+            }
+        }
     }
 
     fn process_shift_left_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>) {
@@ -1359,7 +1519,11 @@ impl Renderer for BspRenderer {
 
             // Try not to select the model/entity we're already inside of.
             // At a maximum, we could be inside every model.
-            let mut model_indices: Vec<usize> = (0..self.map_data.map_models.len()).collect();
+            let mut model_indices: Vec<usize> = if self.render_all {
+                (0..self.map_data.map_models.len()).collect()
+            } else {
+                self.map_data.models_to_render.clone()
+            };
             // Keep checking as long as we hit something that matches our position.
             while !model_indices.is_empty() {
                 if let Some((model_index, intersection_point)) = self
@@ -1416,12 +1580,7 @@ impl Renderer for BspRenderer {
         }
     }
 
-    fn process_shift_right_click(
-        &mut self,
-        screen_space: Vec2,
-        file_info: &Option<FileInfo>,
-        queue: &wgpu::Queue,
-    ) {
+    fn process_shift_right_click(&mut self, screen_space: Vec2, file_info: &Option<FileInfo>) {
         let (pos, ray) = self.world_pos_and_ray_from_screen_pos(screen_space);
         println!("pos: {:?}    ray: {:?}", pos, ray);
 
@@ -1436,70 +1595,14 @@ impl Renderer for BspRenderer {
             self.set_debug_pyramid(intersection.position, intersection.normal);
 
             // DEBUG: Start experimenting with doors
-
-            // Some doors are built from multiple entities, which all share the same
-            // target name. Find the target name so that we can activate all of them
-            // together.
-            let mut door_target_name = None;
-            if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index) {
-                let entity = &self.map_data.entities[*entity_index];
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&model_index).map(|x| *x)
+            {
+                let entity = &self.map_data.entities[entity_index];
                 match &entity.ex {
                     EntityEx::FuncDoor(_) => {
-                        door_target_name = entity.name.clone();
+                        self.toggle_door(entity_index);
                     }
                     _ => (),
-                }
-            }
-
-            // Toggle the state of all entities with the same name
-            if let Some(door_target_name) = door_target_name {
-                for (i, entity) in self.map_data.entities.iter().enumerate() {
-                    // Scope to only doors
-                    match &entity.ex {
-                        EntityEx::FuncDoor(_) => {
-                            let triggered = if let Some(name) = entity.name.as_ref() {
-                                name.as_str() == door_target_name.as_str()
-                            } else {
-                                false
-                            };
-
-                            if triggered {
-                                let entity_state = &mut self.map_data.entity_states[i];
-                                let entity_state =
-                                    if let EntityState::FuncDoor(state) = entity_state {
-                                        state
-                                    } else {
-                                        println!("Door not implemented!");
-                                        return;
-                                    };
-                                entity_state.is_open = !entity_state.is_open;
-                                let offset = if entity_state.is_open {
-                                    entity_state.open_offset
-                                } else {
-                                    entity_state.closed_offset
-                                };
-                                entity_state.offset = offset;
-
-                                // Get the model for the entity
-                                let model_index = match entity.model.as_ref().unwrap() {
-                                    ModelReference::Index(model_index) => *model_index,
-                                    ModelReference::Path(_) => todo!(),
-                                };
-
-                                // Move the model
-                                let model = &self.map_data.map_models[model_index];
-                                let transform = Mat4::from_translation(offset);
-                                let transform_ref: &[f32; 16] = transform.as_ref();
-                                // Our transform is at the beginning of the ModelBuffer struct
-                                queue.write_buffer(
-                                    &model.model_buffer,
-                                    0,
-                                    bytemuck::cast_slice(transform_ref),
-                                );
-                            }
-                        }
-                        _ => (),
-                    }
                 }
             }
         }
@@ -1537,6 +1640,8 @@ impl Renderer for BspRenderer {
             device,
             queue,
         );
+        // TODO: Track entities that share a global name
+        self.animating_entities.clear();
 
         self.debug_point = None;
         self.debug_point_position = None;

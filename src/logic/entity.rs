@@ -4,8 +4,10 @@ use glam::Vec3;
 
 use crate::rendering::bsp::RenderMode;
 
+#[derive(Debug)]
 pub struct TargetName(pub String);
 #[allow(dead_code)]
+#[derive(Debug)]
 pub enum ModelReference {
     Index(usize),
     Path(String),
@@ -253,6 +255,7 @@ pub trait ParseEntity<'a>: Sized {
 
 macro_rules! parse_entity_struct {
     ($entity_name:ident { }) => {
+        #[derive(Debug)]
         pub struct $entity_name {}
 
         impl<'a> ParseEntity<'a> for $entity_name {
@@ -264,6 +267,7 @@ macro_rules! parse_entity_struct {
 
     ($entity_name:ident { $( ($key_name:literal) $field_name:ident : $field_ty:ty),* $(,)* }) => {
         #[allow(dead_code)]
+        #[derive(Debug)]
         pub struct $entity_name {
             $(
                 pub $field_name : $field_ty,
@@ -286,6 +290,7 @@ macro_rules! parse_entity_struct {
 
     ($entity_name:ident { $( ($key_name:literal) $field_name:ident : $field_ty:ty,)* $ex_name:ident : $ex_ty:ty $(,)* }) => {
         #[allow(dead_code)]
+        #[derive(Debug)]
         pub struct $entity_name {
             $(
                 pub $field_name : $field_ty,
@@ -330,6 +335,7 @@ parse_entity_struct!(Entity {
 macro_rules! parse_entity_enum {
     ($enum_name:ident { $(($var_class_name:literal)  $var_name:ident($var_ty:ty)),* $(,)* }) => {
         #[allow(dead_code)]
+        #[derive(Debug)]
         pub enum $enum_name {
             $(
                 $var_name($var_ty),
@@ -358,6 +364,7 @@ macro_rules! parse_entity_enum {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct UnknownEntityValues(pub HashMap<String, String>);
 
 impl<'a> ParseEntity<'a> for UnknownEntityValues {
@@ -392,16 +399,19 @@ parse_entity_struct!(FuncDoor {
     ("speed") speed: Option<f32>,
 });
 
+#[derive(Debug)]
 pub enum EntityState {
     None,
     FuncDoor(FuncDoorState),
 }
 
+#[derive(Debug)]
 pub struct FuncDoorState {
     pub offset: Vec3,
     pub closed_offset: Vec3,
     pub open_offset: Vec3,
     pub is_open: bool,
+    pub is_animating: bool,
 }
 
 impl FuncDoor {

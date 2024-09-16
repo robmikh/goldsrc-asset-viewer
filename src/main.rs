@@ -383,7 +383,6 @@ fn show_ui(cli: Cli) {
                                     renderer.process_shift_right_click(
                                         mouse_controller.mouse_position(),
                                         &file_info,
-                                        &queue,
                                     );
                                 }
                             }

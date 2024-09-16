@@ -8,7 +8,7 @@ pub enum BasicEnumParseError<T> {
 macro_rules! basic_enum {
     ($name:ident : $ty:ty { $($var_name:ident = $var_value:expr),*$(,)* } ) => {
         #[repr(i32)]
-        #[derive(Copy, Clone, PartialEq, Eq)]
+        #[derive(Copy, Clone, PartialEq, Eq, Debug)]
         pub enum $name {
             $(
                 $var_name = $var_value,
