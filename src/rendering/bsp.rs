@@ -178,15 +178,6 @@ impl MapData {
         };
 
         let raw_entities = BspEntity::parse_entities(reader.read_entities_str());
-        //{
-        //    let items: Vec<_> = raw_entities
-        //        .iter()
-        //        .enumerate()
-        //        .map(|(i, x)| format!("{} - {:#?}", i, x))
-        //        .collect();
-        //    let entities_str = items.join("\n");
-        //    std::fs::write("testoutput/entities.txt", entities_str).unwrap();
-        //}
 
         let entities: Vec<Entity> = raw_entities
             .iter()
