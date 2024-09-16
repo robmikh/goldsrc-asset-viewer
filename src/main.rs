@@ -416,10 +416,14 @@ fn show_ui(cli: Cli) {
                     ..
                 } => {
                     let now = Instant::now();
-                    let delta = if std::env::var("FIXED_TIME_STEP").is_err() {
-                        Duration::from_millis(16)
-                    } else {
-                        now - last_frame
+                    let delta = {
+                        let mut delta = now - last_frame;
+                        if let Ok(value) = std::env::var("FIXED_TIME_STEP") {
+                            if value != "0" && !value.trim().is_empty() {
+                                delta = Duration::from_millis(16);
+                            }
+                        }
+                        delta
                     };
                     last_frame = now;
 
