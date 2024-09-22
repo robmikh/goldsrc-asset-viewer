@@ -19,8 +19,8 @@ use crate::{
     },
     hittest::{hittest_clip_node, hittest_node_for_leaf, IntersectionInfo, REALLY_FAR},
     logic::entity::{
-        Entity, EntityEx, EntityParseError, EntityState, FuncDoorState, ModelReference, OkOr,
-        ParseEntity, ParseEntityResult, ParseEntityValue,
+        Entity, EntityEx, EntityParseError, EntityState, FuncDoorState, ModelReference,
+        MultiManager, OkOr, ParseEntity, ParseEntityResult, ParseEntityValue,
     },
     rendering::movement::MovingEntity,
     FileInfo,
@@ -36,6 +36,8 @@ use super::{
 const CROUCH_HEIGHT: Vec3 = Vec3::new(0.0, 30.0, 0.0);
 // This gets me up the stairs in c1a0d
 const AUTO_STEP_HEIGHT: f32 = 18.0;
+// Eyeballed
+const INTERACTION_RANGE: f32 = 12.0 * 3.5;
 
 struct GpuModel {
     index_buffer: wgpu::Buffer,
@@ -509,6 +511,7 @@ pub struct BspRenderer {
     debug_pyramid: Option<GpuModel>,
 
     new_spawn_point: Option<(Vec3, f32)>,
+    down_keys: HashSet<KeyCode>,
 
     draw_mode: DrawMode,
     draw_mode_update: Option<DrawMode>,
@@ -564,6 +567,7 @@ impl BspRenderer {
             debug_pyramid: None,
 
             new_spawn_point,
+            down_keys: HashSet::new(),
 
             draw_mode,
             draw_mode_update: None,
@@ -736,12 +740,11 @@ impl BspRenderer {
         ray: Vec3,
         distance: f32,
         reader: &BspReader,
-        head_node_index: usize,
     ) -> Option<(usize, Vec3)> {
         let models = reader.read_models();
         let mut closest_intersection = None;
         for (i, model) in models.iter().enumerate() {
-            let node_index = model.head_nodes[head_node_index] as usize;
+            let node_index = model.head_nodes[0] as usize;
 
             let mut adjustment = Vec3::ZERO;
             let mut adjusted_start_position = pos;
@@ -794,6 +797,102 @@ impl BspRenderer {
             }
         }
         closest_intersection
+    }
+
+    fn find_closest_model_entity_intersection_with_filter<F: FnMut(&Entity) -> bool>(
+        &self,
+        pos: Vec3,
+        ray: Vec3,
+        distance: f32,
+        reader: &BspReader,
+        mut filter: F,
+    ) -> Option<(usize, Vec3)> {
+        let models = reader.read_models();
+        let mut closest_intersection = None;
+        for (i, model) in models.iter().enumerate() {
+            let node_index = model.head_nodes[0] as usize;
+            if let Some(entity_index) = self.map_data.model_to_entity.get(&i) {
+                let entity = &self.map_data.entities[*entity_index];
+
+                if !filter(entity) {
+                    continue;
+                }
+
+                let offset = if let EntityState::FuncDoor(entity_state) =
+                    &self.map_data.entity_states[*entity_index]
+                {
+                    entity_state.offset
+                } else {
+                    if let Some(hl_origin) = entity.origin.as_ref() {
+                        let coord = convert_coordinates(*hl_origin);
+                        Vec3::new(coord[0], coord[1], coord[2])
+                    } else {
+                        Vec3::ZERO
+                    }
+                };
+
+                let adjustment = offset;
+                let adjusted_start_position = pos - offset;
+
+                if let Some(hl_angles) = entity.angles {
+                    if !(hl_angles[0] == 0.0 && hl_angles[1] == 0.0 && hl_angles[2] == 0.0) {
+                        println!(
+                            "WARNING! Collidable entity with non-zero angles! {:?}",
+                            hl_angles
+                        );
+                    }
+                }
+
+                if let Some((mut intersection_point, _leaf_index)) = hittest_node_for_leaf(
+                    reader,
+                    node_index,
+                    adjusted_start_position,
+                    ray,
+                    distance,
+                ) {
+                    intersection_point += adjustment;
+                    let distance = pos.distance(intersection_point);
+                    if let Some((old_i, old_intersection, old_entity)) = closest_intersection.take()
+                    {
+                        let old_distance = pos.distance(old_intersection);
+                        if distance < old_distance {
+                            closest_intersection =
+                                Some((i, intersection_point, Some(*entity_index)));
+                        } else {
+                            closest_intersection = Some((old_i, old_intersection, old_entity));
+                        }
+                    } else {
+                        closest_intersection = Some((i, intersection_point, Some(*entity_index)));
+                    }
+                }
+            } else {
+                if let Some((intersection_point, _leaf_index)) =
+                    hittest_node_for_leaf(reader, node_index, pos, ray, distance)
+                {
+                    let distance = pos.distance(intersection_point);
+                    if let Some((old_i, old_intersection, old_entity)) = closest_intersection.take()
+                    {
+                        let old_distance = pos.distance(old_intersection);
+                        if distance < old_distance {
+                            closest_intersection = Some((i, intersection_point, None));
+                        } else {
+                            closest_intersection = Some((old_i, old_intersection, old_entity));
+                        }
+                    } else {
+                        closest_intersection = Some((i, intersection_point, None));
+                    }
+                }
+            }
+        }
+        if let Some((_model_index, intersection_point, entity_index)) = closest_intersection {
+            if let Some(entity_index) = entity_index {
+                Some((entity_index, intersection_point))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     fn find_closest_model_intersection_from_models(
@@ -873,13 +972,8 @@ impl BspRenderer {
     ) -> Option<(usize, usize, Vec3)> {
         match file_info {
             FileInfo::BspFile(file_info) => {
-                let closest_intersection = self.find_closest_model_intersection(
-                    pos,
-                    ray,
-                    REALLY_FAR,
-                    &file_info.reader,
-                    0,
-                );
+                let closest_intersection =
+                    self.find_closest_model_intersection(pos, ray, REALLY_FAR, &file_info.reader);
                 let (model_index, intersection_point) = closest_intersection?;
                 let entity_index = *self.map_data.model_to_entity.get(&model_index)?;
                 Some((model_index, entity_index, intersection_point))
@@ -1092,6 +1186,60 @@ impl BspRenderer {
                 "Door animation queued for entity {} ({:?})",
                 entity_index, entity_state
             );
+        }
+    }
+
+    fn get_entity_by_name(&self, entity_name: &str) -> Option<(usize, &Entity)> {
+        self.map_data
+            .entities
+            .iter()
+            .enumerate()
+            .find(|(_i, entity)| {
+                if let Some(target_name) = entity.name.as_ref() {
+                    return entity_name == target_name;
+                }
+                false
+            })
+    }
+
+    fn resolve_multi_manager_targets(
+        &self,
+        name: Option<&String>,
+        multi_manager: &MultiManager,
+    ) -> Vec<usize> {
+        let mut entity_indices = Vec::with_capacity(multi_manager.targets.len());
+        let mut seen_entities = HashSet::new();
+        if let Some(name) = name {
+            seen_entities.insert(name);
+        }
+        self.resolve_activation_chain(multi_manager, &mut entity_indices, &mut seen_entities);
+        entity_indices
+    }
+
+    fn resolve_activation_chain<'a>(
+        &'a self,
+        multi_manager: &'a MultiManager,
+        entity_indices: &mut Vec<usize>,
+        seen_entities: &mut HashSet<&'a String>,
+    ) {
+        for (target, _) in &multi_manager.targets {
+            if !seen_entities.insert(target) {
+                continue;
+            };
+            if let Some((i, entity)) = self.get_entity_by_name(target) {
+                match &entity.ex {
+                    EntityEx::FuncDoor(_) => {
+                        entity_indices.push(i);
+                    }
+                    EntityEx::MultiManager(multi_manager) => {
+                        println!("Evaluating {:?}...", entity.name);
+                        self.resolve_activation_chain(multi_manager, entity_indices, seen_entities);
+                    }
+                    _ => {
+                        println!("WARNING: Activation chain triggered interaction with entity '{}' ({}) and is unsupported!", i, entity.class_name)
+                    }
+                }
+            }
         }
     }
 }
@@ -1339,6 +1487,96 @@ impl Renderer for BspRenderer {
             self.player.set_position(position);
         }
 
+        // Check for interactions
+        // TODO: Move back to 'E' key
+        if !down_keys.contains(&KeyCode::KeyG) && self.down_keys.contains(&KeyCode::KeyG) {
+            let reader = match file_info.as_ref().unwrap() {
+                FileInfo::BspFile(file) => &file.reader,
+                _ => panic!(),
+            };
+
+            //println!("woop!");
+
+            // Get the player's direction
+            // TODO: The player object should know where it's facing...
+            //let direction = self.renderer.camera().facing();
+
+            // Instead of using the player's position, use the position of the
+            // center of the screen.
+            //let pos = self.player.position();
+            let screen_center = self.renderer.camera().viewport_size() / 2.0;
+            let (pos, ray) = self
+                .renderer
+                .camera()
+                .world_pos_and_ray_from_screen_pos(screen_center);
+
+            //let ray = direction.normalize();
+            let distance = INTERACTION_RANGE;
+
+            let hittest = self.find_closest_model_entity_intersection_with_filter(
+                pos,
+                ray,
+                distance,
+                reader,
+                |entity| -> bool {
+                    match &entity.ex {
+                        EntityEx::FuncButton(_) => true,
+                        _ => false,
+                    }
+                },
+            );
+
+            if let Some((entity_index, intersection_point)) = hittest {
+                println!("Interaction with entity: {}", entity_index);
+
+                let activated_entity = {
+                    let entity = &self.map_data.entities[entity_index];
+                    let target = match &entity.ex {
+                        EntityEx::FuncButton(func_button) => func_button.target.clone(),
+                        _ => panic!(),
+                    };
+
+                    let mut activated_entity = None;
+                    if let Some(target) = target {
+                        activated_entity = self.map_data.entities.iter().position(|x| {
+                            if let Some(target_name) = x.name.as_ref() {
+                                return target.as_str() == target_name;
+                            }
+                            false
+                        });
+                    }
+
+                    activated_entity
+                };
+
+                if let Some(activated_entity) = activated_entity {
+                    println!("Activated entity: {}", activated_entity);
+                    let entity = &self.map_data.entities[activated_entity];
+                    match &entity.ex {
+                        EntityEx::FuncDoor(_) => self.toggle_door(activated_entity),
+                        EntityEx::MultiManager(multi_manager) => {
+                            let entity_indices = self
+                                .resolve_multi_manager_targets(entity.name.as_ref(), multi_manager);
+                            println!("Activating the following entities: {:?}", entity_indices);
+                            for entity_index in entity_indices {
+                                self.toggle_door(entity_index);
+                            }
+                        }
+                        _ => {
+                            let button_entity = &self.map_data.entities[entity_index];
+                            println!("WARNING: Button '{}' ({}) triggered interaction with entity '{}' ({}) and is unsupported!", entity_index, button_entity.class_name, activated_entity, entity.class_name)
+                        }
+                    }
+                }
+
+                self.new_debug_point = Some(intersection_point);
+            } else {
+                // This won't properly intersect with model 0
+                let new_point = pos + (ray * distance);
+                self.new_debug_point = Some(new_point);
+            }
+        }
+
         self.renderer.camera_mut().update(queue);
 
         if let Some(draw_mode) = self.draw_mode_update.take() {
@@ -1382,6 +1620,8 @@ impl Renderer for BspRenderer {
         if let Some(viewer) = self.ui.as_mut() {
             viewer.set_position(position, direction)
         }
+
+        self.down_keys = down_keys.clone();
 
         // TODO: Check this during movement, not after
         // Check to see if we're intersecting an entity

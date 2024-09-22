@@ -113,6 +113,10 @@ impl Camera {
         Vec3::new(self.yaw, self.pitch, self.roll)
     }
 
+    pub fn viewport_size(&self) -> Vec2 {
+        self.viewport_size
+    }
+
     pub fn facing(&self) -> Vec3 {
         let transform = Mat4::from_euler(glam::EulerRot::YXZ, self.yaw, self.pitch, self.roll);
         let new_facing = transform * Vec4::new(0.0, 0.0, 1.0, 0.0);

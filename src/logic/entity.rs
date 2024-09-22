@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use glam::Vec3;
 
@@ -251,6 +251,7 @@ impl<T: ParseEntityValue> ParseEntityValue for Option<T> {
 
 pub trait ParseEntity<'a>: Sized {
     fn parse(values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self>;
+    fn keys() -> &'static [&'static str];
 }
 
 macro_rules! parse_entity_struct {
@@ -261,6 +262,10 @@ macro_rules! parse_entity_struct {
         impl<'a> ParseEntity<'a> for $entity_name {
             fn parse(_values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
                 Ok(Self {})
+            }
+
+            fn keys() -> &'static [&'static str] {
+                &[]
             }
         }
     };
@@ -284,6 +289,10 @@ macro_rules! parse_entity_struct {
                         $field_name,
                     )*
                 })
+            }
+
+            fn keys() -> &'static [&'static str] {
+                &[ $( $key_name ),* ]
             }
         }
     };
@@ -311,6 +320,10 @@ macro_rules! parse_entity_struct {
                     $ex_name,
                 })
             }
+
+            fn keys() -> &'static [&'static str] {
+                &[ $( $key_name ),* ]
+            }
         }
     };
 }
@@ -328,6 +341,7 @@ parse_entity_struct!(Entity {
     ("rendermode") render_mode: Option<RenderMode>,
     ("renderamt") render_amount: Option<i32>,
     ("angle") angle: Option<f32>, // https://developer.valvesoftware.com/wiki/Info_player_start_(GoldSrc) says info_player_start has angles but c1a0 uses angle
+    ("killtarget") kill_target: Option<String>,
 
     ex: EntityEx,
 });
@@ -359,6 +373,10 @@ macro_rules! parse_entity_enum {
                     }
                 }
             }
+
+            fn keys() -> &'static [&'static str] {
+                &[ $( $var_class_name ),* ]
+            }
         }
     }
 }
@@ -375,14 +393,20 @@ impl<'a> ParseEntity<'a> for UnknownEntityValues {
         }
         Ok(Self(new_values))
     }
+
+    fn keys() -> &'static [&'static str] {
+        &[]
+    }
 }
 
 parse_entity_enum!(
     EntityEx {
         ("func_wall") FuncWall(FuncWall),
         ("func_door") FuncDoor(FuncDoor),
+        ("func_button") FuncButton(FuncButton),
         ("info_player_start") InfoPlayerStart(InfoPlayerStart),
         ("trigger_changelevel") TriggerChangeLevel(TriggerChangeLevel),
+        ("multi_manager") MultiManager(MultiManager),
     }
 );
 
@@ -398,6 +422,37 @@ parse_entity_struct!(FuncDoor {
     ("lip") lip: Option<i32>,
     ("speed") speed: Option<f32>,
 });
+parse_entity_struct!(FuncButton {
+    ("target") target : Option<String>,
+});
+
+#[derive(Debug)]
+pub struct MultiManager {
+    pub targets: Vec<(String, String)>,
+}
+impl<'a> ParseEntity<'a> for MultiManager {
+    fn parse(values: &'a HashMap<&'a str, &'a str>) -> ParseEntityResult<'a, Self> {
+        let seen_keys = {
+            let mut seen_keys = HashSet::new();
+            let entity_keys = Entity::keys();
+            for key in entity_keys {
+                seen_keys.insert(*key);
+            }
+            seen_keys
+        };
+        let mut targets = Vec::with_capacity(values.len());
+        for (key, value_str) in values {
+            if !seen_keys.contains(key) {
+                targets.push((key.to_string(), value_str.to_string()));
+            }
+        }
+        Ok(Self { targets })
+    }
+
+    fn keys() -> &'static [&'static str] {
+        todo!()
+    }
+}
 
 #[derive(Debug)]
 pub enum EntityState {
