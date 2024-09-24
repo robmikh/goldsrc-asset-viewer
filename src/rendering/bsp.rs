@@ -1495,22 +1495,13 @@ impl Renderer for BspRenderer {
                 _ => panic!(),
             };
 
-            //println!("woop!");
-
-            // Get the player's direction
-            // TODO: The player object should know where it's facing...
-            //let direction = self.renderer.camera().facing();
-
             // Instead of using the player's position, use the position of the
             // center of the screen.
-            //let pos = self.player.position();
             let screen_center = self.renderer.camera().viewport_size() / 2.0;
             let (pos, ray) = self
                 .renderer
                 .camera()
                 .world_pos_and_ray_from_screen_pos(screen_center);
-
-            //let ray = direction.normalize();
             let distance = INTERACTION_RANGE;
 
             let hittest = self.find_closest_model_entity_intersection_with_filter(
