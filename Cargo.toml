@@ -6,7 +6,7 @@ edition = "2021"
 description = "A tool to view assets from GoldSource games."
 
 [dependencies]
-gsparser = { path = "gsparser" }
+gsparser = { git = "https://github.com/robmikh/gsparser" }
 wgpu = "0.20"
 winit = "0.29.3"
 clap = { version = "4.5.4", features = ["derive"] }

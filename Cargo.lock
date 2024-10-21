@@ -1398,6 +1398,7 @@ dependencies = [
 [[package]]
 name = "gsparser"
 version = "0.1.0"
+source = "git+https://github.com/robmikh/gsparser#2064d8c20dad81762ef6ab5c18c79daa72fbb945"
 dependencies = [
  "bincode",
  "byteorder",
