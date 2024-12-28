@@ -767,7 +767,7 @@ struct LightmapFaceData<'a> {
     data: &'a [u8],
 }
 
-fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> (Vec<LightmapFaceData>, Vec<(Vec2, Vec2)>) {
+fn decode_face_lightmaps<'a>(reader: &'a BspReader) -> (Vec<LightmapFaceData<'a>>, Vec<(Vec2, Vec2)>) {
     let data = reader.read_lighting_data();
     let faces = reader.read_faces();
     let mut lightmap_face_data = Vec::with_capacity(faces.len());
