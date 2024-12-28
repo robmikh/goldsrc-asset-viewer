@@ -146,7 +146,7 @@ pub fn read_wad_resources<P: AsRef<Path>>(
     game_root: P,
     wad_resources: &mut WadCollection,
 ) {
-    let entities = BspEntity::parse_entities(reader.read_entities());
+    let entities = BspEntity::parse_entities(reader.read_entities_str());
     let game_root = game_root.as_ref();
     for entity in &entities {
         if let Some(value) = entity.0.get("wad") {
@@ -577,7 +577,7 @@ fn log_bsp(reader: &BspReader, log: &mut String) {
         .unwrap();
     }
 
-    let entities = reader.read_entities();
+    let entities = reader.read_entities_str();
     let entities = BspEntity::parse_entities(entities);
     writeln!(log, "Entities:").unwrap();
     for (i, entity) in entities.iter().enumerate() {

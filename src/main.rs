@@ -376,7 +376,7 @@ fn show_ui(cli: Cli) {
 
                                                 let mut found = None;
                                                 let entities = BspEntity::parse_entities(
-                                                    file_info.reader.read_entities(),
+                                                    file_info.reader.read_entities_str(),
                                                 );
                                                 for (entity_index, entity) in
                                                     entities.iter().enumerate()
@@ -611,7 +611,7 @@ fn load_wad_file<P: AsRef<Path>>(path: P) -> WadFile {
 
 fn load_mdl_file<P: AsRef<Path>>(path: P) -> MdlFile {
     let path = path.as_ref();
-    let mdl_file = gsparser::mdl::MdlFile::open(path);
+    let mdl_file = gsparser::mdl::MdlFile::open(path).unwrap();
 
     let mut texture_names = Vec::new();
     for texture in &mdl_file.textures {

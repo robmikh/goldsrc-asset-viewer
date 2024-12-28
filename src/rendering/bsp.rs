@@ -197,7 +197,7 @@ impl BspRenderer {
         }
 
         // Find the "info_player_start" entity
-        let entities = BspEntity::parse_entities(reader.read_entities());
+        let entities = BspEntity::parse_entities(reader.read_entities_str());
         let mut player_start_entity = None;
         for entity in &entities {
             if let Some(value) = entity.0.get("classname") {

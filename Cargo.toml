@@ -6,11 +6,11 @@ edition = "2021"
 description = "A tool to view assets from GoldSource games."
 
 [dependencies]
-gsparser = { path = "gsparser" }
+gsparser = { git = "https://github.com/robmikh/gsparser", rev = "d02301f5f41152bb5a5ddc75907dbb8aaf540136" }
 wgpu = "0.17"
 winit = "0.27.2"
 clap = { version = "4.5.4", features = ["derive"] }
-glam = "0.27.0"
+glam = "0.29.2"
 rfd = "0.14.1"
 image = "0.25.1"
 env_logger = "0.11.3"
@@ -20,4 +20,4 @@ imgui-wgpu = "0.24.0"
 pollster = "0.3.0"
 id_tree = "1.8.0"
 bytemuck = { version="1.16.0", features = [ "derive" ] }
-gltf = { git = "https://github.com/robmikh/gltf", rev = "e56c12b486e88294292bde7a335bb763021b2391" }
+gltf = { git = "https://github.com/robmikh/gltf", rev = "6b868ef28097f68724d863b48dd5259e4b424b3b" }
