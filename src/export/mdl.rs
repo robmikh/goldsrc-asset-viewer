@@ -49,6 +49,13 @@ pub fn export<P: AsRef<Path>>(
     output_path: P,
     mut log: Option<&mut String>,
 ) -> std::io::Result<()> {
+    // The id_tree crate only allows one root, but mdl files may have
+    // multiple root bones. Therefore, we will use a virtual root node.
+    let mut bone_tree = TreeBuilder::<isize>::new()
+        .with_node_capacity(file.bones.len() + 1)
+        .build();
+    let virtual_root = bone_tree.insert(id_tree::Node::new(-1), AsRoot).unwrap();
+
     let body_part = file.body_parts.first().unwrap();
     let model = body_part.models.first().unwrap();
 
@@ -68,19 +75,28 @@ pub fn export<P: AsRef<Path>>(
     let mut bone_names = Vec::with_capacity(file.bones.len());
     let mut local_bone_transforms = Vec::with_capacity(file.bones.len());
     let mut local_bone_component_transforms = Vec::with_capacity(file.bones.len());
-    let mut bone_tree = TreeBuilder::new()
-        .with_node_capacity(file.bones.len())
-        .build();
     let mut bone_map = HashMap::new();
     for (i, bone) in file.bones.iter().enumerate() {
         //println!("Bone {} : Parnet {}", i, bone.parent);
-        let behavior = if bone.parent < 0 {
-            AsRoot
+        let parent_node_id = if bone.parent < 0 {
+            &virtual_root
         } else {
-            let parent_node = bone_map.get(&(bone.parent as usize)).unwrap();
-            UnderNode(parent_node)
+            let parent_node = if let Some(parent_node) = bone_map.get(&(bone.parent as usize)) {
+                parent_node
+            } else {
+                panic!(
+                    "Bone {} specifies parent {} which doesn't exist! (num bones: {})",
+                    i,
+                    bone.parent,
+                    file.bones.len()
+                );
+            };
+            parent_node
         };
-        let bone_id = bone_tree.insert(id_tree::Node::new(i), behavior).unwrap();
+        let behavior = UnderNode(parent_node_id);
+        let bone_id = bone_tree
+            .insert(id_tree::Node::new(i as isize), behavior)
+            .unwrap();
         bone_map.insert(i, bone_id);
         let bone_pos = Vec3::from_array(convert_coordinates([
             bone.value[0],
@@ -103,29 +119,36 @@ pub fn export<P: AsRef<Path>>(
         local_bone_component_transforms.push(bone_component_transform);
     }
     let mut world_bone_transforms = vec![Mat4::IDENTITY; file.bones.len()];
-    for node_id in bone_tree
-        .traverse_pre_order_ids(bone_tree.root_node_id().unwrap())
-        .unwrap()
-    {
-        let parent_index = {
-            let mut ancestors = bone_tree.ancestors(&node_id).unwrap();
-            if let Some(node) = ancestors.next() {
-                Some(*node.data())
-            } else {
-                None
+    if file.bones.len() > 0 {
+        for node_id in bone_tree.traverse_pre_order_ids(&virtual_root).unwrap() {
+            if node_id == virtual_root {
+                continue;
             }
-        };
 
-        let parent_transform = if let Some(parent_index) = parent_index {
-            world_bone_transforms[parent_index]
-        } else {
-            Mat4::IDENTITY
-        };
-        let node_index = *bone_tree.get(&node_id).unwrap().data();
-        let node_transform = *local_bone_transforms.get(node_index).unwrap();
-        let node_world_transform = parent_transform * node_transform;
+            let parent_index = {
+                let mut ancestors = bone_tree.ancestors(&node_id).unwrap();
+                if let Some(node) = ancestors.next() {
+                    if *node.data() < 0 {
+                        None
+                    } else {
+                        Some(*node.data())
+                    }
+                } else {
+                    None
+                }
+            };
 
-        world_bone_transforms[node_index] = node_world_transform;
+            let parent_transform = if let Some(parent_index) = parent_index {
+                world_bone_transforms[parent_index as usize]
+            } else {
+                Mat4::IDENTITY
+            };
+            let node_index = *bone_tree.get(&node_id).unwrap().data();
+            let node_transform = *local_bone_transforms.get(node_index as usize).unwrap();
+            let node_world_transform = parent_transform * node_transform;
+
+            world_bone_transforms[node_index as usize] = node_world_transform;
+        }
     }
     let final_bone_transforms = world_bone_transforms;
 
@@ -134,47 +157,47 @@ pub fn export<P: AsRef<Path>>(
         final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
     // Build nodes
-    let mut nodes = Nodes::new(file.bones.len() + 2);
+    let mut nodes = Nodes::new(file.bones.len() + 3);
     let mut bone_to_node: HashMap<usize, NodeIndex> = HashMap::new();
     let mesh_node = nodes.add_node(Node {
         mesh: Some(MeshIndex(0)),
         skin: Some(SkinIndex::default()),
         ..Default::default()
     });
-    for node_id in bone_tree
-        .traverse_post_order_ids(bone_tree.root_node_id().unwrap())
-        .unwrap()
-    {
-        let bone_index = *bone_tree.get(&node_id).unwrap().data();
-        let component_transform = local_bone_component_transforms.get(bone_index).unwrap();
-        let rotation = component_transform.get_rotation_quat();
+    if file.bones.len() > 0 {
+        for node_id in bone_tree.traverse_post_order_ids(&virtual_root).unwrap() {
+            if node_id == virtual_root {
+                continue;
+            }
+            let bone_index = *bone_tree.get(&node_id).unwrap().data() as usize;
+            let component_transform = local_bone_component_transforms.get(bone_index).unwrap();
+            let rotation = component_transform.get_rotation_quat();
 
-        let mut children = Vec::new();
-        for child in bone_tree.children(&node_id).unwrap() {
-            let child = child.data();
-            let node_index = bone_to_node.get(child).unwrap();
-            children.push(*node_index);
+            let mut children = Vec::new();
+            for child in bone_tree.children(&node_id).unwrap() {
+                let child = *child.data() as usize;
+                let node_index = bone_to_node.get(&child).unwrap();
+                children.push(*node_index);
+            }
+
+            let node_index = nodes.add_node(Node {
+                name: Some(bone_names[bone_index].clone()),
+                translation: Some(component_transform.translation),
+                rotation: Some(Vec4::from_array(rotation.to_array())),
+                children: children,
+                ..Default::default()
+            });
+            bone_to_node.insert(bone_index, node_index);
         }
-
-        let node_index = nodes.add_node(Node {
-            name: Some(bone_names[bone_index].clone()),
-            translation: Some(component_transform.translation),
-            rotation: Some(Vec4::from_array(rotation.to_array())),
-            children: children,
-            ..Default::default()
-        });
-        bone_to_node.insert(bone_index, node_index);
     }
-    let skin_root = *bone_to_node
-        .get(
-            bone_tree
-                .get(bone_tree.root_node_id().unwrap())
-                .unwrap()
-                .data(),
-        )
-        .unwrap();
+    let mut scene_children: Vec<_> = bone_tree
+        .children(&virtual_root)
+        .unwrap()
+        .map(|x| *bone_to_node.get(&(*x.data() as usize)).unwrap())
+        .collect();
+    scene_children.push(mesh_node);
     let scene_root = nodes.add_node(Node {
-        children: vec![mesh_node, skin_root],
+        children: scene_children,
         ..Default::default()
     });
 
