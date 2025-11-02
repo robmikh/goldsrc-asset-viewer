@@ -56,9 +56,6 @@ pub fn export<P: AsRef<Path>>(
         .build();
     let virtual_root = bone_tree.insert(id_tree::Node::new(-1), AsRoot).unwrap();
 
-    let body_part = file.body_parts.first().unwrap();
-    let model = body_part.models.first().unwrap();
-
     let mut buffer_writer = BufferWriter::new();
 
     if let Some(log) = &mut log {
@@ -156,14 +153,27 @@ pub fn export<P: AsRef<Path>>(
     let inverse_bind_transforms: Vec<_> =
         final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
+    let converted_models = {
+        let mut converted_models = Vec::new();
+        for body_part in &file.body_parts {
+            for model in &body_part.models {
+                if !model.vertices.is_empty() {
+                    let converted_model = convert_model(model, &file, &final_bone_transforms);
+                    converted_models.push(converted_model);
+                }
+            }
+        }
+        converted_models
+    };
+
     // Build nodes
     let mut nodes = Nodes::new(file.bones.len() + 3);
     let mut bone_to_node: HashMap<usize, NodeIndex> = HashMap::new();
-    let mesh_node = nodes.add_node(Node {
-        mesh: Some(MeshIndex(0)),
+    let mut mesh_nodes: Vec<_> = (0..converted_models.len()).into_iter().map(|x| nodes.add_node(Node {
+        mesh: Some(MeshIndex(x)),
         skin: Some(SkinIndex::default()),
         ..Default::default()
-    });
+    })).collect();
     if file.bones.len() > 0 {
         for node_id in bone_tree.traverse_post_order_ids(&virtual_root).unwrap() {
             if node_id == virtual_root {
@@ -195,7 +205,7 @@ pub fn export<P: AsRef<Path>>(
         .unwrap()
         .map(|x| *bone_to_node.get(&(*x.data() as usize)).unwrap())
         .collect();
-    scene_children.push(mesh_node);
+    scene_children.append(&mut mesh_nodes);
     let scene_root = nodes.add_node(Node {
         children: scene_children,
         ..Default::default()
@@ -261,81 +271,6 @@ pub fn export<P: AsRef<Path>>(
         }
     }
 
-    let converted_model = {
-        // Gather mesh data
-        let (meshes, indices, vertices) = {
-            let mut meshes = Vec::with_capacity(model.meshes.len());
-            let mut indices = Vec::new();
-            let mut vertices = Vec::new();
-            for mdl_mesh in &model.meshes {
-                let texture = &file.textures[mdl_mesh.skin_ref as usize];
-                let texture_width = texture.width as f32;
-                let texture_height = texture.height as f32;
-
-                let index_start = indices.len();
-                let mut vertex_map = HashMap::new();
-                for sequence in &mdl_mesh.sequences {
-                    match sequence.ty {
-                        MdlMeshSequenceType::TriangleStrip => {
-                            let mut triverts = Vec::new();
-                            for i in 0..sequence.triverts.len() - 2 {
-                                if i % 2 == 0 {
-                                    triverts.push(sequence.triverts[i + 1]);
-                                    triverts.push(sequence.triverts[i]);
-                                    triverts.push(sequence.triverts[i + 2]);
-                                } else {
-                                    triverts.push(sequence.triverts[i]);
-                                    triverts.push(sequence.triverts[i + 1]);
-                                    triverts.push(sequence.triverts[i + 2]);
-                                }
-                            }
-                            process_indexed_triangles(
-                                model,
-                                texture_width,
-                                texture_height,
-                                &triverts,
-                                &final_bone_transforms,
-                                &mut indices,
-                                &mut vertices,
-                                &mut vertex_map,
-                            );
-                        }
-                        MdlMeshSequenceType::TriangleFan => {
-                            let mut triverts = Vec::new();
-                            for i in 0..sequence.triverts.len() - 2 {
-                                triverts.push(sequence.triverts[i + 2]);
-                                triverts.push(sequence.triverts[i + 1]);
-                                triverts.push(sequence.triverts[0]);
-                            }
-                            process_indexed_triangles(
-                                model,
-                                texture_width,
-                                texture_height,
-                                &triverts,
-                                &final_bone_transforms,
-                                &mut indices,
-                                &mut vertices,
-                                &mut vertex_map,
-                            );
-                        }
-                    }
-                }
-                let index_end = indices.len();
-
-                meshes.push(Mesh {
-                    texture_index: mdl_mesh.skin_ref as usize,
-                    indices_range: index_start..index_end,
-                })
-            }
-            (meshes, indices, vertices)
-        };
-        Model {
-            indices,
-            vertices,
-            meshes,
-        }
-    };
-
     let inverse_bind_matrices_pair =
         buffer_writer.create_view_and_accessor(&inverse_bind_transforms, None);
 
@@ -387,7 +322,7 @@ pub fn export<P: AsRef<Path>>(
     let gltf_text = write_gltf(
         gltf::document::BufferSource::Uri(buffer_name),
         &mut buffer_writer,
-        &converted_model,
+        &converted_models,
         &material_data,
         scene_root,
         &nodes,
@@ -565,5 +500,80 @@ fn process_animation(
         true
     } else {
         false
+    }
+}
+
+fn convert_model(model: &MdlModel, file: &MdlFile, final_bone_transforms: &[Mat4]) -> Model<SkinnedVertex> {
+    // Gather mesh data
+    let (meshes, indices, vertices) = {
+        let mut meshes = Vec::with_capacity(model.meshes.len());
+        let mut indices = Vec::new();
+        let mut vertices = Vec::new();
+        for mdl_mesh in &model.meshes {
+            let texture = &file.textures[mdl_mesh.skin_ref as usize];
+            let texture_width = texture.width as f32;
+            let texture_height = texture.height as f32;
+
+            let index_start = indices.len();
+            let mut vertex_map = HashMap::new();
+            for sequence in &mdl_mesh.sequences {
+                match sequence.ty {
+                    MdlMeshSequenceType::TriangleStrip => {
+                        let mut triverts = Vec::new();
+                        for i in 0..sequence.triverts.len() - 2 {
+                            if i % 2 == 0 {
+                                triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[i]);
+                                triverts.push(sequence.triverts[i + 2]);
+                            } else {
+                                triverts.push(sequence.triverts[i]);
+                                triverts.push(sequence.triverts[i + 1]);
+                                triverts.push(sequence.triverts[i + 2]);
+                            }
+                        }
+                        process_indexed_triangles(
+                            model,
+                            texture_width,
+                            texture_height,
+                            &triverts,
+                            &final_bone_transforms,
+                            &mut indices,
+                            &mut vertices,
+                            &mut vertex_map,
+                        );
+                    }
+                    MdlMeshSequenceType::TriangleFan => {
+                        let mut triverts = Vec::new();
+                        for i in 0..sequence.triverts.len() - 2 {
+                            triverts.push(sequence.triverts[i + 2]);
+                            triverts.push(sequence.triverts[i + 1]);
+                            triverts.push(sequence.triverts[0]);
+                        }
+                        process_indexed_triangles(
+                            model,
+                            texture_width,
+                            texture_height,
+                            &triverts,
+                            &final_bone_transforms,
+                            &mut indices,
+                            &mut vertices,
+                            &mut vertex_map,
+                        );
+                    }
+                }
+            }
+            let index_end = indices.len();
+
+            meshes.push(Mesh {
+                texture_index: mdl_mesh.skin_ref as usize,
+                indices_range: index_start..index_end,
+            })
+        }
+        (meshes, indices, vertices)
+    };
+    Model {
+        indices,
+        vertices,
+        meshes,
     }
 }

@@ -10,7 +10,7 @@ gsparser = { git = "https://github.com/robmikh/gsparser", rev = "d02301f5f41152b
 wgpu = "0.20"
 winit = "0.29.3"
 clap = { version = "4.5.4", features = ["derive"] }
-glam = "0.29.2"
+glam = "0.30.8"
 rfd = "0.14.1"
 image = "0.25.1"
 env_logger = "0.11.3"
@@ -21,5 +21,6 @@ imgui-wgpu = { git = "https://github.com/benmkw/imgui-wgpu-rs", branch = "wgpu02
 pollster = "0.3.0"
 id_tree = "1.8.0"
 bytemuck = { version="1.16.0", features = [ "derive" ] }
-gltf = { git = "https://github.com/robmikh/gltf", rev = "6b868ef28097f68724d863b48dd5259e4b424b3b" }
+gltf = { git = "https://github.com/robmikh/gltf", rev = "9a554160e80f3b8624fef5c8f4cf230f44092ad0" }
+#gltf = { path = "../robmikh-gltf" }
 rectangle-pack = "0.4.2"

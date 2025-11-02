@@ -120,7 +120,7 @@ pub fn export<P: AsRef<Path>, T: AsRef<Path>>(
     let gltf_text = write_gltf(
         gltf::document::BufferSource::Uri(buffer_name),
         &mut buffer_writer,
-        &model,
+        &[model],
         &material_data,
         scene_root,
         &nodes,
