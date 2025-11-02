@@ -153,31 +153,43 @@ pub fn export<P: AsRef<Path>>(
     let inverse_bind_transforms: Vec<_> =
         final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
-    let (converted_models, converted_model_names) = {
+    // Build body part and mesh nodes and convert models
+    // TODO: Update capacity
+    let mut nodes = Nodes::new(file.bones.len() + 3); 
+    let (converted_models, mut body_part_nodes) = {
         let mut converted_models = Vec::new();
-        let mut converted_model_names = Vec::new();
+        let mut body_part_nodes = Vec::with_capacity(file.body_parts.len());
         for body_part in &file.body_parts {
+            let mut model_nodes = Vec::with_capacity(body_part.models.len());
             for model in &body_part.models {
                 if !model.vertices.is_empty() {
+                    // Unfortunately, Blender doesn't preserve the relationsihp between body part nodes
+                    // and mesh nodes. Encode it into the name for readability.
                     let name = format!("{}-{}", body_part.name, model.name);
                     let converted_model = convert_model(model, &file, &final_bone_transforms);
+                    let mesh_index = converted_models.len();
                     converted_models.push(converted_model);
-                    converted_model_names.push(name);
+                    let model_node = nodes.add_node(Node {
+                        mesh: Some(MeshIndex(mesh_index)),
+                        skin: Some(SkinIndex::default()),
+                        name: Some(name),
+                        ..Default::default()
+                    });
+                    model_nodes.push(model_node);
                 }
             }
+            let body_part_node = nodes.add_node(Node {
+                children: model_nodes,
+                name: Some(body_part.name.clone()),
+                ..Default::default()
+            });
+            body_part_nodes.push(body_part_node);
         }
-        (converted_models, converted_model_names)
+        (converted_models, body_part_nodes)
     };
 
-    // Build nodes
-    let mut nodes = Nodes::new(file.bones.len() + 3);
+    // Build bone nodes
     let mut bone_to_node: HashMap<usize, NodeIndex> = HashMap::new();
-    let mut mesh_nodes: Vec<_> = (0..converted_models.len()).into_iter().map(|x| nodes.add_node(Node {
-        mesh: Some(MeshIndex(x)),
-        skin: Some(SkinIndex::default()),
-        name: Some(converted_model_names[x].clone()),
-        ..Default::default()
-    })).collect();
     if file.bones.len() > 0 {
         for node_id in bone_tree.traverse_post_order_ids(&virtual_root).unwrap() {
             if node_id == virtual_root {
@@ -209,7 +221,7 @@ pub fn export<P: AsRef<Path>>(
         .unwrap()
         .map(|x| *bone_to_node.get(&(*x.data() as usize)).unwrap())
         .collect();
-    scene_children.append(&mut mesh_nodes);
+    scene_children.append(&mut body_part_nodes);
     let scene_root = nodes.add_node(Node {
         children: scene_children,
         ..Default::default()
