@@ -153,17 +153,20 @@ pub fn export<P: AsRef<Path>>(
     let inverse_bind_transforms: Vec<_> =
         final_bone_transforms.iter().map(|x| x.inverse()).collect();
 
-    let converted_models = {
+    let (converted_models, converted_model_names) = {
         let mut converted_models = Vec::new();
+        let mut converted_model_names = Vec::new();
         for body_part in &file.body_parts {
             for model in &body_part.models {
                 if !model.vertices.is_empty() {
+                    let name = format!("{}-{}", body_part.name, model.name);
                     let converted_model = convert_model(model, &file, &final_bone_transforms);
                     converted_models.push(converted_model);
+                    converted_model_names.push(name);
                 }
             }
         }
-        converted_models
+        (converted_models, converted_model_names)
     };
 
     // Build nodes
@@ -172,6 +175,7 @@ pub fn export<P: AsRef<Path>>(
     let mut mesh_nodes: Vec<_> = (0..converted_models.len()).into_iter().map(|x| nodes.add_node(Node {
         mesh: Some(MeshIndex(x)),
         skin: Some(SkinIndex::default()),
+        name: Some(converted_model_names[x].clone()),
         ..Default::default()
     })).collect();
     if file.bones.len() > 0 {
